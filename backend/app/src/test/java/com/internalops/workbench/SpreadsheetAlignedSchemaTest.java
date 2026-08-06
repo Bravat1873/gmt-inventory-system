@@ -1,0 +1,3 @@
+package com.internalops.workbench;
+import org.junit.jupiter.api.Test;import org.springframework.core.io.ClassPathResource;import java.nio.charset.StandardCharsets;import static org.assertj.core.api.Assertions.assertThat;
+class SpreadsheetAlignedSchemaTest{@Test void storesEveryStableUploadedSpreadsheetField()throws Exception{String sql=new ClassPathResource("db/migration/V5__align_uploaded_spreadsheet_fields.sql").getContentAsString(StandardCharsets.UTF_8);assertThat(sql).contains("factory_price DECIMAL(18,4)","product_remark VARCHAR(500)","source_supplier_name VARCHAR(200)","inventory_remark VARCHAR(500)");}}

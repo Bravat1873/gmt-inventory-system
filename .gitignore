@@ -1,0 +1,49 @@
+# Frontend dependencies and build output
+**/node_modules/
+frontend/dist/
+coverage/
+*.tsbuildinfo
+
+# Java / Maven build output and local repositories
+**/target/
+**/.m2/
+
+# Runtime files and logs
+*.log
+*.pid
+.runtime-logs/
+
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Test and browser automation artifacts
+.playwright-cli/
+playwright-report/
+test-results/
+output/
+
+# Local generated/import error data
+data/import-errors/
+
+# Local specifications and documentation
+openspec/
+docs/
+
+# IDE and editor metadata
+.idea/
+.vscode/
+*.iml
+*.swp
+*~
+
+# Operating system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local agent workflow artifacts
+.superpowers/brainstorm/
+.superpowers/sdd/
