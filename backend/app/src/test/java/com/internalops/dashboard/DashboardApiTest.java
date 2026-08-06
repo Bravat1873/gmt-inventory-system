@@ -12,7 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Sql(statements = {
         "CREATE TABLE IF NOT EXISTS sales_order (id BIGINT PRIMARY KEY, status VARCHAR(40) NOT NULL)",
         "CREATE TABLE IF NOT EXISTS purchase_order (id BIGINT PRIMARY KEY, status VARCHAR(40) NOT NULL)"

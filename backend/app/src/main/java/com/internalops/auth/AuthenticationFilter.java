@@ -17,7 +17,7 @@ public class AuthenticationFilter extends OncePerRequestFilter {
     private final AuthService auth;
     public AuthenticationFilter(AuthService auth) { this.auth=auth; }
     @Override protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path=request.getRequestURI(); return path.startsWith("/api/auth/") || path.equals("/api/system/health") || !path.startsWith("/api/");
+        String path=request.getRequestURI(); return "OPTIONS".equalsIgnoreCase(request.getMethod()) || path.startsWith("/api/auth/") || path.equals("/api/system/health") || !path.startsWith("/api/");
     }
     @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws ServletException, IOException {
         CurrentUser user=auth.current(AuthController.token(request));

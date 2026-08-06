@@ -27,7 +27,7 @@ function isReceivable(row: Record<string, unknown>) { return String(row.cashDire
 function hasOutstandingAmount(row: Record<string, unknown>) { return Number(row.outstandingAmount ?? 0) > 0 }
 const canManual = computed(() => ['customer', 'user', 'product', 'inventory'].includes(props.module.key))
 function columnWidth(field: string) {
-  const widths: Record<string, number> = { skuCode: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 160, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 160, purchaseNo: 160, businessNo: 160, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 130, lockedQuantity: 130, lockedMingAiJunQiao: 104, lockedBoLeLongMi: 104, lockedLaos: 88, lockedBeiLang: 88, lockedMalaysia: 104, inTransitQuantity: 130, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
+  const widths: Record<string, number> = { skuCode: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 160, purchaseNo: 160, businessNo: 160, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 130, lockedQuantity: 130, lockedMingAiJunQiao: 104, lockedBoLeLongMi: 104, lockedLaos: 88, lockedBeiLang: 88, lockedMalaysia: 104, inTransitQuantity: 130, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
   return widths[field] ?? 150
 }
 const actionColumnWidth = computed(() => {
@@ -61,7 +61,7 @@ defineExpose({ reload: () => load(data.value.page) })
                 <button v-if="module.key === 'inventory'" data-test="inventory-details" @click="emit('details', row)">查看明细</button>
                 <button v-if="['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')" data-test="view-details" @click="emit('details', row)">查看</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('receipt', row)">登记收款</button>
-                <button v-if="['customer', 'user', 'product', 'inventory'].includes(module.key) || (module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT'].includes(String(row.status)))" @click="emit('edit', row)">修改</button>
+                <button v-if="['customer', 'user', 'product', 'supplier', 'inventory'].includes(module.key) || (module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT'].includes(String(row.status)))" @click="emit('edit', row)">修改</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('shipment', row)">发货</button>
                 <button v-if="module.key === 'finance' && isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-receipt" @click="emit('receipt', row)">登记收款</button>
                 <button v-if="module.key === 'finance' && !isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-payment" @click="emit('payment', row)">登记付款</button>

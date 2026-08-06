@@ -20,6 +20,8 @@ public class WorkbenchQueryService {
             Map.entry("productversion", "productVersion"), Map.entry("currentcost", "currentCost"),
             Map.entry("factoryprice", "factoryPrice"), Map.entry("pricedifference", "priceDifference"), Map.entry("remark", "remark"),
             Map.entry("supplierid", "supplierId"), Map.entry("suppliername", "supplierName"),
+            Map.entry("suppliercode", "supplierCode"), Map.entry("bankaccount", "bankAccount"),
+            Map.entry("productcount", "productCount"),
             Map.entry("purchaseprice", "purchasePrice"), Map.entry("leadtimedays", "leadTimeDays"),
             Map.entry("orderno", "orderNo"), Map.entry("externalorderno", "externalOrderNo"),
             Map.entry("totalamount", "totalAmount"), Map.entry("receiptconfirmedat", "receiptConfirmedAt"),
@@ -119,6 +121,61 @@ public class WorkbenchQueryService {
         }).toList();
     }
 
+    public List<Map<String, Object>> supplierOptions(String keyword) {
+        String search = keyword == null ? "" : keyword.trim();
+        return jdbc.queryForList("""
+                        SELECT id,supplier_code AS `supplierCode`,supplier_name AS `supplierName`,
+                               contact_name AS `contactName`,phone
+                        FROM supplier
+                        WHERE enabled=TRUE
+                          AND (LOCATE(?,COALESCE(supplier_name,''))>0
+                               OR LOCATE(?,COALESCE(supplier_code,''))>0
+                               OR LOCATE(?,COALESCE(contact_name,''))>0)
+                        ORDER BY supplier_name,id
+                        LIMIT 30
+                        """, search, search, search).stream().map(this::normalizeKeys).toList();
+    }
+
+    public List<Map<String, Object>> supplierProducts(long supplierId, String keyword) {
+        String search = keyword == null ? "" : keyword.trim();
+        return jdbc.queryForList("""
+                        SELECT s.id,s.sku_code AS `skuCode`,s.product_name AS `productName`,s.model,
+                               s.configuration,s.unit,ssc.purchase_price AS `purchasePrice`,
+                               ssc.moq,ssc.lead_time_days AS `leadTimeDays`
+                        FROM sku_supplier_config ssc
+                        JOIN sku s ON s.id=ssc.sku_id
+                        WHERE ssc.supplier_id=? AND ssc.enabled=TRUE AND s.enabled=TRUE
+                          AND (LOCATE(?,COALESCE(s.sku_code,''))>0
+                               OR LOCATE(?,COALESCE(s.product_name,''))>0
+                               OR LOCATE(?,COALESCE(s.model,''))>0)
+                        ORDER BY s.sku_code,s.id
+                        LIMIT 50
+                        """, supplierId, search, search, search).stream().map(this::normalizeKeys).toList();
+    }
+
+    public Map<String, Object> supplierDetail(long supplierId) {
+        List<Map<String, Object>> suppliers = jdbc.queryForList("""
+                        SELECT id,supplier_code AS `supplierCode`,supplier_name AS `supplierName`,
+                               contact_name AS `contactName`,phone,bank_account AS `bankAccount`,
+                               enabled,version,updated_at AS `updatedAt`
+                        FROM supplier WHERE id=?
+                        """, supplierId).stream().map(this::normalizeKeys).toList();
+        if (suppliers.isEmpty()) {
+            throw new IllegalArgumentException("供应商不存在");
+        }
+        Map<String, Object> supplier = new LinkedHashMap<>(suppliers.get(0));
+        supplier.put("products", jdbc.queryForList("""
+                        SELECT s.id AS `skuId`,s.sku_code AS `skuCode`,s.product_name AS `productName`,
+                               s.model,s.configuration,s.unit,ssc.purchase_price AS `purchasePrice`,
+                               ssc.moq,ssc.lead_time_days AS `leadTimeDays`
+                        FROM sku_supplier_config ssc
+                        JOIN sku s ON s.id=ssc.sku_id
+                        WHERE ssc.supplier_id=? AND ssc.enabled=TRUE
+                        ORDER BY s.sku_code,s.id
+                        """, supplierId).stream().map(this::normalizeKeys).toList());
+        return supplier;
+    }
+
     private String inventoryMovementSummary(long inventoryId) {
         List<Map<String, Object>> movements = inventoryMovements(inventoryId);
         if (movements.isEmpty()) return "—";
@@ -159,6 +216,15 @@ public class WorkbenchQueryService {
                 "LOCATE(?, COALESCE(s.sku_code,''))>0 OR LOCATE(?, COALESCE(s.model,''))>0 OR LOCATE(?, COALESCE(s.product_name,''))>0 OR LOCATE(?, COALESCE(s.configuration,''))>0", 4,
                 sorts("id", "s.id", "skuCode", "s.sku_code", "model", "s.model", "productName", "s.product_name", "currentCost", "s.current_cost", "factoryPrice", "s.factory_price", "priceDifference", "(s.factory_price-s.current_cost)", "updatedAt", "s.updated_at"),
                 "s.updated_at", "s.id DESC"));
+        modules.put("supplier", new ModuleSpec(
+                "SELECT sp.id,sp.supplier_name AS `supplierName`,sp.contact_name AS `contactName`,sp.phone,"
+                        + "sp.bank_account AS `bankAccount`,"
+                        + "(SELECT COUNT(*) FROM sku_supplier_config cfg WHERE cfg.supplier_id=sp.id AND cfg.enabled=TRUE) AS `productCount`,"
+                        + "sp.updated_at AS `updatedAt`,sp.version",
+                "FROM supplier sp",
+                "LOCATE(?,COALESCE(sp.supplier_code,''))>0 OR LOCATE(?,COALESCE(sp.supplier_name,''))>0 OR LOCATE(?,COALESCE(sp.contact_name,''))>0 OR LOCATE(?,COALESCE(sp.phone,''))>0", 4,
+                sorts("id", "sp.id", "supplierName", "sp.supplier_name", "contactName", "sp.contact_name", "phone", "sp.phone", "updatedAt", "sp.updated_at"),
+                "sp.updated_at", "sp.id DESC"));
         modules.put("order", new ModuleSpec(
                 "SELECT o.id, o.order_no AS `orderNo`, o.external_order_no AS `externalOrderNo`, c.customer_name AS `customerName`, "
                         + "o.total_amount AS `totalAmount`, o.order_date AS `orderDate`, o.order_type AS `orderType`, o.salesperson, o.status, o.receipt_confirmed_at AS `receiptConfirmedAt`, "
@@ -201,11 +267,11 @@ public class WorkbenchQueryService {
                 + "GROUP BY ps.id,ps.suggestion_no,psi.supplier_id,sp.supplier_name,ps.status,ps.created_at,ps.updated_at,ps.version) p";
         modules.put("purchase", new ModuleSpec(
                 "SELECT p.id, p.record_type AS `recordType`, p.purchase_no AS `purchaseNo`, "
-                        + "p.supplier_id AS `supplierId`, p.supplier_name AS `supplierName`, p.product_ids AS `productIds`, p.product_summary AS `productSummary`, p.status, p.total_amount AS `totalAmount`, "
+                        + "p.supplier_name AS `supplierName`, p.product_summary AS `productSummary`, p.status, p.total_amount AS `totalAmount`, "
                         + "p.expected_arrival_date AS `expectedArrivalDate`, p.created_at AS `createdAt`, p.updated_at AS `updatedAt`, p.version",
                 purchaseView,
-                "LOCATE(?, COALESCE(p.purchase_no,''))>0 OR LOCATE(?, COALESCE(p.supplier_name,''))>0 OR LOCATE(?, COALESCE(p.product_ids,''))>0 OR LOCATE(?, COALESCE(p.status,''))>0", 4,
-                sorts("id", "p.id", "purchaseNo", "p.purchase_no", "supplierId", "p.supplier_id", "supplierName", "p.supplier_name", "totalAmount", "p.total_amount", "status", "p.status", "createdAt", "p.created_at", "updatedAt", "p.updated_at"),
+                "LOCATE(?, COALESCE(p.purchase_no,''))>0 OR LOCATE(?, COALESCE(p.supplier_name,''))>0 OR LOCATE(?, COALESCE(p.product_summary,''))>0 OR LOCATE(?, COALESCE(p.status,''))>0", 4,
+                sorts("id", "p.id", "purchaseNo", "p.purchase_no", "supplierName", "p.supplier_name", "totalAmount", "p.total_amount", "status", "p.status", "createdAt", "p.created_at", "updatedAt", "p.updated_at"),
                 "p.updated_at", "p.record_type, p.id DESC"));
         String financeView = "FROM ("
                 + "SELECT o.id, 'RECEIVABLE' AS cash_direction, '销售订单' AS business_type, o.order_no AS business_no, c.customer_name AS counterparty, "

@@ -87,6 +87,62 @@ export interface ManualPurchaseData {
   remark?: string
 }
 
+export interface SupplierOption {
+  id: number
+  supplierCode?: string
+  supplierName: string
+  contactName?: string
+  phone?: string
+}
+
+export interface SupplierProductOption {
+  id: number
+  skuCode?: string
+  productName?: string
+  model?: string
+  configuration?: string
+  unit?: string
+  purchasePrice: number
+  moq: number
+  leadTimeDays: number
+}
+
+export interface SupplierProductConfig {
+  skuId: number
+  purchasePrice: number
+  moq: number
+  leadTimeDays: number
+}
+
+export interface SupplierCommand {
+  supplierName: string
+  contactName?: string
+  phone?: string
+  bankAccount?: string
+  products: SupplierProductConfig[]
+  version?: number
+}
+
+export function loadSupplierOptions(keyword = '') {
+  return request<SupplierOption[]>(`/api/suppliers/options?keyword=${encodeURIComponent(keyword)}`)
+}
+
+export function loadSupplierProducts(supplierId: number, keyword = '') {
+  return request<SupplierProductOption[]>(`/api/suppliers/${supplierId}/products?keyword=${encodeURIComponent(keyword)}`)
+}
+
+export function getSupplier(id: number) {
+  return request<Record<string, unknown>>(`/api/suppliers/${id}`)
+}
+
+export function createSupplier(data: SupplierCommand) {
+  return request<Record<string, unknown>>('/api/suppliers', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export function updateSupplier(id: number, data: SupplierCommand) {
+  return request<Record<string, unknown>>(`/api/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
 export interface PurchasePaymentData {
   amount: number
   paymentMethod: string

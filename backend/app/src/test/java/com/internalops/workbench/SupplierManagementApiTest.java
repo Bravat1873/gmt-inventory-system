@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import jakarta.servlet.http.Cookie;
@@ -17,6 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Sql(scripts = {"/auth-schema.sql", "/supplier-management-schema.sql"})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class SupplierManagementApiTest {
     @Autowired MockMvc mvc;
 
@@ -35,6 +37,22 @@ class SupplierManagementApiTest {
                 .andExpect(jsonPath("$.data[0].purchasePrice").value(220))
                 .andExpect(jsonPath("$.data[0].moq").value(5))
                 .andExpect(jsonPath("$.data[0].leadTimeDays").value(7));
+    }
+
+    @Test
+    void createsSupplierAndPersistsTheSuppliedProductConfiguration() throws Exception {
+        Cookie session = login();
+        mvc.perform(post("/api/suppliers").cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"supplierName":"新供应商","contactName":"李四","phone":"13800138001",
+                                 "bankAccount":"6222-202","products":[{"skuId":101,"purchasePrice":230.5000,"moq":8,"leadTimeDays":12}]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplierName").value("新供应商"))
+                .andExpect(jsonPath("$.data.products[0].skuId").value(101))
+                .andExpect(jsonPath("$.data.products[0].purchasePrice").value(230.5))
+                .andExpect(jsonPath("$.data.products[0].moq").value(8));
     }
 
     private Cookie login() throws Exception {

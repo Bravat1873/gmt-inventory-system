@@ -180,6 +180,13 @@ public class ProcurementWorkflowService {
         BigDecimal purchasePrice = manualPurchasePrice(request.purchasePrice());
         requireExists("supplier", request.supplierId(), "供应商不存在");
         requireExists("sku", request.skuId(), "产品不存在");
+        Integer relationCount = jdbc.queryForObject("""
+                        SELECT COUNT(*) FROM sku_supplier_config
+                        WHERE supplier_id=? AND sku_id=? AND enabled=TRUE
+                        """, Integer.class, request.supplierId(), request.skuId());
+        if (relationCount == null || relationCount == 0) {
+            throw new IllegalArgumentException("所选产品未配置给该供应商");
+        }
 
         BigDecimal total = purchasePrice
                 .multiply(BigDecimal.valueOf(request.quantity()))

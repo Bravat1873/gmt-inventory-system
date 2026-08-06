@@ -1,10 +1,78 @@
-import { flushPromises,mount } from '@vue/test-utils';import { beforeEach,describe,expect,it,vi } from 'vitest';import App from './App.vue'
-const {loadModule,postAction,createManualPurchase}=vi.hoisted(()=>({loadModule:vi.fn().mockResolvedValue({items:[],total:0,page:1,pageSize:10,totalPages:0}),postAction:vi.fn(),createManualPurchase:vi.fn()}));vi.mock('./api/workbench',()=>({loadModule,createEntity:vi.fn(),updateEntity:vi.fn(),createOrder:vi.fn(),updateOrder:vi.fn(),getOrder:vi.fn(),postAction,createManualPurchase}))
-const {currentUser,logout}=vi.hoisted(()=>({currentUser:vi.fn().mockResolvedValue({id:1,username:'admin',displayName:'管理员'}),logout:vi.fn()}));vi.mock('./api/auth',()=>({currentUser,logout,login:vi.fn()}))
-describe('连续导航和浏览器地址状态',()=>{beforeEach(()=>{history.replaceState(null,'','/?module=order&page=1');postAction.mockReset()})
- it('七个菜单连续显示且没有常用操作和刷新按钮',async()=>{const w=mount(App);await flushPromises();expect(w.findAll('.nav-list>.nav-item')).toHaveLength(7);expect(w.get('h1').text()).toBe('订单管理');expect(w.text()).not.toContain('常用操作');expect(w.text()).not.toContain('该功能将在下一阶段开放');expect(w.text()).not.toContain('刷新')})
- it('导航写入地址，浏览器刷新后仍在当前模块',async()=>{const w=mount(App);await flushPromises();await w.get('[data-module="inventory"]').trigger('click');await flushPromises();expect(w.get('h1').text()).toBe('库存管理');expect(location.search).toContain('module=inventory');w.unmount();const reopened=mount(App);await flushPromises();expect(reopened.get('h1').text()).toBe('库存管理')})
- it('按钮采用四字名称且资料支持导入与手工新增',async()=>{const w=mount(App);await flushPromises();await w.get('[data-module="product"]').trigger('click');await flushPromises();expect(w.text()).toContain('导入产品');expect(w.text()).toContain('手工新增');await w.get('[data-test="primary-action"]').trigger('click');expect(w.get('[aria-label="Excel 导入面板"]').text()).toContain('导入产品')})
- it('生成采购打开手工采购表单，不再弹出浏览器确认框',async()=>{history.replaceState(null,'','/?module=purchase&page=1');const confirm=vi.spyOn(window,'confirm');const w=mount(App);await flushPromises();await w.get('[data-test="primary-action"]').trigger('click');await flushPromises();expect(w.get('[role="dialog"]').text()).toContain('手工采购');expect(confirm).not.toHaveBeenCalled();expect(postAction).not.toHaveBeenCalled();confirm.mockRestore()})
- it('新增用户打开用户表单，并提供联系电话字段',async()=>{history.replaceState(null,'','/?module=user&page=1');const w=mount(App);await flushPromises();await w.get('[data-test="primary-action"]').trigger('click');await flushPromises();expect(w.get('[role="dialog"]').text()).toContain('新增用户');expect(w.text()).toContain('联系电话')})
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import App from './App.vue'
+
+const api = vi.hoisted(() => ({
+  loadModule: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 }),
+  postAction: vi.fn(),
+  createManualPurchase: vi.fn(),
+  createEntity: vi.fn(), updateEntity: vi.fn(), createOrder: vi.fn(), updateOrder: vi.fn(), getOrder: vi.fn(),
+  loadSupplierOptions: vi.fn().mockResolvedValue([]), loadSupplierProducts: vi.fn().mockResolvedValue([]),
+  loadOrderSkus: vi.fn().mockResolvedValue([]), createSupplier: vi.fn(), updateSupplier: vi.fn(), getSupplier: vi.fn()
+}))
+vi.mock('./api/workbench', () => api)
+
+const auth = vi.hoisted(() => ({ currentUser: vi.fn().mockResolvedValue({ id: 1, username: 'admin', displayName: '管理员' }), logout: vi.fn() }))
+vi.mock('./api/auth', () => ({ ...auth, login: vi.fn() }))
+
+describe('连续导航和浏览器地址状态', () => {
+  beforeEach(() => { history.replaceState(null, '', '/?module=order&page=1'); api.postAction.mockReset() })
+
+  it('八个菜单连续显示且没有常用操作和刷新按钮', async () => {
+    const wrapper = mount(App)
+    await flushPromises()
+    expect(wrapper.findAll('.nav-list>.nav-item')).toHaveLength(8)
+    expect(wrapper.get('h1').text()).toBe('订单管理')
+    expect(wrapper.text()).toContain('供应商管理')
+    expect(wrapper.text()).not.toContain('常用操作')
+    expect(wrapper.text()).not.toContain('该功能将在下一阶段开放')
+    expect(wrapper.text()).not.toContain('刷新')
+  })
+
+  it('导航写入地址，浏览器刷新后仍在当前模块', async () => {
+    const wrapper = mount(App)
+    await flushPromises()
+    await wrapper.get('[data-module="inventory"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('h1').text()).toBe('库存管理')
+    expect(location.search).toContain('module=inventory')
+    wrapper.unmount()
+    const reopened = mount(App)
+    await flushPromises()
+    expect(reopened.get('h1').text()).toBe('库存管理')
+  })
+
+  it('产品资料支持导入与手工新增', async () => {
+    const wrapper = mount(App)
+    await flushPromises()
+    await wrapper.get('[data-module="product"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('导入产品')
+    expect(wrapper.text()).toContain('手工新增')
+    await wrapper.get('[data-test="primary-action"]').trigger('click')
+    expect(wrapper.get('[aria-label="Excel 导入面板"]').text()).toContain('导入产品')
+  })
+
+  it('生成采购打开手工采购表单，不弹出浏览器确认框', async () => {
+    history.replaceState(null, '', '/?module=purchase&page=1')
+    const confirm = vi.spyOn(window, 'confirm')
+    const wrapper = mount(App)
+    await flushPromises()
+    await wrapper.get('[data-test="primary-action"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="dialog"]').text()).toContain('手工采购')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(api.postAction).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('新增用户打开用户表单，并提供联系电话字段', async () => {
+    history.replaceState(null, '', '/?module=user&page=1')
+    const wrapper = mount(App)
+    await flushPromises()
+    await wrapper.get('[data-test="primary-action"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="dialog"]').text()).toContain('新增用户')
+    expect(wrapper.text()).toContain('联系电话')
+  })
 })

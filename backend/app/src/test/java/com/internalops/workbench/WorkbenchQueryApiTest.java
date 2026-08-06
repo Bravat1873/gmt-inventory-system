@@ -13,7 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Sql(scripts = "/workbench-query-schema.sql", config = @SqlConfig(encoding = "UTF-8"))
 class WorkbenchQueryApiTest {
     @Autowired

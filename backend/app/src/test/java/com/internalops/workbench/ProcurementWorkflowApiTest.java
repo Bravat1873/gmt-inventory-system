@@ -8,7 +8,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
+import jakarta.servlet.http.Cookie;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -18,7 +20,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Sql(scripts = "/procurement-workflow-schema.sql")
+@Sql(scripts = {"/auth-schema.sql", "/procurement-workflow-schema.sql"})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class ProcurementWorkflowApiTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
@@ -26,7 +29,8 @@ class ProcurementWorkflowApiTest {
 
     @Test
     void createsDraftSuggestionAndOnlyCreatesMoqPurchaseAfterConfirmation() throws Exception {
-        String generated = mvc.perform(post("/api/procurement/generate").contentType("application/json").content("{}"))
+        Cookie session = login();
+        String generated = mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.count").value(1))
                 .andExpect(jsonPath("$.data.suggestionIds.length()").value(1))
@@ -40,7 +44,7 @@ class ProcurementWorkflowApiTest {
         assertThat(jdbc.queryForObject("SELECT suggested_quantity FROM procurement_suggestion_item WHERE suggestion_id=?", Integer.class, suggestionId))
                 .isEqualTo(10);
 
-        mvc.perform(post("/api/procurement/suggestions/{id}/confirm", suggestionId)
+        mvc.perform(post("/api/procurement/suggestions/{id}/confirm", suggestionId).cookie(session)
                         .contentType("application/json").content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING_SUPPLIER_PAYMENT"))
@@ -55,10 +59,11 @@ class ProcurementWorkflowApiTest {
 
     @Test
     void draftSuggestionRemainsVisibleInPurchaseWorkbenchUntilConfirmed() throws Exception {
-        mvc.perform(post("/api/procurement/generate").contentType("application/json").content("{}"))
+        Cookie session = login();
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
                 .andExpect(status().isOk());
 
-        mvc.perform(get("/api/workbench/purchase")
+        mvc.perform(get("/api/workbench/purchase").cookie(session)
                         .param("page", "1")
                         .param("keyword", "")
                         .param("sort", "")
@@ -68,5 +73,25 @@ class ProcurementWorkflowApiTest {
                 .andExpect(jsonPath("$.data.items[0].recordType").value("SUGGESTION"))
                 .andExpect(jsonPath("$.data.items[0].status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.items[0].totalAmount").value(100.0));
+    }
+
+    @Test
+    void manualPurchaseRejectsAProductThatIsNotConfiguredForTheSelectedSupplier() throws Exception {
+        mvc.perform(post("/api/procurement/manual").cookie(login())
+                        .contentType("application/json")
+                        .content("""
+                                {"supplierId":201,"skuId":102,"quantity":1,"purchasePrice":10.00,
+                                 "expectedArrivalDate":"2026-08-20","remark":"关系校验"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("所选产品未配置给该供应商"));
+    }
+
+    private Cookie login() throws Exception {
+        return mvc.perform(post("/api/auth/login")
+                        .contentType("application/json")
+                        .content("{\"username\":\"admin\",\"password\":\"123\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getCookie("OPS_SESSION");
     }
 }
