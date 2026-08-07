@@ -3,6 +3,7 @@ package com.internalops.importing;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,5 +37,43 @@ class ImportValidationServiceTest {
 
         assertEquals(ImportRowStatus.VALID, row.status());
         assertTrue(Boolean.TRUE.equals(row.data().get("_autoSku")));
+    }
+
+    @Test
+    void keepsFirstInventoryRowAndIgnoresLaterDuplicateSku() {
+        List<ParsedImportRow> rows = service.validateAll(ImportType.INVENTORY, List.of(
+                inventoryRow(19, " SXSEL_P90YZH70WPSE-A ", "P90", 120, 0, 120),
+                inventoryRow(21, "sxsel_p90yzh70wpse-a", "P90装饰锁", 10, 0, 10)
+        ));
+
+        assertEquals(ImportRowStatus.VALID, rows.get(0).status());
+        assertEquals("SXSEL_P90YZH70WPSE-A", rows.get(0).data().get("skuCode"));
+        assertEquals("P90", rows.get(0).data().get("model"));
+        assertEquals(120, rows.get(0).data().get("inTransitQuantity"));
+        assertEquals(ImportRowStatus.IGNORED, rows.get(1).status());
+        assertTrue(rows.get(1).errorMessage().contains("19"));
+    }
+
+    @Test
+    void doesNotReplaceInvalidFirstInventoryRowWithLaterDuplicate() {
+        List<ParsedImportRow> rows = service.validateAll(ImportType.INVENTORY, List.of(
+                inventoryRow(19, "SKU-DUP", "first", -1, 0, 0),
+                inventoryRow(21, "sku-dup", "second", 10, 0, 0)
+        ));
+
+        assertEquals(ImportRowStatus.ERROR, rows.get(0).status());
+        assertEquals(ImportRowStatus.IGNORED, rows.get(1).status());
+        assertTrue(rows.get(1).errorMessage().contains("19"));
+    }
+
+    private ParsedImportRow inventoryRow(int rowNumber, String skuCode, String model,
+                                         int actual, int locked, int transit) {
+        return new ParsedImportRow("爱迪生", rowNumber, ImportRowStatus.VALID, Map.of(
+                "skuCode", skuCode,
+                "model", model,
+                "actualQuantity", actual,
+                "lockedQuantity", locked,
+                "inTransitQuantity", transit
+        ), null);
     }
 }

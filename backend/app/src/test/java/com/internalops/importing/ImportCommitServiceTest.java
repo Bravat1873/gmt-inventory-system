@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ImportCommitServiceTest {
     @Autowired ImportBatchRepository repository;
     @Autowired ImportCommitService commitService;
+    @Autowired ImportValidationService validationService;
     @Autowired ImportErrorWorkbookService errorWorkbookService;
     @Autowired JdbcTemplate jdbc;
 
@@ -123,6 +124,37 @@ class ImportCommitServiceTest {
 
         commitService.commit(batch, ImportConflictPolicy.UPSERT_KEEP_EXISTING_ON_BLANK);
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE sku_code IS NULL", Integer.class));
+    }
+
+    @Test
+    void duplicateInventorySkuCreatesOneProductWithFirstRowInventory() {
+        List<ParsedImportRow> rows = validationService.validateAll(ImportType.INVENTORY, List.of(
+                new ParsedImportRow("爱迪生", 19, ImportRowStatus.VALID, Map.ofEntries(
+                        Map.entry("skuCode", "SXSEL_P90YZH70WPSE-A"),
+                        Map.entry("model", "P90"),
+                        Map.entry("actualQuantity", 0),
+                        Map.entry("lockedQuantity", 0),
+                        Map.entry("inTransitQuantity", 120)
+                ), null),
+                new ParsedImportRow("爱迪生", 21, ImportRowStatus.VALID, Map.ofEntries(
+                        Map.entry("skuCode", "sxsel_p90yzh70wpse-a"),
+                        Map.entry("model", "P90装饰锁"),
+                        Map.entry("actualQuantity", 10),
+                        Map.entry("lockedQuantity", 0),
+                        Map.entry("inTransitQuantity", 10)
+                ), null)
+        ));
+        long batch = repository.create(ImportType.INVENTORY, "inventory.xlsx", "hash-duplicate-sku", rows);
+
+        var committed = commitService.commit(batch, ImportConflictPolicy.UPSERT_KEEP_EXISTING_ON_BLANK);
+
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class));
+        assertEquals("P90", jdbc.queryForObject(
+                "SELECT model FROM sku WHERE sku_code='SXSEL_P90YZH70WPSE-A'", String.class));
+        assertEquals(0, jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance", Integer.class));
+        assertEquals(120, jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance", Integer.class));
+        assertEquals(1, committed.committedRows());
+        assertEquals(1, committed.ignoredRows());
     }
 
     private ParsedImportRow row(ImportRowStatus status, Map<String, Object> data, String error) {

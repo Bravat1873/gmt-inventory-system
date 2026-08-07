@@ -5,7 +5,6 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -20,27 +19,28 @@ public class ImportValidationService {
     }
 
     public List<ParsedImportRow> validateAll(ImportType type, List<ParsedImportRow> rows) {
-        Map<String, Integer> skuCounts = new HashMap<>();
-        if (type == ImportType.INVENTORY) {
-            for (ParsedImportRow row : rows) {
-                String sku = text(row.data(), "skuCode");
-                if (!sku.isBlank()) skuCounts.merge(sku.toUpperCase(Locale.ROOT), 1, Integer::sum);
-            }
-        }
+        Map<String, Integer> firstInventoryRows = new LinkedHashMap<>();
         List<ParsedImportRow> result = new ArrayList<>();
         for (ParsedImportRow row : rows) {
             if (row.status() == ImportRowStatus.IGNORED || row.status() == ImportRowStatus.ERROR) {
                 result.add(row);
                 continue;
             }
-            ParsedImportRow validated = validate(type, row.sheetName(), row.rowNumber(), row.data());
             if (type == ImportType.INVENTORY) {
-                String sku = text(validated.data(), "skuCode");
-                if (!sku.isBlank() && skuCounts.getOrDefault(sku.toUpperCase(Locale.ROOT), 0) > 1) {
-                    validated = new ParsedImportRow(validated.sheetName(), validated.rowNumber(),
-                            ImportRowStatus.ERROR, validated.data(), "同一文件内物料编号 SKU 重复");
+                String sku = text(row.data(), "skuCode");
+                if (!sku.isBlank()) {
+                    Integer firstRow = firstInventoryRows.putIfAbsent(sku.toUpperCase(Locale.ROOT), row.rowNumber());
+                    if (firstRow != null) {
+                        Map<String, Object> data = new LinkedHashMap<>(row.data());
+                        data.put("skuCode", sku);
+                        result.add(new ParsedImportRow(row.sheetName(), row.rowNumber(),
+                                ImportRowStatus.IGNORED, data,
+                                "重复 SKU，已采用第 " + firstRow + " 行数据"));
+                        continue;
+                    }
                 }
             }
+            ParsedImportRow validated = validate(type, row.sheetName(), row.rowNumber(), row.data());
             result.add(validated);
         }
         return result.stream().map(row -> withConflict(type, row)).toList();
