@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
+import ModuleListPage from './components/ModuleListPage.vue'
 
 const api = vi.hoisted(() => ({
   loadModule: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 }),
@@ -12,11 +13,15 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('./api/workbench', () => api)
 
-const auth = vi.hoisted(() => ({ currentUser: vi.fn().mockResolvedValue({ id: 1, username: 'admin', displayName: '管理员' }), logout: vi.fn() }))
+const auth = vi.hoisted(() => ({ currentUser: vi.fn().mockResolvedValue({ id: 1, username: 'admin', displayName: '管理员', role: 'ADMIN' }), logout: vi.fn() }))
 vi.mock('./api/auth', () => ({ ...auth, login: vi.fn() }))
 
 describe('连续导航和浏览器地址状态', () => {
-  beforeEach(() => { history.replaceState(null, '', '/?module=order&page=1'); api.postAction.mockReset() })
+  beforeEach(() => {
+    history.replaceState(null, '', '/?module=order&page=1')
+    api.postAction.mockReset()
+    auth.currentUser.mockReset().mockResolvedValue({ id: 1, username: 'admin', displayName: '管理员', role: 'ADMIN' })
+  })
 
   it('八个菜单连续显示且没有常用操作和刷新按钮', async () => {
     const wrapper = mount(App)
@@ -42,7 +47,8 @@ describe('连续导航和浏览器地址状态', () => {
     expect(reopened.get('h1').text()).toBe('库存管理')
   })
 
-  it('产品资料支持导入与手工新增', async () => {
+  it.each(['ADMIN', 'FINANCE'] as const)('%s 用户的产品资料支持导入与手工新增', async role => {
+    auth.currentUser.mockResolvedValue({ id: 1, username: role.toLowerCase(), displayName: role, role })
     const wrapper = mount(App)
     await flushPromises()
     await wrapper.get('[data-module="product"]').trigger('click')
@@ -51,6 +57,27 @@ describe('连续导航和浏览器地址状态', () => {
     expect(wrapper.text()).toContain('手工新增')
     await wrapper.get('[data-test="primary-action"]').trigger('click')
     expect(wrapper.get('[aria-label="Excel 导入面板"]').text()).toContain('导入产品')
+  })
+
+  it('普通用户看不到产品导入主操作', async () => {
+    history.replaceState(null, '', '/?module=product&page=1')
+    auth.currentUser.mockResolvedValue({ id: 3, username: 'regular-user', displayName: '普通用户', role: 'USER' })
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="primary-action"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('手工新增')
+  })
+
+  it('App guard rejects a programmatic COST import action from a regular user', async () => {
+    history.replaceState(null, '', '/?module=product&page=1')
+    auth.currentUser.mockResolvedValue({ id: 3, username: 'regular-user', displayName: '普通用户', role: 'USER' })
+    const wrapper = mount(App)
+    await flushPromises()
+
+    wrapper.getComponent(ModuleListPage).vm.$emit('action')
+    await flushPromises()
+    expect(wrapper.find('[aria-label="Excel 导入面板"]').exists()).toBe(false)
   })
 
   it('生成采购打开手工采购表单，不弹出浏览器确认框', async () => {

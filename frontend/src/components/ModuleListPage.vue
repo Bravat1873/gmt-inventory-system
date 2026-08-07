@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import type { UserRole } from '../api/auth'
 import { loadModule, type PageResult } from '../api/workbench'
 import type { ModuleDefinition } from '../modules/module-config'
 
-const props = defineProps<{ module: ModuleDefinition }>()
+const props = defineProps<{ module: ModuleDefinition; currentUserRole?: UserRole }>()
 const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
 const keyword = ref('')
 const loading = ref(false)
@@ -31,6 +32,9 @@ function shipmentCompleted(row: Record<string, unknown>) {
 function isReceivable(row: Record<string, unknown>) { return String(row.cashDirection) === 'RECEIVABLE' }
 function hasOutstandingAmount(row: Record<string, unknown>) { return Number(row.outstandingAmount ?? 0) > 0 }
 const canManual = computed(() => ['customer', 'user', 'product', 'inventory'].includes(props.module.key))
+const canUsePrimary = computed(() => Boolean(props.module.actionLabel)
+  && (props.module.importType !== 'COST' || ['ADMIN', 'FINANCE'].includes(props.currentUserRole ?? 'USER')))
+function primary() { if (canUsePrimary.value) emit('action') }
 function columnWidth(field: string) {
   const widths: Record<string, number> = { skuCode: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 160, purchaseNo: 160, businessNo: 160, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 130, lockedQuantity: 130, lockedMingAiJunQiao: 104, lockedBoLeLongMi: 104, lockedLaos: 88, lockedBeiLang: 88, lockedMalaysia: 104, inTransitQuantity: 130, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
   return widths[field] ?? 150
@@ -50,7 +54,7 @@ defineExpose({ reload: () => load(data.value.page) })
 
 <template>
   <section class="module-page">
-    <header class="module-heading"><h1>{{ module.label }}</h1><div class="heading-actions"><button v-if="canManual && module.importType" class="secondary-action" @click="emit('manual')">手工新增</button><button v-if="module.actionLabel" data-test="primary-action" class="primary-action" @click="emit('action')">{{ module.actionLabel }}</button></div></header>
+    <header class="module-heading"><h1>{{ module.label }}</h1><div class="heading-actions"><button v-if="canManual && module.importType" class="secondary-action" @click="emit('manual')">手工新增</button><button v-if="canUsePrimary" data-test="primary-action" class="primary-action" @click="primary">{{ module.actionLabel }}</button></div></header>
     <div class="list-panel">
       <div class="list-toolbar"><input v-model="keyword" type="search" :placeholder="`搜索${module.label}`" @keyup.enter="search"><button class="secondary-action" @click="search">查询数据</button></div>
       <div class="table-wrap">

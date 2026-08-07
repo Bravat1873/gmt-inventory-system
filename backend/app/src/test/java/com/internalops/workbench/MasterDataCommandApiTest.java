@@ -143,6 +143,46 @@ class MasterDataCommandApiTest {
     }
 
     @Test
+    void regularUserPricePermissionPrecedesProductNameValidation() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(post("/api/workbench/product").cookie(userSession).contentType("application/json")
+                        .content("{\"currentCost\":-1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
+    }
+
+    @Test
+    void regularUserPricePermissionPrecedesNegativePriceValidation() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(post("/api/workbench/product").cookie(userSession).contentType("application/json")
+                        .content("{\"productName\":\"越权产品\",\"factoryPrice\":-1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
+    }
+
+    @Test
+    void regularUserPricePermissionPrecedesPriceDeserialization() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(put("/api/workbench/product/1").cookie(userSession).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"currentCost\":\"not-a-number\",\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
+    }
+
+    @Test
+    void regularUserPricePermissionPrecedesMissingVersionValidation() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(put("/api/workbench/product/1").cookie(userSession).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"factoryPrice\":23.45}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
+    }
+
+    @Test
     void regularUserCanUpdateProductModelWithoutClearingPrices() throws Exception {
         Cookie userSession = loginAs("regular-user");
 

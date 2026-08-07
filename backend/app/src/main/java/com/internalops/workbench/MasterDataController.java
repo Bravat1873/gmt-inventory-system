@@ -3,6 +3,7 @@ package com.internalops.workbench;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.internalops.api.ApiResponse;
+import com.internalops.auth.CurrentUser;
 import org.springframework.http.ResponseEntity;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -22,11 +23,20 @@ public class MasterDataController {
 
     @PostMapping("/{module}")
     public ApiResponse<Map<String,Object>> create(@PathVariable String module, @RequestBody JsonNode body) {
+        requireProductPricePermission(module, body);
         return ApiResponse.ok(service.create(module, request(body), EntityCommandFields.from(body)));
     }
     @PutMapping("/{module}/{id}")
     public ApiResponse<Map<String,Object>> update(@PathVariable String module, @PathVariable long id, @RequestBody JsonNode body) {
+        requireProductPricePermission(module, body);
         return ApiResponse.ok(service.update(module, id, request(body), EntityCommandFields.from(body)));
+    }
+    private void requireProductPricePermission(String module, JsonNode body) {
+        if ("product".equals(module) && body != null
+                && (body.has("currentCost") || body.has("factoryPrice"))
+                && !CurrentUser.required().role().canEditProductPrice()) {
+            throw new IllegalArgumentException("仅财务或管理员可修改产品价格");
+        }
     }
     private EntityCommandRequest request(JsonNode body) { return objectMapper.convertValue(body, EntityCommandRequest.class); }
     @ExceptionHandler(IllegalArgumentException.class)

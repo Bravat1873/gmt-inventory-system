@@ -8,6 +8,30 @@ import { moduleDefinitions } from '../modules/module-config'
 const { loadModule } = vi.hoisted(() => ({ loadModule: vi.fn() }))
 vi.mock('../api/workbench', () => ({ loadModule }))
 
+it.each(['ADMIN', 'FINANCE'] as const)('shows the COST import action to %s users', async role => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')!, currentUserRole: role } })
+  await flushPromises()
+
+  expect(wrapper.get('[data-test="primary-action"]').text()).toBe('导入产品')
+})
+
+it('hides the COST import action from regular users', async () => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')!, currentUserRole: 'USER' } })
+  await flushPromises()
+
+  expect(wrapper.find('[data-test="primary-action"]').exists()).toBe(false)
+})
+
+it('keeps non-COST import actions available to regular users', async () => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'inventory')!, currentUserRole: 'USER' } })
+  await flushPromises()
+
+  expect(wrapper.get('[data-test="primary-action"]').text()).toBe('导入库存')
+})
+
 it('renders finance direction dots at the same size and with the same soft outer ring as order status', () => {
   const styles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8')
 

@@ -1,5 +1,6 @@
 package com.internalops.workbench;
 
+import com.internalops.auth.CurrentUser;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -266,6 +267,7 @@ public class ProcurementWorkflowService {
         Map<Long, Map<String, Object>> linesById = new LinkedHashMap<>();
         for (var line : lines) linesById.put(num(line, "id"), line);
         Map<Long, Integer> quantities = new LinkedHashMap<>();
+        boolean canEditProductPrice = CurrentUser.required().role().canEditProductPrice();
         boolean hasPositive = false;
         for (PurchaseReceiptRequest.Item item : request.items()) {
             if (!linesById.containsKey(item.purchaseOrderItemId())) throw new IllegalArgumentException("采购明细不存在或不属于当前采购单");
@@ -301,14 +303,16 @@ public class ProcurementWorkflowService {
                             VALUES(?,?,?,0)
                             """,
                     receipt, num(line, "id"), quantity);
-            BigDecimal oldCost = jdbc.queryForObject("SELECT current_cost FROM sku WHERE id=?", BigDecimal.class, skuId);
-            jdbc.update("UPDATE sku SET current_cost=?,version=version+1 WHERE id=?", price, skuId);
-            jdbc.update("""
-                            INSERT INTO sku_cost_history(
-                                sku_id,old_cost,new_cost,source_type,source_no,effective_at,operated_by)
-                            VALUES(?,?,?,'PURCHASE_RECEIPT',?,?,1)
-                            """,
-                    skuId, oldCost, price, purchaseNo, LocalDateTime.now());
+            if (canEditProductPrice) {
+                BigDecimal oldCost = jdbc.queryForObject("SELECT current_cost FROM sku WHERE id=?", BigDecimal.class, skuId);
+                jdbc.update("UPDATE sku SET current_cost=?,version=version+1 WHERE id=?", price, skuId);
+                jdbc.update("""
+                                INSERT INTO sku_cost_history(
+                                    sku_id,old_cost,new_cost,source_type,source_no,effective_at,operated_by)
+                                VALUES(?,?,?,'PURCHASE_RECEIPT',?,?,1)
+                                """,
+                        skuId, oldCost, price, purchaseNo, LocalDateTime.now());
+            }
         }
         updatePurchaseProgressStatus(id);
         allocation.reallocateWaiting();

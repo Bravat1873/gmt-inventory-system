@@ -47,6 +47,8 @@ const authReady = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
 
 const currentModule = computed(() => moduleDefinitions.find(item => item.key === activeModule.value) ?? moduleDefinitions[0])
+const canUseCurrentModulePrimary = computed(() => currentModule.value.importType !== 'COST'
+  || user.value?.role === 'ADMIN' || user.value?.role === 'FINANCE')
 
 onMounted(async () => {
   try { user.value = await currentUser() } catch {} finally { authReady.value = true }
@@ -82,6 +84,7 @@ function showMessage(text: string, kind: 'success' | 'error' = 'success') {
 }
 
 function primary() {
+  if (!canUseCurrentModulePrimary.value) return
   if (currentModule.value.importType) { importOpen.value = true; return }
   if (activeModule.value === 'user') { editRow.value = undefined; entityOpen.value = true; return }
   if (activeModule.value === 'supplier') { editRow.value = undefined; supplierOpen.value = true; return }
@@ -197,8 +200,8 @@ async function saved() {
     <aside class="sidebar" aria-label="主导航"><nav class="nav-list"><button v-for="item in moduleDefinitions" :key="item.key" class="nav-item" :class="{ active: activeModule === item.key }" :data-module="item.key" @click="selectModule(item.key)">{{ item.label }}</button></nav></aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><ModuleListPage ref="list" :module="currentModule" @action="primary" @manual="manual" @edit="edit" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @shipment="shipment" @workflow="workflow" @message="showMessage" /></div></main>
-    <div v-if="importOpen && currentModule.importType" class="dialog-mask import-dialog-mask" @click.self="importOpen=false"><ImportPanel :type="currentModule.importType" :title="currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
+    <main><div class="content"><ModuleListPage ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @shipment="shipment" @workflow="workflow" @message="showMessage" /></div></main>
+    <div v-if="importOpen && currentModule.importType && canUseCurrentModulePrimary" class="dialog-mask import-dialog-mask" @click.self="importOpen=false"><ImportPanel :type="currentModule.importType" :title="currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <EntityDialog v-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <SupplierDialog v-if="supplierOpen" :row="editRow" @close="supplierOpen=false" @saved="saved" @message="showMessage" />
     <OrderDialog v-if="orderOpen" :row="editRow" :default-salesperson="user?.displayName" @close="orderOpen=false" @saved="saved" @message="showMessage" />

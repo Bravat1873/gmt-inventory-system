@@ -3,6 +3,8 @@ package com.internalops.workbench;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -151,6 +153,47 @@ class ProcurementWorkflowApiTest {
     }
 
     @Test
+    void regularUserReceivesStockWithoutChangingTheProductCost() throws Exception {
+        Cookie session = loginAsRole("USER");
+        jdbc.update("UPDATE sku SET current_cost=7.0000 WHERE id=101");
+        long purchaseId = createManualPurchase(session, 10);
+        long itemId = jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?", Long.class, purchaseId);
+
+        mvc.perform(post("/api/procurement/purchases/{id}/receive", purchaseId).cookie(session)
+                        .contentType("application/json")
+                        .content("{\"items\":[{\"purchaseOrderItemId\":" + itemId + ",\"receivedQuantity\":4}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.receivedQuantity").value(4))
+                .andExpect(jsonPath("$.data.remainingQuantity").value(6));
+
+        assertThat(jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance WHERE sku_id=101", Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT current_cost FROM sku WHERE id=101", java.math.BigDecimal.class)).isEqualByComparingTo("7.0000");
+        assertThat(jdbc.queryForObject("SELECT version FROM sku WHERE id=101", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku_cost_history WHERE sku_id=101", Integer.class)).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ADMIN", "FINANCE"})
+    void financeAndAdminReceiptsUpdateTheProductCost(String role) throws Exception {
+        Cookie session = loginAsRole(role);
+        jdbc.update("UPDATE sku SET current_cost=7.0000 WHERE id=101");
+        long purchaseId = createManualPurchase(session, 10);
+        long itemId = jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?", Long.class, purchaseId);
+
+        mvc.perform(post("/api/procurement/purchases/{id}/receive", purchaseId).cookie(session)
+                        .contentType("application/json")
+                        .content("{\"items\":[{\"purchaseOrderItemId\":" + itemId + ",\"receivedQuantity\":4}]}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("SELECT current_cost FROM sku WHERE id=101", java.math.BigDecimal.class)).isEqualByComparingTo("10.0000");
+        assertThat(jdbc.queryForObject("SELECT version FROM sku WHERE id=101", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForMap("SELECT old_cost,new_cost,source_type FROM sku_cost_history WHERE sku_id=101"))
+                .containsEntry("old_cost", new java.math.BigDecimal("7.0000"))
+                .containsEntry("new_cost", new java.math.BigDecimal("10.0000"))
+                .containsEntry("source_type", "PURCHASE_RECEIPT");
+    }
+
+    @Test
     void rejectsZeroAndExcessReceiptWithoutChangingInventory() throws Exception {
         Cookie session = login();
         long purchaseId = createManualPurchase(session, 10);
@@ -218,5 +261,10 @@ class ProcurementWorkflowApiTest {
                         .content("{\"username\":\"admin\",\"password\":\"123\"}"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getCookie("OPS_SESSION");
+    }
+
+    private Cookie loginAsRole(String role) throws Exception {
+        jdbc.update("UPDATE sys_user SET role=? WHERE username='admin'", role);
+        return login();
     }
 }
