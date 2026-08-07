@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { createEntity, updateEntity } from '../api/workbench'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { createEntity, loadOrderSkus, type OrderSku, updateEntity } from '../api/workbench'
 import ChineseDatePicker from './ChineseDatePicker.vue'
+import FuzzyPicker, { type FuzzyPickerOption } from './FuzzyPicker.vue'
 import type { ModuleKey } from '../modules/module-config'
 
 const props = defineProps<{ module: ModuleKey; row?: Record<string, unknown> }>()
@@ -39,15 +40,15 @@ const definitions: Record<string, Field[]> = {
   ],
   inventory: [
     { key: 'skuCode', label: '物料编号 SKU', required: true },
-    { key: 'model', label: '型号', readOnly: true },
-    { key: 'configuration', label: '产品配置', multiline: true, readOnly: true },
-    { key: 'productVersion', label: '版本', readOnly: true },
-    { key: 'color', label: '颜色', readOnly: true },
-    { key: 'lockBody', label: '锁体', readOnly: true },
-    { key: 'unit', label: '单位', readOnly: true },
+    { key: 'model', label: '型号' },
+    { key: 'configuration', label: '产品配置', multiline: true },
+    { key: 'productVersion', label: '版本' },
+    { key: 'color', label: '颜色' },
+    { key: 'lockBody', label: '锁体' },
+    { key: 'unit', label: '单位' },
     { key: 'actualQuantity', label: '实际库存数量', type: 'number', required: true },
-    { key: 'availableQuantity', label: '可用库存数量', type: 'number', readOnly: true },
-    { key: 'lockedQuantity', label: '已锁定数量', type: 'number', readOnly: true },
+    { key: 'availableQuantity', label: '可用库存数量', type: 'number' },
+    { key: 'lockedQuantity', label: '已锁定数量', type: 'number' },
     { key: 'lockedMingAiJunQiao', label: '铭爱钧乔', type: 'number' },
     { key: 'lockedBoLeLongMi', label: '博乐龙米', type: 'number' },
     { key: 'lockedLaos', label: '老挝', type: 'number' },
@@ -69,6 +70,8 @@ const initialForm = Object.fromEntries(
 if (props.module === 'inventory' && !props.row?.id) {
   Object.assign(initialForm, {
     actualQuantity: 0,
+    availableQuantity: 0,
+    lockedQuantity: 0,
     inTransitQuantity: 0,
     lockedMingAiJunQiao: 0,
     lockedBoLeLongMi: 0,
@@ -78,9 +81,28 @@ if (props.module === 'inventory' && !props.row?.id) {
   })
 }
 const form = reactive(initialForm)
+const initialInventorySkuValues = Object.fromEntries(
+  ['model', 'configuration', 'productVersion', 'color', 'lockBody', 'unit'].map(key => [key, form[key] ?? null])
+)
 const saving = ref(false)
 type InventoryMovement = { date: string; direction: 'INBOUND' | 'OUTBOUND'; quantity: number | null }
 const inventoryMovements = ref<InventoryMovement[]>([])
+const inventorySkus = ref<OrderSku[]>([])
+
+const inventorySkuOptions = computed<FuzzyPickerOption[]>(() => inventorySkus.value.map(sku => ({
+  id: sku.id,
+  label: sku.productName?.trim() || sku.model?.trim() || '未命名产品',
+  searchText: [sku.skuCode, sku.productName, sku.model, sku.configuration, sku.productVersion, sku.color, sku.lockBody, sku.unit]
+    .filter(Boolean).join(' ')
+})))
+
+const inventorySkuId = computed<number | null>({
+  get: () => {
+    const value = Number(form.skuId)
+    return Number.isInteger(value) && value > 0 ? value : null
+  },
+  set: value => selectInventorySku(value)
+})
 
 const priceDifference = computed(() => {
   const currentCost = Number(form.currentCost)
@@ -104,6 +126,64 @@ const availableQuantity = computed(() => {
   }, 0)
   return actual + movementDelta + transit - lockedQuantity.value
 })
+
+function inventoryNumber(key: string) {
+  const value = Number(form[key])
+  return Number.isFinite(value) ? Math.max(0, value) : 0
+}
+
+function refreshAvailableQuantity() {
+  form.availableQuantity = Math.max(0, inventoryNumber('actualQuantity') + inventoryNumber('inTransitQuantity') - inventoryNumber('lockedQuantity'))
+}
+
+function refreshActualQuantity() {
+  form.actualQuantity = Math.max(0, inventoryNumber('availableQuantity') + inventoryNumber('lockedQuantity') - inventoryNumber('inTransitQuantity'))
+}
+
+function syncLockedAllocations(total: number) {
+  form.lockedMingAiJunQiao = total
+  form.lockedBoLeLongMi = 0
+  form.lockedLaos = 0
+  form.lockedBeiLang = 0
+  form.lockedMalaysia = 0
+}
+
+function onInventoryMetricChange(metric: 'actual' | 'available' | 'locked' | 'transit') {
+  if (metric === 'available') refreshActualQuantity()
+  else if (metric === 'locked') {
+    const locked = inventoryNumber('lockedQuantity')
+    syncLockedAllocations(locked)
+    refreshActualQuantity()
+  } else refreshAvailableQuantity()
+}
+
+function onInventoryAllocationChange() {
+  form.lockedQuantity = lockedQuantity.value
+  refreshAvailableQuantity()
+}
+
+function selectInventorySku(skuId: number | null) {
+  form.skuId = skuId
+  const sku = inventorySkus.value.find(item => item.id === skuId)
+  if (!sku) return
+  form.skuCode = sku.skuCode ?? ''
+  form.model = sku.model ?? ''
+  form.configuration = sku.configuration ?? ''
+  form.productVersion = sku.productVersion ?? ''
+  form.color = sku.color ?? ''
+  form.lockBody = sku.lockBody ?? ''
+  form.unit = sku.unit ?? ''
+}
+
+function inventoryFieldTestId(key: string) {
+  if (props.module !== 'inventory') return undefined
+  const names: Record<string, string> = {
+    model: 'inventory-model', configuration: 'inventory-configuration', color: 'inventory-color',
+    lockBody: 'inventory-lock-body', unit: 'inventory-unit', actualQuantity: 'inventory-actual-quantity',
+    availableQuantity: 'inventory-available-quantity', lockedQuantity: 'inventory-locked-quantity'
+  }
+  return names[key]
+}
 
 function today() {
   const date = new Date()
@@ -134,16 +214,36 @@ function createPayload() {
     const value = form[field.key]
     body[field.key] = field.type === 'number' && value !== '' && value != null ? Number(value) : value
   }
+  if (props.row?.id && typeof form.version === 'number') {
+    body.version = form.version
+  }
   if (props.module === 'product' && !body.productName) {
     body.productName = body.model || body.configuration || body.skuCode
   }
   if (props.module === 'inventory') {
+    if (inventorySkuId.value != null) body.skuId = inventorySkuId.value
+    if (props.row?.id) {
+      for (const key of Object.keys(initialInventorySkuValues)) {
+        if (String(form[key] ?? '') === String(initialInventorySkuValues[key] ?? '')) delete body[key]
+      }
+    }
     body.inventoryMovements = inventoryMovements.value
       .filter(movement => Number(movement.quantity) > 0)
       .map(movement => ({ ...movement, quantity: Number(movement.quantity) }))
+    if ((body.inventoryMovements as InventoryMovement[]).length) delete body.availableQuantity
   }
   return body
 }
+
+onMounted(async () => {
+  if (props.module !== 'inventory') return
+  try {
+    inventorySkus.value = (await loadOrderSkus()) ?? []
+    if (inventorySkuId.value != null) selectInventorySku(inventorySkuId.value)
+  } catch (error) {
+    emit('message', error instanceof Error ? error.message : '无法加载产品选项', 'error')
+  }
+})
 
 async function save() {
   saving.value = true
@@ -172,9 +272,18 @@ async function save() {
         <div class="form-grid">
           <label v-for="field in fields" :key="field.key">
             <span>{{ field.label }}</span>
+            <FuzzyPicker
+              v-if="module === 'inventory' && field.key === 'skuCode' && !row?.id"
+              v-model="inventorySkuId"
+              data-test="inventory-product-picker"
+              :options="inventorySkuOptions"
+              placeholder="输入物料编号、型号或产品名称搜索"
+              :disabled="saving"
+            />
             <textarea
-              v-if="field.multiline && !field.readOnly"
+              v-else-if="field.multiline && !field.readOnly"
               v-model="form[field.key]"
+              :data-test="inventoryFieldTestId(field.key)"
               :required="field.required"
               :disabled="Boolean(row?.id) && ['customerCode', 'username', 'skuCode', 'skuId'].includes(field.key)"
             />
@@ -194,10 +303,12 @@ async function save() {
             <input
               v-else
               v-model="form[field.key]"
+              :data-test="inventoryFieldTestId(field.key)"
               :type="field.type ?? 'text'"
               :required="field.required"
               :disabled="Boolean(row?.id) && ['customerCode', 'username', 'skuCode', 'skuId'].includes(field.key)"
               step="any"
+              @input="field.key === 'actualQuantity' ? onInventoryMetricChange('actual') : field.key === 'availableQuantity' ? onInventoryMetricChange('available') : field.key === 'lockedQuantity' ? onInventoryMetricChange('locked') : field.key === 'inTransitQuantity' ? onInventoryMetricChange('transit') : ['lockedMingAiJunQiao', 'lockedBoLeLongMi', 'lockedLaos', 'lockedBeiLang', 'lockedMalaysia'].includes(field.key) ? onInventoryAllocationChange() : undefined"
             />
           </label>
         </div>

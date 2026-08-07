@@ -24,6 +24,15 @@ it.each(['order', 'purchase', 'finance'] as const)('provides a 查看 button for
   expect(wrapper.get('[data-test="view-details"]').text()).toBe('查看')
 })
 
+it('uses the exact same red and green shipment status dot for purchase status', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, status: 'RECEIVED', recordType: 'PURCHASE' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
+  await flushPromises()
+
+  const status = wrapper.get('.order-shipment-status')
+  expect(status.get('.shipment-status-dot').classes()).toContain('complete')
+})
+
 it('shows finance direction dot in the business type cell and the matching automatic settlement action', async () => {
   loadModule.mockResolvedValue({ items: [{ id: 1, cashDirection: 'RECEIVABLE', businessType: '销售订单', status: '待收款', businessNo: 'SO001', outstandingAmount: 120 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')! } })
@@ -31,4 +40,22 @@ it('shows finance direction dot in the business type cell and the matching autom
 
   expect(wrapper.get('[data-test="finance-direction"]').attributes('aria-label')).toBe('收款')
   expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(true)
+})
+
+it('shows payment and receipt actions independently for an unfinished purchase', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, recordType: 'PURCHASE', status: 'EXECUTING', outstandingAmount: 75, remainingQuantity: 6 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
+  await flushPromises()
+
+  expect(wrapper.find('[data-test="purchase-payment"]').exists()).toBe(true)
+  expect(wrapper.find('[data-test="purchase-receipt"]').exists()).toBe(true)
+})
+
+it('hides only the completed purchase action', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, recordType: 'PURCHASE', status: 'EXECUTING', outstandingAmount: 0, remainingQuantity: 6 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
+  await flushPromises()
+
+  expect(wrapper.find('[data-test="purchase-payment"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="purchase-receipt"]').exists()).toBe(true)
 })

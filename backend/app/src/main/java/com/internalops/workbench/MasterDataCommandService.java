@@ -114,12 +114,13 @@ public class MasterDataCommandService {
     private Map<String, Object> createInventory(EntityCommandRequest r) {
         long skuId = inventorySkuId(r);
         Long warehouseId = jdbc.queryForObject("SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1", Long.class);
-        int baseActual = quantity(r.actualQuantity());
+        int locked = lockedQuantity(r), transit = quantity(r.inTransitQuantity());
+        int baseActual = requestedActualQuantity(r, locked, transit);
         List<InventoryMovementCommand> movements = inventoryMovements(r);
         int actual = baseActual + movementDelta(movements);
         if (actual < 0) throw new IllegalArgumentException("出库数量不能超过实际库存");
-        int locked = lockedQuantity(r), transit = quantity(r.inTransitQuantity());
         validateBalance(actual, locked, transit);
+        updateInventorySkuDetails(skuId, r);
         long id = insert("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,source_supplier_name,inventory_remark) VALUES(?,?,?,?,?,?,?)",
                 warehouseId, skuId, actual, locked, transit, r.sourceSupplierName(), r.inventoryRemark());
         saveLockedAllocations(id, r);
@@ -135,9 +136,14 @@ public class MasterDataCommandService {
         if (((Number) old.get("version")).intValue() != r.version()) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
         List<InventoryMovementCommand> movements = inventoryMovements(r);
         int actualBefore = ((Number) old.get("actual_quantity")).intValue();
-        int actual = !movements.isEmpty() ? actualBefore + movementDelta(movements) : quantity(r.actualQuantity());
-        if (actual < 0) throw new IllegalArgumentException("出库数量不能超过实际库存");
         int locked = lockedQuantity(r), transit = quantity(r.inTransitQuantity());
+        int requestedActual = requestedActualQuantity(r, locked, transit);
+        int movementDelta = movementDelta(movements);
+        // 用户修改了库存汇总时，以输入值作为保存后的实际库存；仅新增出入库明细而未修改汇总时，才自动累加明细。
+        int actual = !movements.isEmpty() && requestedActual == actualBefore
+                ? actualBefore + movementDelta
+                : requestedActual;
+        if (actual < 0) throw new IllegalArgumentException("出库数量不能超过实际库存");
         validateBalance(actual, locked, transit);
         int changed = jdbc.update("UPDATE inventory_balance SET actual_quantity=?,locked_quantity=?,in_transit_quantity=?,source_supplier_name=?,inventory_remark=?,version=version+1 WHERE id=? AND version=?",
                 actual, locked, transit, r.sourceSupplierName(), r.inventoryRemark(), id, r.version());
@@ -145,8 +151,17 @@ public class MasterDataCommandService {
         saveLockedAllocations(id, r);
         long warehouseId = ((Number) old.get("warehouse_id")).longValue();
         long skuId = ((Number) old.get("sku_id")).longValue();
+        updateInventorySkuDetails(skuId, r);
         if (!movements.isEmpty()) {
-            writeInventoryMovements(warehouseId, skuId, actualBefore, movements);
+            // 让每条流水的前后库存与最终库存保持一致。若用户手工修正过汇总，先记录一笔调整，再登记入/出库明细。
+            int movementBase = actual - movementDelta;
+            if (movementBase < 0) throw new IllegalArgumentException("入/出库明细与实际库存数量不匹配");
+            if (movementBase != actualBefore) {
+                writeTransaction(warehouseId, skuId, actualBefore, movementBase,
+                        ((Number) old.get("locked_quantity")).intValue(), locked,
+                        ((Number) old.get("in_transit_quantity")).intValue(), transit, r.reason());
+            }
+            writeInventoryMovements(warehouseId, skuId, movementBase, movements);
         } else {
             writeTransaction(warehouseId, skuId, actualBefore, actual,
                     ((Number) old.get("locked_quantity")).intValue(), locked,
@@ -161,6 +176,20 @@ public class MasterDataCommandService {
         List<Long> ids = jdbc.queryForList("SELECT id FROM sku WHERE sku_code=?", Long.class, r.skuCode().trim());
         if (ids.isEmpty()) throw new IllegalArgumentException("物料编号不存在，请先新增产品");
         return ids.get(0);
+    }
+
+    private int requestedActualQuantity(EntityCommandRequest r, int locked, int transit) {
+        if (r.availableQuantity() == null) return quantity(r.actualQuantity());
+        int actual = quantity(r.availableQuantity()) + locked - transit;
+        if (actual < 0) throw new IllegalArgumentException("可用库存与在途、锁定数量不匹配");
+        return actual;
+    }
+
+    private void updateInventorySkuDetails(long skuId, EntityCommandRequest r) {
+        if (r.model() == null && r.configuration() == null && r.productVersion() == null
+                && r.color() == null && r.lockBody() == null && r.unit() == null) return;
+        jdbc.update("UPDATE sku SET model=COALESCE(?,model),configuration=COALESCE(?,configuration),product_version=COALESCE(?,product_version),color=COALESCE(?,color),lock_body=COALESCE(?,lock_body),unit=COALESCE(?,unit),version=version+1 WHERE id=?",
+                r.model(), r.configuration(), r.productVersion(), r.color(), r.lockBody(), r.unit(), skuId);
     }
 
     private int lockedQuantity(EntityCommandRequest r) {

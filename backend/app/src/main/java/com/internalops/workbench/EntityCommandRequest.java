@@ -9,7 +9,7 @@ public record EntityCommandRequest(
         String skuCode, String model, String productName, String color, String lockBody,
         String productVersion, String configuration, String unit, BigDecimal currentCost, BigDecimal factoryPrice, String remark,
         Long supplierId, BigDecimal purchasePrice, Integer moq, Integer leadTimeDays,
-        Long skuId, Integer actualQuantity, Integer lockedQuantity, Integer inTransitQuantity,
+        Long skuId, Integer actualQuantity, Integer availableQuantity, Integer lockedQuantity, Integer inTransitQuantity,
         Integer lockedMingAiJunQiao, Integer lockedBoLeLongMi, Integer lockedLaos,
         Integer lockedBeiLang, Integer lockedMalaysia,
         String movementDate, Integer inboundQuantity, Integer outboundQuantity,

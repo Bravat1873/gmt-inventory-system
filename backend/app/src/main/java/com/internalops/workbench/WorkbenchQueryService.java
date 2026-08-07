@@ -40,6 +40,9 @@ public class WorkbenchQueryService {
             Map.entry("businesstype", "businessType"), Map.entry("businessno", "businessNo"),
             Map.entry("actiontype", "actionType"), Map.entry("cashdirection", "cashDirection"),
             Map.entry("settledamount", "settledAmount"), Map.entry("outstandingamount", "outstandingAmount"),
+            Map.entry("paidamount", "paidAmount"), Map.entry("paymentstatus", "paymentStatus"),
+            Map.entry("orderedquantity", "orderedQuantity"), Map.entry("receivedquantity", "receivedQuantity"),
+            Map.entry("remainingquantity", "remainingQuantity"), Map.entry("receiptstatus", "receiptStatus"),
             Map.entry("productids", "productIds"), Map.entry("productsummary", "productSummary")
     );
     private final JdbcTemplate jdbc;
@@ -251,16 +254,19 @@ public class WorkbenchQueryService {
         String purchaseView = "FROM ("
                 + "SELECT po.id, 'PURCHASE' AS record_type, po.purchase_no, po.supplier_id, sp.supplier_name, "
                 + "GROUP_CONCAT(poi.sku_id ORDER BY poi.line_no SEPARATOR ', ') AS product_ids, "
-                + "GROUP_CONCAT(CONCAT(COALESCE(NULLIF(s.sku_code,''), CONCAT('产品#', s.id)), ' · ', s.product_name) ORDER BY poi.line_no SEPARATOR '；') AS product_summary, "
-                + "po.status, po.total_amount, po.expected_arrival_date, po.created_at, po.updated_at, po.version "
+                + "GROUP_CONCAT(COALESCE(NULLIF(s.product_name,''), '未命名产品') ORDER BY poi.line_no SEPARATOR '；') AS product_summary, "
+                + "po.status, po.total_amount, "
+                + "COALESCE((SELECT SUM(pay.amount) FROM supplier_payment pay WHERE pay.purchase_order_id=po.id),0) AS paid_amount, "
+                + "COALESCE(SUM(poi.quantity),0) AS ordered_quantity, COALESCE(SUM(poi.received_quantity),0) AS received_quantity, "
+                + "po.expected_arrival_date, po.created_at, po.updated_at, po.version "
                 + "FROM purchase_order po JOIN supplier sp ON sp.id=po.supplier_id "
                 + "LEFT JOIN purchase_order_item poi ON poi.purchase_order_id=po.id LEFT JOIN sku s ON s.id=poi.sku_id "
                 + "GROUP BY po.id,po.purchase_no,po.supplier_id,sp.supplier_name,po.status,po.total_amount,po.expected_arrival_date,po.created_at,po.updated_at,po.version "
                 + "UNION ALL "
                 + "SELECT ps.id, 'SUGGESTION', ps.suggestion_no, psi.supplier_id, sp.supplier_name, "
                 + "GROUP_CONCAT(psi.sku_id ORDER BY psi.id SEPARATOR ', '), "
-                + "GROUP_CONCAT(CONCAT(COALESCE(NULLIF(s.sku_code,''), CONCAT('产品#', s.id)), ' · ', s.product_name) ORDER BY psi.id SEPARATOR '；'), "
-                + "ps.status, SUM(psi.suggested_quantity*psi.purchase_price), MAX(psi.expected_arrival_date), ps.created_at, ps.updated_at, ps.version "
+                + "GROUP_CONCAT(COALESCE(NULLIF(s.product_name,''), '未命名产品') ORDER BY psi.id SEPARATOR '；'), "
+                + "ps.status, SUM(psi.suggested_quantity*psi.purchase_price), 0, SUM(psi.suggested_quantity), 0, MAX(psi.expected_arrival_date), ps.created_at, ps.updated_at, ps.version "
                 + "FROM procurement_suggestion ps JOIN procurement_suggestion_item psi ON psi.suggestion_id=ps.id "
                 + "JOIN supplier sp ON sp.id=psi.supplier_id JOIN sku s ON s.id=psi.sku_id "
                 + "WHERE ps.status='DRAFT' "
@@ -268,6 +274,10 @@ public class WorkbenchQueryService {
         modules.put("purchase", new ModuleSpec(
                 "SELECT p.id, p.record_type AS `recordType`, p.purchase_no AS `purchaseNo`, "
                         + "p.supplier_name AS `supplierName`, p.product_summary AS `productSummary`, p.status, p.total_amount AS `totalAmount`, "
+                        + "p.paid_amount AS `paidAmount`, GREATEST(p.total_amount-p.paid_amount,0) AS `outstandingAmount`, "
+                        + "CASE WHEN p.paid_amount<=0 THEN 'UNPAID' WHEN p.paid_amount>=p.total_amount THEN 'PAID' ELSE 'PARTIALLY_PAID' END AS `paymentStatus`, "
+                        + "p.ordered_quantity AS `orderedQuantity`, p.received_quantity AS `receivedQuantity`, GREATEST(p.ordered_quantity-p.received_quantity,0) AS `remainingQuantity`, "
+                        + "CASE WHEN p.received_quantity<=0 THEN 'UNRECEIVED' WHEN p.received_quantity>=p.ordered_quantity THEN 'RECEIVED' ELSE 'PARTIALLY_RECEIVED' END AS `receiptStatus`, "
                         + "p.expected_arrival_date AS `expectedArrivalDate`, p.created_at AS `createdAt`, p.updated_at AS `updatedAt`, p.version",
                 purchaseView,
                 "LOCATE(?, COALESCE(p.purchase_no,''))>0 OR LOCATE(?, COALESCE(p.supplier_name,''))>0 OR LOCATE(?, COALESCE(p.product_summary,''))>0 OR LOCATE(?, COALESCE(p.status,''))>0", 4,

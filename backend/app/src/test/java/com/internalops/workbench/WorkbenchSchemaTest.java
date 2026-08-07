@@ -9,6 +9,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkbenchSchemaTest {
     @Test
+    void partialPaymentMigrationCreatesForeignKeyIndexBeforeDroppingUniqueIndex() throws Exception {
+        String sql = new ClassPathResource("db/migration/V19__partial_procurement_payments.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        int createIndex = sql.indexOf("CREATE INDEX idx_supplier_payment_purchase");
+        int dropUnique = sql.indexOf("DROP INDEX uk_supplier_payment_order");
+        assertTrue(createIndex >= 0 && createIndex < dropUnique,
+                "MySQL 外键需要先有普通索引，才能删除原唯一索引");
+    }
+
+    @Test
     void migrationAddsUserPhoneAndWorkbenchIndexes() throws Exception {
         String sql = new ClassPathResource("db/migration/V4__business_workbench.sql")
                 .getContentAsString(StandardCharsets.UTF_8);

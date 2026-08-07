@@ -62,10 +62,12 @@ public class SalesOrderCommandService {
     }
 
     public List<Map<String, Object>> skuOptions() {
-        return jdbc.query("SELECT id,sku_code,product_name,model,configuration,unit FROM sku WHERE enabled=TRUE ORDER BY sku_code", (rs, n) -> {
+        return jdbc.query("SELECT id,sku_code,product_name,model,configuration,product_version,color,lock_body,unit FROM sku WHERE enabled=TRUE ORDER BY sku_code", (rs, n) -> {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", rs.getLong("id")); item.put("skuCode", rs.getString("sku_code")); item.put("productName", rs.getString("product_name"));
-            item.put("model", rs.getString("model")); item.put("configuration", rs.getString("configuration")); item.put("unit", rs.getString("unit"));
+            item.put("model", rs.getString("model")); item.put("configuration", rs.getString("configuration"));
+            item.put("productVersion", rs.getString("product_version")); item.put("color", rs.getString("color"));
+            item.put("lockBody", rs.getString("lock_body")); item.put("unit", rs.getString("unit"));
             return item;
         });
     }

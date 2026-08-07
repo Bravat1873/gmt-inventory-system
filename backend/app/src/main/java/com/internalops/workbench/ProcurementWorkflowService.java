@@ -218,22 +218,26 @@ public class ProcurementWorkflowService {
     @Transactional
     public Map<String, Object> payment(long id, FinanceActionRequest request) {
         var purchase = jdbc.queryForMap("SELECT status,total_amount FROM purchase_order WHERE id=? FOR UPDATE", id);
-        if (!"PENDING_SUPPLIER_PAYMENT".equals(str(purchase, "status"))) {
-            throw new IllegalStateException("当前采购单不能登记付款");
-        }
         BigDecimal total = (BigDecimal) val(purchase, "total_amount");
-        if (request.amount() == null || request.amount().compareTo(total) != 0) {
-            throw new IllegalArgumentException("付款金额必须等于采购单总额");
-        }
+        BigDecimal paid = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(amount),0) FROM supplier_payment WHERE purchase_order_id=?",
+                BigDecimal.class, id);
+        BigDecimal amount = request.amount();
+        if (amount == null || amount.signum() <= 0) throw new IllegalArgumentException("本次付款金额必须大于 0");
+        BigDecimal outstanding = total.subtract(paid);
+        if (amount.compareTo(outstanding) > 0) throw new IllegalArgumentException("本次付款金额不能超过未付金额");
         jdbc.update("""
                         INSERT INTO supplier_payment(
                             purchase_order_id,amount,payment_method,payment_remark,invoice_no,invoice_date,paid_at,confirmed_by)
                         VALUES(?,?,?,?,?,?,?,1)
                         """,
-                id, request.amount(), request.paymentMethod() == null ? "银行转账" : request.paymentMethod(),
+                id, amount, request.paymentMethod() == null ? "银行转账" : request.paymentMethod(),
                 request.paymentRemark(), request.invoiceNo(), request.invoiceDate(), LocalDateTime.now());
-        jdbc.update("UPDATE purchase_order SET status='EXECUTING',version=version+1 WHERE id=?", id);
-        return Map.of("id", id, "status", "EXECUTING");
+        BigDecimal paidAfter = paid.add(amount);
+        BigDecimal outstandingAfter = total.subtract(paidAfter);
+        updatePurchaseProgressStatus(id);
+        return Map.of("id", id, "paidAmount", paidAfter, "outstandingAmount", outstandingAfter,
+                "paymentStatus", outstandingAfter.signum() == 0 ? "PAID" : "PARTIALLY_PAID");
     }
 
     @Transactional
@@ -250,31 +254,47 @@ public class ProcurementWorkflowService {
     }
 
     @Transactional
-    public Map<String, Object> receive(long id) {
+    public Map<String, Object> receive(long id, PurchaseReceiptRequest request) {
         var purchase = jdbc.queryForMap("SELECT purchase_no,status FROM purchase_order WHERE id=? FOR UPDATE", id);
-        if (!"EXECUTING".equals(str(purchase, "status"))) {
-            throw new IllegalStateException("采购单付款后才能到货入库");
-        }
+        if (request == null || request.items() == null || request.items().isEmpty())
+            throw new IllegalArgumentException("本次至少填写一项实收数量");
         String purchaseNo = str(purchase, "purchase_no");
+        var lines = jdbc.queryForList("""
+                SELECT id,sku_id,quantity,received_quantity,purchase_price
+                FROM purchase_order_item WHERE purchase_order_id=? FOR UPDATE
+                """, id);
+        Map<Long, Map<String, Object>> linesById = new LinkedHashMap<>();
+        for (var line : lines) linesById.put(num(line, "id"), line);
+        Map<Long, Integer> quantities = new LinkedHashMap<>();
+        boolean hasPositive = false;
+        for (PurchaseReceiptRequest.Item item : request.items()) {
+            if (!linesById.containsKey(item.purchaseOrderItemId())) throw new IllegalArgumentException("采购明细不存在或不属于当前采购单");
+            if (quantities.containsKey(item.purchaseOrderItemId())) throw new IllegalArgumentException("采购明细不能重复提交");
+            int quantity = item.receivedQuantity() == null ? 0 : item.receivedQuantity();
+            if (quantity < 0) throw new IllegalArgumentException("本次实收数量不能小于 0");
+            Map<String, Object> line = linesById.get(item.purchaseOrderItemId());
+            if (quantity > num(line, "quantity") - num(line, "received_quantity"))
+                throw new IllegalArgumentException("本次实收数量不能超过剩余数量");
+            quantities.put(item.purchaseOrderItemId(), quantity);
+            hasPositive |= quantity > 0;
+        }
+        if (!hasPositive) throw new IllegalArgumentException("本次至少填写一项实收数量");
         long receipt = insert("""
                         INSERT INTO goods_receipt(
                             receipt_no,purchase_order_id,received_at,received_by,status)
                         VALUES(?,?,?,1,'COMPLETED')
                         """,
                 "GR" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(), id, LocalDateTime.now());
-        var lines = jdbc.queryForList("""
-                SELECT id,sku_id,quantity,received_quantity,purchase_price
-                FROM purchase_order_item WHERE purchase_order_id=?
-                """, id);
-        for (var line : lines) {
-            int quantity = (int) (num(line, "quantity") - num(line, "received_quantity"));
+        for (var entry : quantities.entrySet()) {
+            var line = linesById.get(entry.getKey());
+            int quantity = entry.getValue();
             if (quantity <= 0) {
                 continue;
             }
             long skuId = num(line, "sku_id");
             BigDecimal price = (BigDecimal) val(line, "purchase_price");
             receiveStock(skuId, quantity, purchaseNo);
-            jdbc.update("UPDATE purchase_order_item SET received_quantity=quantity WHERE id=?", num(line, "id"));
+            jdbc.update("UPDATE purchase_order_item SET received_quantity=received_quantity+? WHERE id=?", quantity, num(line, "id"));
             jdbc.update("""
                             INSERT INTO goods_receipt_item(
                                 goods_receipt_id,purchase_order_item_id,accepted_quantity,rejected_quantity)
@@ -290,9 +310,56 @@ public class ProcurementWorkflowService {
                             """,
                     skuId, oldCost, price, purchaseNo, LocalDateTime.now());
         }
-        jdbc.update("UPDATE purchase_order SET status='RECEIVED',version=version+1 WHERE id=?", id);
+        updatePurchaseProgressStatus(id);
         allocation.reallocateWaiting();
-        return Map.of("id", id, "status", "RECEIVED");
+        Map<String, Object> totals = jdbc.queryForMap("SELECT COALESCE(SUM(quantity),0) ordered_quantity,COALESCE(SUM(received_quantity),0) received_quantity FROM purchase_order_item WHERE purchase_order_id=?", id);
+        long ordered = num(totals, "ordered_quantity");
+        long received = num(totals, "received_quantity");
+        return Map.of("id", id, "receivedQuantity", received, "remainingQuantity", ordered - received,
+                "receiptStatus", ordered == received ? "RECEIVED" : "PARTIALLY_RECEIVED");
+    }
+
+    public Map<String, Object> purchase(long id) {
+        List<Map<String, Object>> headers = jdbc.queryForList("""
+                SELECT po.id,po.purchase_no,po.total_amount,sp.supplier_name
+                FROM purchase_order po JOIN supplier sp ON sp.id=po.supplier_id WHERE po.id=?
+                """, id);
+        if (headers.isEmpty()) throw new IllegalArgumentException("采购单不存在");
+        Map<String, Object> source = headers.get(0);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", num(source, "id"));
+        result.put("purchaseNo", val(source, "purchase_no"));
+        result.put("supplierName", val(source, "supplier_name"));
+        result.put("totalAmount", val(source, "total_amount"));
+        List<Map<String, Object>> itemRows = jdbc.queryForList("""
+                SELECT poi.id,s.sku_code,s.product_name,poi.quantity,poi.received_quantity,
+                       poi.quantity-poi.received_quantity AS remaining_quantity
+                FROM purchase_order_item poi JOIN sku s ON s.id=poi.sku_id
+                WHERE poi.purchase_order_id=? ORDER BY poi.line_no
+                """, id);
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> row : itemRows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", num(row, "id"));
+            item.put("skuCode", val(row, "sku_code"));
+            item.put("productName", val(row, "product_name"));
+            item.put("quantity", num(row, "quantity"));
+            item.put("receivedQuantity", num(row, "received_quantity"));
+            item.put("remainingQuantity", num(row, "remaining_quantity"));
+            items.add(item);
+        }
+        result.put("items", items);
+        return result;
+    }
+
+    private void updatePurchaseProgressStatus(long id) {
+        BigDecimal total = jdbc.queryForObject("SELECT total_amount FROM purchase_order WHERE id=?", BigDecimal.class, id);
+        BigDecimal paid = jdbc.queryForObject("SELECT COALESCE(SUM(amount),0) FROM supplier_payment WHERE purchase_order_id=?", BigDecimal.class, id);
+        Map<String, Object> quantities = jdbc.queryForMap("SELECT COALESCE(SUM(quantity),0) ordered_quantity,COALESCE(SUM(received_quantity),0) received_quantity FROM purchase_order_item WHERE purchase_order_id=?", id);
+        boolean paidInFull = paid.compareTo(total) >= 0;
+        boolean receivedInFull = num(quantities, "ordered_quantity") == num(quantities, "received_quantity");
+        String status = paidInFull && receivedInFull ? "COMPLETED" : "EXECUTING";
+        jdbc.update("UPDATE purchase_order SET status=?,version=version+1 WHERE id=?", status, id);
     }
 
     private void increaseTransit(long skuId, int quantity, String purchaseNo) {

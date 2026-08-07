@@ -24,4 +24,15 @@ class CorsConfigurationTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5175"));
     }
+
+    @Test
+    void allowsProductionDomainToCallApiWithCredentials() throws Exception {
+        mvc.perform(options("/api/auth/login")
+                        .header("Origin", "https://testit.bravat.com")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "https://testit.bravat.com"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
 }

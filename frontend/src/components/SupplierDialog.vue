@@ -9,6 +9,7 @@ import {
   type SupplierCommand,
   type SupplierProductConfig
 } from '../api/workbench'
+import FuzzyPicker, { type FuzzyPickerOption } from './FuzzyPicker.vue'
 
 const props = defineProps<{ row?: Record<string, unknown> }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
@@ -18,13 +19,18 @@ type ProductRow = SupplierProductConfig & { label: string }
 const form = reactive({ supplierName: '', contactName: '', phone: '', bankAccount: '' })
 const products = ref<ProductRow[]>([])
 const skus = ref<OrderSku[]>([])
-const pickedSku = ref('')
+const pickedSku = ref<number | null>(null)
 const version = ref<number>()
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 
 const availableSkus = computed(() => skus.value.filter(sku => !products.value.some(item => item.skuId === sku.id)))
+const availableSkuOptions = computed<FuzzyPickerOption[]>(() => availableSkus.value.map(sku => ({
+  id: sku.id,
+  label: labelOf(sku),
+  searchText: [sku.skuCode, sku.model, sku.productName, sku.configuration].filter(Boolean).join(' ')
+})))
 
 function labelOf(sku: OrderSku) {
   const code = sku.skuCode || sku.model || `产品 ${sku.id}`
@@ -36,11 +42,12 @@ function requestClose() {
 }
 
 function addProduct() {
-  const skuId = Number(pickedSku.value)
+  const skuId = pickedSku.value
+  if (skuId == null) return
   const sku = skus.value.find(item => item.id === skuId)
   if (!sku) return
   products.value.push({ skuId, label: labelOf(sku), purchasePrice: 0, moq: 1, leadTimeDays: 0 })
-  pickedSku.value = ''
+  pickedSku.value = null
 }
 
 function removeProduct(index: number) {
@@ -127,7 +134,7 @@ onMounted(initialise)
         </div>
 
         <section class="supplier-products-section">
-          <div class="supplier-products-heading"><div><h3>供应产品</h3><p>维护该供应商可采购的产品、默认采购单价、起订量和交货天数。</p></div><div class="supplier-product-add"><select data-test="supplier-product-picker" v-model="pickedSku" :disabled="loading || saving"><option value="">请选择产品</option><option v-for="sku in availableSkus" :key="sku.id" :value="sku.id">{{ labelOf(sku) }}</option></select><button data-test="add-supplier-product" type="button" class="secondary-action" :disabled="!pickedSku || saving" @click="addProduct">添加产品</button></div></div>
+          <div class="supplier-products-heading"><div><h3>供应产品</h3><p>维护该供应商可采购的产品、默认采购单价、起订量和交货天数。</p></div><div class="supplier-product-add"><FuzzyPicker data-test="supplier-product-picker" v-model="pickedSku" :options="availableSkuOptions" placeholder="输入物料编号、型号或名称搜索" :disabled="loading || saving" empty-text="没有可添加的产品" /><button data-test="add-supplier-product" type="button" class="secondary-action" :disabled="pickedSku == null || saving" @click="addProduct">添加产品</button></div></div>
           <div v-if="products.length" class="supplier-products-table-wrap"><table class="supplier-products-table"><thead><tr><th>产品</th><th>采购单价</th><th>最小起订量</th><th>交货天数</th><th>操作</th></tr></thead><tbody><tr v-for="(product,index) in products" :key="product.skuId"><td>{{ product.label }}</td><td><input v-model.number="product.purchasePrice" type="number" min="0" step="0.0001" :disabled="saving"></td><td><input v-model.number="product.moq" type="number" min="1" step="1" :disabled="saving"></td><td><input v-model.number="product.leadTimeDays" type="number" min="0" step="1" :disabled="saving"></td><td><button type="button" class="text-action" :disabled="saving" @click="removeProduct(index)">删除</button></td></tr></tbody></table></div>
           <p v-else class="supplier-products-empty">暂未添加供应产品。可以先保存供应商资料，后续再补充产品。</p>
         </section>

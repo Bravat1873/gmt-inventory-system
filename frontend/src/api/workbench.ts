@@ -61,7 +61,17 @@ export function createOrder(data: Record<string, unknown>) {
   return request<Record<string, unknown>>('/api/orders', { method: 'POST', body: JSON.stringify(data) })
 }
 export function getOrder(id: number) { return request<Record<string, unknown>>(`/api/orders/${id}`) }
-export interface OrderSku { id:number; skuCode?:string|null; productName?:string|null; model?:string|null; configuration?:string|null; unit?:string|null }
+export interface OrderSku {
+  id: number
+  skuCode?: string | null
+  productName?: string | null
+  model?: string | null
+  configuration?: string | null
+  productVersion?: string | null
+  color?: string | null
+  lockBody?: string | null
+  unit?: string | null
+}
 export function loadOrderSkus() { return request<OrderSku[]>('/api/orders/skus') }
 export interface OrderCustomer { id:number; customerCode:string; customerName:string; contactName?:string; phone?:string; address?:string }
 export function loadOrderCustomers() { return request<OrderCustomer[]>('/api/orders/customers') }
@@ -163,4 +173,31 @@ export function payPurchaseByNumber(purchaseNo: string, data: PurchasePaymentDat
     `/api/procurement/purchases/by-number/${encodeURIComponent(purchaseNo)}/payment`,
     { method: 'POST', body: JSON.stringify(data) }
   )
+}
+
+export interface PurchaseReceiptItem {
+  id: number
+  skuCode?: string
+  productName?: string
+  quantity: number
+  receivedQuantity: number
+  remainingQuantity: number
+}
+
+export interface PurchaseDetail {
+  id: number
+  purchaseNo: string
+  supplierName: string
+  totalAmount: number
+  items: PurchaseReceiptItem[]
+}
+
+export function loadPurchase(id: number) {
+  return request<PurchaseDetail>(`/api/procurement/purchases/${id}`)
+}
+
+export function receivePurchase(id: number, items: { purchaseOrderItemId: number; receivedQuantity: number }[]) {
+  return request<Record<string, unknown>>(`/api/procurement/purchases/${id}/receive`, {
+    method: 'POST', body: JSON.stringify({ items })
+  })
 }
