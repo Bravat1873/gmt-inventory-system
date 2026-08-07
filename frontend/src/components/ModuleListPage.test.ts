@@ -59,3 +59,16 @@ it('hides only the completed purchase action', async () => {
   expect(wrapper.find('[data-test="purchase-payment"]').exists()).toBe(false)
   expect(wrapper.find('[data-test="purchase-receipt"]').exists()).toBe(true)
 })
+
+it.each([
+  ['ADMIN', '管理员'],
+  ['FINANCE', '财务'],
+  ['USER', '普通用户']
+])('shows the %s user role as %s', async (role, label) => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, username: 'user', displayName: '用户', role }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'user')! } })
+  await flushPromises()
+
+  expect(wrapper.text()).toContain(label)
+  expect(wrapper.text()).not.toContain(`>${role}<`)
+})

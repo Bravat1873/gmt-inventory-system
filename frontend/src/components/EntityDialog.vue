@@ -4,8 +4,11 @@ import { createEntity, loadOrderSkus, type OrderSku, updateEntity } from '../api
 import ChineseDatePicker from './ChineseDatePicker.vue'
 import FuzzyPicker, { type FuzzyPickerOption } from './FuzzyPicker.vue'
 import type { ModuleKey } from '../modules/module-config'
+import type { UserRole } from '../api/auth'
 
-const props = defineProps<{ module: ModuleKey; row?: Record<string, unknown> }>()
+const props = withDefaults(defineProps<{ module: ModuleKey; row?: Record<string, unknown>; currentUserRole?: UserRole }>(), {
+  currentUserRole: 'USER'
+})
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
 
 interface Field {
@@ -25,7 +28,8 @@ const definitions: Record<string, Field[]> = {
   user: [
     { key: 'username', label: '用户名', required: true },
     { key: 'displayName', label: '姓名', required: true },
-    { key: 'phone', label: '联系电话', type: 'tel' }
+    { key: 'phone', label: '联系电话', type: 'tel' },
+    { key: 'role', label: '角色' }
   ],
   product: [
     { key: 'skuCode', label: '物料编号' },
@@ -81,6 +85,13 @@ if (props.module === 'inventory' && !props.row?.id) {
   })
 }
 const form = reactive(initialForm)
+const canEditProductPrice = computed(() => ['ADMIN', 'FINANCE'].includes(props.currentUserRole))
+const canManageUserRoles = computed(() => props.currentUserRole === 'ADMIN')
+const roleOptions: { value: UserRole; label: string }[] = [
+  { value: 'ADMIN', label: '管理员' },
+  { value: 'FINANCE', label: '财务' },
+  { value: 'USER', label: '普通用户' }
+]
 const initialInventorySkuValues = Object.fromEntries(
   ['model', 'configuration', 'productVersion', 'color', 'lockBody', 'unit'].map(key => [key, form[key] ?? null])
 )
@@ -176,6 +187,14 @@ function selectInventorySku(skuId: number | null) {
 }
 
 function inventoryFieldTestId(key: string) {
+  if (props.module === 'product') {
+    if (key === 'currentCost') return 'product-current-cost'
+    if (key === 'factoryPrice') return 'product-factory-price'
+  }
+  if (props.module === 'user') {
+    if (key === 'username') return 'user-username'
+    if (key === 'displayName') return 'user-display-name'
+  }
   if (props.module !== 'inventory') return undefined
   const names: Record<string, string> = {
     model: 'inventory-model', configuration: 'inventory-configuration', color: 'inventory-color',
@@ -211,7 +230,9 @@ function createPayload() {
   const body: Record<string, unknown> = {}
   for (const field of fields) {
     if (field.readOnly) continue
+    if (props.module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice.value) continue
     const value = form[field.key]
+    if (field.key === 'role' && (!canManageUserRoles.value || value == null || value === '')) continue
     body[field.key] = field.type === 'number' && value !== '' && value != null ? Number(value) : value
   }
   if (props.row?.id && typeof form.version === 'number') {
@@ -272,8 +293,17 @@ async function save() {
         <div class="form-grid">
           <label v-for="field in fields" :key="field.key">
             <span>{{ field.label }}</span>
+            <select
+              v-if="field.key === 'role'"
+              v-model="form[field.key]"
+              data-test="user-role"
+              :disabled="!canManageUserRoles"
+            >
+              <option value="">默认普通用户</option>
+              <option v-for="option in roleOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
             <FuzzyPicker
-              v-if="module === 'inventory' && field.key === 'skuCode' && !row?.id"
+              v-else-if="module === 'inventory' && field.key === 'skuCode' && !row?.id"
               v-model="inventorySkuId"
               data-test="inventory-product-picker"
               :options="inventorySkuOptions"
@@ -306,12 +336,13 @@ async function save() {
               :data-test="inventoryFieldTestId(field.key)"
               :type="field.type ?? 'text'"
               :required="field.required"
-              :disabled="Boolean(row?.id) && ['customerCode', 'username', 'skuCode', 'skuId'].includes(field.key)"
+              :disabled="(module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice) || (Boolean(row?.id) && ['customerCode', 'username', 'skuCode', 'skuId'].includes(field.key))"
               step="any"
               @input="field.key === 'actualQuantity' ? onInventoryMetricChange('actual') : field.key === 'availableQuantity' ? onInventoryMetricChange('available') : field.key === 'lockedQuantity' ? onInventoryMetricChange('locked') : field.key === 'inTransitQuantity' ? onInventoryMetricChange('transit') : ['lockedMingAiJunQiao', 'lockedBoLeLongMi', 'lockedLaos', 'lockedBeiLang', 'lockedMalaysia'].includes(field.key) ? onInventoryAllocationChange() : undefined"
             />
           </label>
         </div>
+        <p v-if="module === 'product' && !canEditProductPrice" data-test="product-price-permission-hint" class="field-hint">仅财务或管理员可修改</p>
         <section v-if="module === 'inventory'" class="order-section inventory-movement-section">
           <div class="line-title">
             <h3>入/出库明细</h3>

@@ -20,3 +20,11 @@ it('places finance direction inside the business type cell instead of a standalo
   expect(finance.fields).not.toContain('cashDirection')
   expect(finance.fields).toContain('businessType')
 })
+
+it('includes a Chinese role column in the user list', () => {
+  const user = moduleDefinitions.find(item => item.key === 'user')!
+  const roleIndex = user.fields.indexOf('role')
+
+  expect(roleIndex).toBeGreaterThanOrEqual(0)
+  expect(user.columns[roleIndex]).toBe('角色')
+})

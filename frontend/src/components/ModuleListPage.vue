@@ -18,6 +18,7 @@ function search() { load(1) }
 function orderBy(field: string) { if (!field) return; direction.value = sort.value === field && direction.value === 'asc' ? 'desc' : 'asc'; sort.value = field; load(1) }
 function text(value: unknown, field?: string) {
   if (value === true) return '启用'; if (value === false) return '停用'; if (value == null || value === '') return '—'
+  if (field === 'role') return ({ ADMIN: '管理员', FINANCE: '财务', USER: '普通用户' } as Record<string, string>)[String(value)] ?? String(value)
   if (field === 'createdAt' || field === 'updatedAt') { const matched = String(value).match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2})/); if (matched) return `${matched[1]} ${matched[2]}` }
   const statuses: Record<string, string> = { DRAFT: '草稿', PENDING_CUSTOMER_PAYMENT: '确认订单并分配库存', WAITING_STOCK: '等待齐货', READY_TO_SHIP: '等待发货', SHIPPED: '已发货', PENDING_SUPPLIER_PAYMENT: '待登记付款', EXECUTING: '采购执行中', RECEIVED: '已入库', COMPLETED: '已完成', UNPAID: '未付款', PARTIALLY_PAID: '部分付款', PAID: '已付清', UNRECEIVED: '未收货', PARTIALLY_RECEIVED: '部分收货', RECEIVABLE: '收', PAYABLE: '付' }
   return statuses[String(value)] ?? String(value)
