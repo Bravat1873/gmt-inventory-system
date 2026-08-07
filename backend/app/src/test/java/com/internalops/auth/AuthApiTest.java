@@ -24,10 +24,12 @@ class AuthApiTest {
         var login = mvc.perform(post("/api/auth/login").contentType("application/json")
                         .content("{\"username\":\"admin\",\"password\":\"123\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.username").value("admin"))
+                .andExpect(jsonPath("$.data.role").value("ADMIN"))
                 .andExpect(cookie().httpOnly("OPS_SESSION", true)).andReturn();
         var session = login.getResponse().getCookie("OPS_SESSION");
         mvc.perform(get("/api/auth/me").cookie(session)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.displayName").value("管理员"));
+                .andExpect(jsonPath("$.data.displayName").value("管理员"))
+                .andExpect(jsonPath("$.data.role").value("ADMIN"));
     }
 
     @Test
