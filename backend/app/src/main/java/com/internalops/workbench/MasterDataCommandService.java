@@ -28,10 +28,15 @@ public class MasterDataCommandService {
 
     @Transactional
     public Map<String, Object> create(String module, EntityCommandRequest request) {
+        return create(module, request, EntityCommandFields.inferred(request));
+    }
+
+    @Transactional
+    public Map<String, Object> create(String module, EntityCommandRequest request, EntityCommandFields fields) {
         return switch (module) {
             case "customer" -> createCustomer(request);
-            case "user" -> createUser(request);
-            case "product" -> createProduct(request);
+            case "user" -> createUser(request, fields);
+            case "product" -> createProduct(request, fields);
             case "inventory" -> createInventory(request);
             default -> throw new IllegalArgumentException("该模块不支持手工新增");
         };
@@ -39,11 +44,16 @@ public class MasterDataCommandService {
 
     @Transactional
     public Map<String, Object> update(String module, long id, EntityCommandRequest request) {
+        return update(module, id, request, EntityCommandFields.inferred(request));
+    }
+
+    @Transactional
+    public Map<String, Object> update(String module, long id, EntityCommandRequest request, EntityCommandFields fields) {
         requireVersion(request);
         return switch (module) {
             case "customer" -> updateCustomer(id, request);
-            case "user" -> updateUser(id, request);
-            case "product" -> updateProduct(id, request);
+            case "user" -> updateUser(id, request, fields);
+            case "product" -> updateProduct(id, request, fields);
             case "inventory" -> updateInventory(id, request);
             default -> throw new IllegalArgumentException("该模块不支持手工修改");
         };
@@ -65,31 +75,29 @@ public class MasterDataCommandService {
         return customer(id);
     }
 
-    private Map<String, Object> createUser(EntityCommandRequest r) {
+    private Map<String, Object> createUser(EntityCommandRequest r, EntityCommandFields fields) {
         requireText(r.username(), "用户名不能为空");
         requireText(r.displayName(), "姓名不能为空");
         Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM sys_user WHERE username=?", Integer.class, r.username().trim());
         if (existing != null && existing > 0) throw new IllegalArgumentException("用户名已存在，请换一个");
-        UserRole role = r.role() == null ? UserRole.USER : requestedRole(r);
+        UserRole role = fields.rolePresent() ? requestedRole(r) : UserRole.USER;
         long id = insert("INSERT INTO sys_user(username,password_hash,display_name,phone,enabled,role) VALUES(?,?,?,?,?,?)",
                 r.username().trim(), "{noop}internal", r.displayName().trim(), r.phone(), enabled(r), role.name());
         return user(id);
     }
 
-    private Map<String, Object> updateUser(long id, EntityCommandRequest r) {
+    private Map<String, Object> updateUser(long id, EntityCommandRequest r, EntityCommandFields fields) {
         requireText(r.displayName(), "姓名不能为空");
-        UserRole role = r.role() == null
-                ? UserRole.valueOf(jdbc.queryForObject("SELECT role FROM sys_user WHERE id=?", String.class, id))
-                : requestedRole(r);
+        UserRole role = fields.rolePresent() ? requestedRole(r) : existingRole(id);
         int changed = jdbc.update("UPDATE sys_user SET display_name=?,phone=?,enabled=?,role=?,version=version+1 WHERE id=? AND version=?",
                 r.displayName().trim(), r.phone(), enabled(r), role.name(), id, r.version());
         conflictIfUnchanged(changed);
         return user(id);
     }
 
-    private Map<String, Object> createProduct(EntityCommandRequest r) {
+    private Map<String, Object> createProduct(EntityCommandRequest r, EntityCommandFields fields) {
         validateProduct(r);
-        requireProductPricePermission(r);
+        requireProductPricePermission(fields);
         String code = textOr(r.skuCode(), generatedCode("SKU"));
         long id = insert("INSERT INTO sku(sku_code,model,product_name,color,lock_body,product_version,configuration,unit,current_cost,factory_price,product_remark,enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 code, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), r.configuration(),
@@ -98,12 +106,13 @@ public class MasterDataCommandService {
         return product(id);
     }
 
-    private Map<String, Object> updateProduct(long id, EntityCommandRequest r) {
+    private Map<String, Object> updateProduct(long id, EntityCommandRequest r, EntityCommandFields fields) {
         validateProduct(r);
-        requireProductPricePermission(r);
-        int changed = jdbc.update("UPDATE sku SET model=?,product_name=?,color=?,lock_body=?,product_version=?,configuration=?,unit=?,current_cost=COALESCE(?,current_cost),factory_price=COALESCE(?,factory_price),product_remark=?,enabled=?,version=version+1 WHERE id=? AND version=?",
+        requireProductPricePermission(fields);
+        int changed = jdbc.update("UPDATE sku SET model=?,product_name=?,color=?,lock_body=?,product_version=?,configuration=?,unit=?,current_cost=CASE WHEN ? THEN ? ELSE current_cost END,factory_price=CASE WHEN ? THEN ? ELSE factory_price END,product_remark=?,enabled=?,version=version+1 WHERE id=? AND version=?",
                 r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), r.configuration(), textOr(r.unit(), "件"),
-                r.currentCost(), r.factoryPrice(), r.remark(), enabled(r), id, r.version());
+                fields.currentCostPresent(), r.currentCost(), fields.factoryPricePresent(), r.factoryPrice(),
+                r.remark(), enabled(r), id, r.version());
         conflictIfUnchanged(changed);
         saveSupplierConfig(id, r);
         return product(id);
@@ -316,8 +325,8 @@ public class MasterDataCommandService {
         if (r.currentCost() != null && r.currentCost().signum() < 0) throw new IllegalArgumentException("成本不能为负数");
         if (r.factoryPrice() != null && r.factoryPrice().signum() < 0) throw new IllegalArgumentException("转厂价格不能为负数");
     }
-    private void requireProductPricePermission(EntityCommandRequest request) {
-        if ((request.currentCost() != null || request.factoryPrice() != null)
+    private void requireProductPricePermission(EntityCommandFields fields) {
+        if ((fields.currentCostPresent() || fields.factoryPricePresent())
                 && !CurrentUser.required().role().canEditProductPrice()) {
             throw new IllegalArgumentException("仅财务或管理员可修改产品价格");
         }
@@ -329,11 +338,17 @@ public class MasterDataCommandService {
         return parseRole(request.role());
     }
     private UserRole parseRole(String value) {
+        if (value == null) throw new IllegalArgumentException("用户角色无效");
         try {
             return UserRole.valueOf(value);
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("用户角色无效");
         }
+    }
+    private UserRole existingRole(long id) {
+        List<String> roles = jdbc.queryForList("SELECT role FROM sys_user WHERE id=?", String.class, id);
+        if (roles.isEmpty()) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
+        return UserRole.valueOf(roles.get(0));
     }
     private void validateBalance(int actual, int locked, int transit) {
         if (locked > actual + transit) throw new IllegalArgumentException("锁定数量不能超过实际库存与在途库存之和");

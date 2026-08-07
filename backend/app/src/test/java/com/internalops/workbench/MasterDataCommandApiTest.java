@@ -198,4 +198,81 @@ class MasterDataCommandApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("用户角色无效"));
     }
+
+    @Test
+    void regularUserCannotSubmitExplicitNullProductPrices() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(put("/api/workbench/product/1").cookie(userSession).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"currentCost\":null,\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
+        mvc.perform(put("/api/workbench/product/1").cookie(userSession).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"factoryPrice\":null,\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
+
+        assertThat(jdbc.queryForMap("SELECT current_cost,factory_price FROM sku WHERE id=1"))
+                .containsEntry("current_cost", new java.math.BigDecimal("10.0000"))
+                .containsEntry("factory_price", new java.math.BigDecimal("20.0000"));
+    }
+
+    @Test
+    void authorizedUsersCanClearAnExplicitNullPriceWhilePreservingMissingPrices() throws Exception {
+        Cookie financeSession = loginAs("finance");
+
+        mvc.perform(put("/api/workbench/product/1").cookie(financeSession).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"currentCost\":null,\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentCost").doesNotExist())
+                .andExpect(jsonPath("$.data.factoryPrice").value(20.00));
+
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"factoryPrice\":null,\"version\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentCost").doesNotExist())
+                .andExpect(jsonPath("$.data.factoryPrice").doesNotExist());
+
+        assertThat(jdbc.queryForMap("SELECT current_cost,factory_price FROM sku WHERE id=1"))
+                .containsEntry("current_cost", null)
+                .containsEntry("factory_price", null);
+    }
+
+    @Test
+    void regularUserCannotSubmitExplicitNullRole() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(put("/api/workbench/user/3").cookie(userSession).contentType("application/json")
+                        .content("{\"displayName\":\"操作员\",\"role\":null,\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅管理员可分配用户角色"));
+    }
+
+    @Test
+    void regularUserCannotSetPricesOrRolesOnCreateAndAdminCanUpdateARole() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(post("/api/workbench/product").cookie(userSession).contentType("application/json")
+                        .content("{\"skuCode\":\"SKU-USER\",\"productName\":\"越权产品\",\"currentCost\":1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
+        mvc.perform(post("/api/workbench/user").cookie(userSession).contentType("application/json")
+                        .content("{\"username\":\"forbidden-finance\",\"displayName\":\"越权财务\",\"role\":\"FINANCE\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅管理员可分配用户角色"));
+
+        mvc.perform(put("/api/workbench/user/3").cookie(session).contentType("application/json")
+                        .content("{\"displayName\":\"操作员\",\"role\":\"FINANCE\",\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("FINANCE"));
+        assertThat(jdbc.queryForObject("SELECT role FROM sys_user WHERE id=3", String.class)).isEqualTo("FINANCE");
+    }
+
+    @Test
+    void updatingAMissingUserKeepsTheConflictResponse() throws Exception {
+        mvc.perform(put("/api/workbench/user/999").cookie(session).contentType("application/json")
+                        .content("{\"displayName\":\"不存在\",\"version\":0}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("数据已被其他操作修改，请重新打开后再试"));
+    }
 }

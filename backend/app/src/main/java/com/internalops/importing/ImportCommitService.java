@@ -1,5 +1,6 @@
 package com.internalops.importing;
 
+import com.internalops.auth.CurrentUser;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -37,6 +38,10 @@ public class ImportCommitService {
     @Transactional
     public ImportBatchView commit(long batchId, ImportConflictPolicy policy) {
         ImportBatchView batch = repository.findBatch(batchId);
+        if (batch.importType() == ImportType.COST
+                && !CurrentUser.required().role().canEditProductPrice()) {
+            throw new IllegalArgumentException("仅财务或管理员可修改产品价格");
+        }
         if ("COMMITTED".equals(batch.status())) return batch;
         if (repository.isAppendOnly(batchId)) {
             Map<String, Object> result = new LinkedHashMap<>();

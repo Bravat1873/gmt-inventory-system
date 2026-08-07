@@ -1,6 +1,10 @@
 package com.internalops.importing;
 
+import com.internalops.auth.CurrentUser;
+import com.internalops.auth.UserRole;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,6 +27,16 @@ class ImportCommitServiceTest {
     @Autowired ImportValidationService validationService;
     @Autowired ImportErrorWorkbookService errorWorkbookService;
     @Autowired JdbcTemplate jdbc;
+
+    @BeforeEach
+    void authorizeCostImports() {
+        CurrentUser.set(new CurrentUser(1L, "admin", "管理员", UserRole.ADMIN));
+    }
+
+    @AfterEach
+    void clearCurrentUser() {
+        CurrentUser.clear();
+    }
 
     @Test
     void commitsCustomersInventoryAndCostsIdempotently() throws Exception {
