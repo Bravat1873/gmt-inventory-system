@@ -5,7 +5,7 @@ import java.util.List;
 
 public record EntityCommandRequest(
         String customerCode, String customerName, String contactName, String phone, String address,
-        String username, String displayName, Boolean enabled,
+        String username, String displayName, String role, Boolean enabled,
         String skuCode, String model, String productName, String color, String lockBody,
         String productVersion, String configuration, String unit, BigDecimal currentCost, BigDecimal factoryPrice, String remark,
         Long supplierId, BigDecimal purchasePrice, Integer moq, Integer leadTimeDays,

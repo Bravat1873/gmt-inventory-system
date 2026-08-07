@@ -204,7 +204,7 @@ public class WorkbenchQueryService {
                 sorts("id", "c.id", "customerCode", "c.customer_code", "customerName", "c.customer_name", "updatedAt", "c.updated_at"),
                 "c.updated_at", "c.id DESC"));
         modules.put("user", new ModuleSpec(
-                "SELECT u.id, u.username, u.display_name AS `displayName`, u.phone, u.enabled, u.updated_at AS `updatedAt`, u.version",
+                "SELECT u.id, u.username, u.display_name AS `displayName`, u.phone, u.enabled, u.role, u.updated_at AS `updatedAt`, u.version",
                 "FROM sys_user u", "LOCATE(?, COALESCE(u.username,''))>0 OR LOCATE(?, COALESCE(u.display_name,''))>0 OR LOCATE(?, COALESCE(u.phone,''))>0", 3,
                 sorts("id", "u.id", "username", "u.username", "displayName", "u.display_name", "updatedAt", "u.updated_at"),
                 "u.updated_at", "u.id DESC"));

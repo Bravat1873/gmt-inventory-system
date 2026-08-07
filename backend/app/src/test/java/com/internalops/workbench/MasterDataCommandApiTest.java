@@ -11,6 +11,7 @@ import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,8 +27,12 @@ class MasterDataCommandApiTest {
 
     @BeforeEach
     void login() throws Exception {
-        session = mvc.perform(post("/api/auth/login").contentType("application/json")
-                        .content("{\"username\":\"admin\",\"password\":\"123\"}"))
+        session = loginAs("admin");
+    }
+
+    private Cookie loginAs(String username) throws Exception {
+        return mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"" + username + "\",\"password\":\"123\"}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getCookie("OPS_SESSION");
     }
 
@@ -109,5 +114,88 @@ class MasterDataCommandApiTest {
         mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json").content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("用户名已存在，请换一个"));
+    }
+
+    @Test
+    void financeCanUpdateBothProductPrices() throws Exception {
+        Cookie financeSession = loginAs("finance");
+
+        mvc.perform(put("/api/workbench/product/1").cookie(financeSession).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"currentCost\":12.34,\"factoryPrice\":23.45,\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentCost").value(12.34))
+                .andExpect(jsonPath("$.data.factoryPrice").value(23.45));
+    }
+
+    @Test
+    void regularUserCannotSubmitEitherProductPrice() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(put("/api/workbench/product/1").cookie(userSession).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"currentCost\":12.34,\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
+
+        mvc.perform(put("/api/workbench/product/1").cookie(userSession).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"factoryPrice\":23.45,\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
+    }
+
+    @Test
+    void regularUserCanUpdateProductModelWithoutClearingPrices() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(put("/api/workbench/product/1").cookie(userSession).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"model\":\"P90\",\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.model").value("P90"))
+                .andExpect(jsonPath("$.data.currentCost").value(10.00))
+                .andExpect(jsonPath("$.data.factoryPrice").value(20.00));
+
+        assertThat(jdbc.queryForMap("SELECT current_cost,factory_price FROM sku WHERE id=1"))
+                .containsEntry("current_cost", new java.math.BigDecimal("10.0000"))
+                .containsEntry("factory_price", new java.math.BigDecimal("20.0000"));
+    }
+
+    @Test
+    void regularUserCanMaintainUserDetailsButCannotAssignRoles() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+
+        mvc.perform(put("/api/workbench/user/3").cookie(userSession).contentType("application/json")
+                        .content("{\"displayName\":\"新操作员\",\"phone\":\"13900000000\",\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.displayName").value("新操作员"))
+                .andExpect(jsonPath("$.data.role").value("USER"));
+
+        mvc.perform(put("/api/workbench/user/3").cookie(userSession).contentType("application/json")
+                        .content("{\"displayName\":\"新操作员\",\"role\":\"FINANCE\",\"version\":1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅管理员可分配用户角色"));
+    }
+
+    @Test
+    void newUsersDefaultToUserAndAdminCanAssignAValidRole() throws Exception {
+        mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json")
+                        .content("{\"username\":\"new-user\",\"displayName\":\"新用户\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("USER"));
+
+        mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json")
+                        .content("{\"username\":\"new-finance\",\"displayName\":\"新财务\",\"role\":\"FINANCE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("FINANCE"));
+
+        mvc.perform(get("/api/workbench/user").cookie(session).param("keyword", "new-finance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].role").value("FINANCE"));
+    }
+
+    @Test
+    void adminCannotAssignAnInvalidRole() throws Exception {
+        mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json")
+                        .content("{\"username\":\"bad-role\",\"displayName\":\"非法角色\",\"role\":\"OWNER\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("用户角色无效"));
     }
 }
