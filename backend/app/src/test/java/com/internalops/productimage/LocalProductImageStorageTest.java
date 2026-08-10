@@ -2,6 +2,7 @@ package com.internalops.productimage;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -14,6 +15,13 @@ class LocalProductImageStorageTest {
     @TempDir
     Path root;
 
+    @Test
+    void creates_storage_from_the_configured_root_in_a_spring_context() {
+        new ApplicationContextRunner()
+                .withPropertyValues("internal-ops.product-image-root=" + root)
+                .withBean(LocalProductImageStorage.class)
+                .run(context -> assertThat(context).hasSingleBean(LocalProductImageStorage.class));
+    }
     @Test
     void stores_reads_and_deletes_under_the_configured_root() throws Exception {
         var storage = new LocalProductImageStorage(root);

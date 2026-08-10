@@ -1,5 +1,6 @@
 package com.internalops.productimage;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +13,7 @@ import java.nio.file.StandardOpenOption;
 public final class LocalProductImageStorage implements ProductImageStorage {
     private final Path root;
 
+    @Autowired
     public LocalProductImageStorage(@Value("${internal-ops.product-image-root}") String root) {
         this(Path.of(root));
     }
