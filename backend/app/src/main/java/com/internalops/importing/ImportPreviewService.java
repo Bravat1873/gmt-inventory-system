@@ -44,24 +44,27 @@ public class ImportPreviewService {
 
     @Transactional
     public ImportRowView add(long batchId, ImportRowRequest request) {
-        ensureEditable(batchId);
-        ImportType type = repository.type(batchId);
-        ParsedImportRow row = validation.withConflict(type,
-                validation.validate(type, "手工录入", repository.nextManualRow(batchId), request.data()));
+        ImportBatchView batch = editableBatch(batchId);
+        ParsedImportRow row = validation.withConflict(batch.importType(),
+                validation.validate(batch.importType(), "手工录入", repository.nextManualRow(batchId), request.data()));
         return repository.insertManual(batchId, row);
     }
 
     @Transactional
     public ImportRowView update(long batchId, long rowId, ImportRowRequest request) {
-        ensureEditable(batchId);
-        ImportRowView original = repository.findRow(batchId, rowId);
-        ImportType type = repository.type(batchId);
-        ParsedImportRow row = validation.withConflict(type,
-                validation.validate(type, original.sheetName(), original.rowNumber(), request.data()));
+        ImportBatchView batch = editableBatch(batchId);
+        ImportRowView original = batch.rows().stream()
+                .filter(row -> row.id() == rowId)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("导入行不存在"));
+        ParsedImportRow row = validation.withConflict(batch.importType(),
+                validation.validate(batch.importType(), original.sheetName(), original.rowNumber(), request.data()));
         return repository.updateRow(batchId, rowId, row);
     }
 
-    private void ensureEditable(long batchId) {
-        if ("COMMITTED".equals(repository.status(batchId))) throw new IllegalArgumentException("已提交批次不能修改");
+    private ImportBatchView editableBatch(long batchId) {
+        ImportBatchView batch = repository.findBatchForUpdate(batchId);
+        if ("COMMITTED".equals(batch.status())) throw new IllegalArgumentException("已提交批次不能修改");
+        return batch;
     }
 }

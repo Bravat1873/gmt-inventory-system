@@ -31,7 +31,7 @@ function shipmentCompleted(row: Record<string, unknown>) {
 }
 function isReceivable(row: Record<string, unknown>) { return String(row.cashDirection) === 'RECEIVABLE' }
 function hasOutstandingAmount(row: Record<string, unknown>) { return Number(row.outstandingAmount ?? 0) > 0 }
-const canManual = computed(() => ['customer', 'user', 'product', 'inventory'].includes(props.module.key))
+const canManual = computed(() => ['customer', 'user', 'product', 'supplier', 'inventory'].includes(props.module.key))
 const canUsePrimary = computed(() => Boolean(props.module.actionLabel)
   && (props.module.importType !== 'COST' || ['ADMIN', 'FINANCE'].includes(props.currentUserRole ?? 'USER')))
 function primary() { if (canUsePrimary.value) emit('action') }

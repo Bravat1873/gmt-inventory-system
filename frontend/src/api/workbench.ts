@@ -164,8 +164,18 @@ export interface SupplierProductConfig {
 
 export interface SupplierCommand {
   supplierName: string
+  manufacturerCategory?: string
+  manufacturerType?: string
+  supplierLocation?: string
+  productAttribute?: string
+  shortName?: string
   contactName?: string
+  contactTitle?: string
   phone?: string
+  address?: string
+  currency?: string
+  taxRegistrationNo?: string
+  bankAddress?: string
   bankAccount?: string
   products: SupplierProductConfig[]
   version?: number

@@ -29,11 +29,19 @@ public class SupplierManagementService {
     public Map<String, Object> create(SupplierCommandRequest request) {
         validate(request);
         long id = insert("""
-                        INSERT INTO supplier(supplier_code,supplier_name,contact_name,phone,bank_account,enabled)
-                        VALUES(?,?,?,?,?,TRUE)
+                        INSERT INTO supplier(
+                            supplier_code,supplier_name,manufacturer_category,manufacturer_type,supplier_location,
+                            product_attribute,short_name,contact_name,contact_title,phone,address,currency,
+                            tax_registration_no,bank_address,bank_account,enabled)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
                         """,
-                generatedCode(), trim(request.supplierName()), emptyToNull(request.contactName()),
-                emptyToNull(request.phone()), emptyToNull(request.bankAccount()));
+                generatedCode(), trim(request.supplierName()), trimmedOrNull(request.manufacturerCategory()),
+                trimmedOrNull(request.manufacturerType()), trimmedOrNull(request.supplierLocation()),
+                trimmedOrNull(request.productAttribute()), trimmedOrNull(request.shortName()),
+                trimmedOrNull(request.contactName()), trimmedOrNull(request.contactTitle()),
+                preservedOrNull(request.phone()), trimmedOrNull(request.address()), trimmedOrNull(request.currency()),
+                preservedOrNull(request.taxRegistrationNo()), trimmedOrNull(request.bankAddress()),
+                preservedOrNull(request.bankAccount()));
         replaceProducts(id, request.products());
         return queries.supplierDetail(id);
     }
@@ -46,11 +54,18 @@ public class SupplierManagementService {
         }
         int changed = jdbc.update("""
                         UPDATE supplier
-                        SET supplier_name=?,contact_name=?,phone=?,bank_account=?,version=version+1
+                        SET supplier_name=?,manufacturer_category=?,manufacturer_type=?,supplier_location=?,
+                            product_attribute=?,short_name=?,contact_name=?,contact_title=?,phone=?,address=?,currency=?,
+                            tax_registration_no=?,bank_address=?,bank_account=?,version=version+1
                         WHERE id=? AND version=?
                         """,
-                trim(request.supplierName()), emptyToNull(request.contactName()), emptyToNull(request.phone()),
-                emptyToNull(request.bankAccount()), id, request.version());
+                trim(request.supplierName()), trimmedOrNull(request.manufacturerCategory()),
+                trimmedOrNull(request.manufacturerType()), trimmedOrNull(request.supplierLocation()),
+                trimmedOrNull(request.productAttribute()), trimmedOrNull(request.shortName()),
+                trimmedOrNull(request.contactName()), trimmedOrNull(request.contactTitle()),
+                preservedOrNull(request.phone()), trimmedOrNull(request.address()), trimmedOrNull(request.currency()),
+                preservedOrNull(request.taxRegistrationNo()), trimmedOrNull(request.bankAddress()),
+                preservedOrNull(request.bankAccount()), id, request.version());
         if (changed == 0) {
             throw new IllegalStateException("供应商资料已被其他操作修改，请重新打开后再试");
         }
@@ -117,8 +132,12 @@ public class SupplierManagementService {
         return value.trim();
     }
 
-    private String emptyToNull(String value) {
+    private String trimmedOrNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String preservedOrNull(String value) {
+        return value == null || value.isEmpty() ? null : value;
     }
 
     private String generatedCode() {

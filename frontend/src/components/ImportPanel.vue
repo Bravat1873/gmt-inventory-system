@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { commitImport, previewImport, type ImportType, type SupplierImportMode } from '../api/imports'
+import {
+  commitImport,
+  previewImport,
+  type ImportBatch,
+  type ImportRow,
+  type ImportType,
+  type SupplierImportMode
+} from '../api/imports'
 
 const props = defineProps<{ type: ImportType; title: string }>()
 const emit = defineEmits<{ close: []; message: [text: string, kind: 'success' | 'error'] }>()
@@ -10,7 +17,31 @@ const selectedFilename = ref('')
 const importedRows = ref<number | null>(null)
 const errorMessage = ref('')
 const supplierMode = ref<SupplierImportMode>('OVERWRITE')
+const previewBatch = ref<ImportBatch | null>(null)
 const errorText = (error: unknown) => error instanceof Error ? error.message : '导入失败，请稍后重试'
+
+const supplierFieldLabels: Record<string, string> = {
+  manufacturerCategory: '厂商分类',
+  manufacturerType: '厂商类型',
+  supplierLocation: '供应商地点',
+  productAttribute: '产品属性',
+  shortName: '简称',
+  supplierName: '供应商名称',
+  contactName: '联系人',
+  contactTitle: '职称',
+  phone: '联系方式',
+  address: '供应商地址',
+  currency: '币种',
+  taxRegistrationNo: '税务登记号',
+  bankAddress: '开户地址',
+  bankAccount: '开户账户'
+}
+
+function displayedFields(row: ImportRow) {
+  return Object.entries(row.data)
+    .filter(([key, value]) => !key.startsWith('_') && value !== null && value !== undefined)
+    .map(([key, value]) => ({ key, label: supplierFieldLabels[key] ?? key, value: String(value) }))
+}
 
 async function onFileChange(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
@@ -18,15 +49,36 @@ async function onFileChange(event: Event) {
   busy.value = true
   selectedFilename.value = file.name
   importedRows.value = null
+  previewBatch.value = null
   errorMessage.value = ''
   try {
     const batch = await previewImport(props.type, file)
-    if (props.type === 'SUPPLIER' && supplierMode.value === 'REPLACE_ALL'
-      && !window.confirm('全量替换将停用文件中不存在的供应商，是否继续？')) return
-    const committed = props.type === 'SUPPLIER'
-      ? await commitImport(batch.batchId, supplierMode.value)
-      : await commitImport(batch.batchId)
+    if (props.type === 'SUPPLIER') {
+      previewBatch.value = batch
+      return
+    }
+    const committed = await commitImport(batch.batchId)
     importedRows.value = committed.committedRows
+    emit('message', `成功导入 ${committed.committedRows} 条数据`, 'success')
+  } catch (error) {
+    errorMessage.value = errorText(error)
+    emit('message', errorMessage.value, 'error')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function confirmSupplierImport() {
+  const batch = previewBatch.value
+  if (!batch || busy.value) return
+  if (supplierMode.value === 'REPLACE_ALL'
+    && !window.confirm('全量替换将停用文件中不存在的供应商，是否继续？')) return
+  busy.value = true
+  errorMessage.value = ''
+  try {
+    const committed = await commitImport(batch.batchId, supplierMode.value)
+    importedRows.value = committed.committedRows
+    previewBatch.value = null
     emit('message', `成功导入 ${committed.committedRows} 条数据`, 'success')
   } catch (error) {
     errorMessage.value = errorText(error)
@@ -38,9 +90,9 @@ async function onFileChange(event: Event) {
 </script>
 
 <template>
-  <section class="import-panel simple-import-panel" aria-label="Excel 导入面板">
+  <section class="import-panel simple-import-panel supplier-preview-panel" aria-label="Excel 导入面板">
     <header class="import-header">
-      <div><h2>{{ title }}</h2><p>选择 Excel 文件后，系统会自动解析并导入当前页面的数据。</p></div>
+      <div><h2>{{ title }}</h2><p>{{ type === 'SUPPLIER' ? '选择文件后先核对预览，再确认写入供应商资料。' : '选择 Excel 文件后，系统会自动解析并导入当前页面的数据。' }}</p></div>
       <button data-test="close-panel" type="button" class="dialog-close" @click="emit('close')">关闭</button>
     </header>
 
@@ -57,15 +109,52 @@ async function onFileChange(event: Event) {
             <span><strong>全量替换</strong><small>同时停用文件中不存在的供应商</small></span>
           </label>
         </div>
-        <p v-if="supplierMode === 'REPLACE_ALL'" class="supplier-import-warning" role="note">全量替换会停用文件中不存在的供应商；完成预览后，系统会再次确认。</p>
+        <p v-if="supplierMode === 'REPLACE_ALL'" class="supplier-import-warning" role="note">全量替换会停用文件中不存在的供应商；确认导入时，系统会再次询问。</p>
       </fieldset>
+
       <label class="file-picker" :class="{ disabled: busy }">
-        <span>{{ busy ? '正在导入…' : '选择 Excel 文件' }}</span>
+        <span>{{ busy ? '正在处理…' : '选择 Excel 文件' }}</span>
         <input type="file" :accept="type === 'SUPPLIER' ? '.xls,.xlsx' : '.xlsx'" :disabled="busy" @change="onFileChange" />
       </label>
       <p v-if="selectedFilename" class="filename">{{ selectedFilename }}</p>
       <p v-else class="simple-import-hint">{{ type === 'SUPPLIER' ? '支持 .xls 和 .xlsx 文件' : '支持 .xlsx 文件' }}</p>
-      <p v-if="busy" class="simple-import-status">正在解析并写入数据，请稍候…</p>
+      <p v-if="busy" class="simple-import-status">{{ previewBatch ? '正在提交数据，请稍候…' : '正在解析文件，请稍候…' }}</p>
+
+      <section v-if="previewBatch && importedRows === null" class="supplier-preview" aria-label="供应商导入预览">
+        <div class="supplier-preview-summary">
+          <span>总行数 <strong data-test="preview-total-count">{{ previewBatch.totalRows }}</strong></span>
+          <span>有效行 <strong data-test="preview-valid-count">{{ previewBatch.validRows }}</strong></span>
+          <span>错误行 <strong data-test="preview-error-count">{{ previewBatch.errorRows }}</strong></span>
+        </div>
+        <div class="supplier-preview-table-wrap">
+          <table class="supplier-preview-table">
+            <thead><tr><th>状态</th><th>来源</th><th>标准化字段</th></tr></thead>
+            <tbody>
+              <tr v-for="row in previewBatch.rows" :key="row.id" data-test="preview-row">
+                <td><span :class="['supplier-preview-status', row.status.toLowerCase()]">{{ row.status === 'VALID' ? '有效' : row.status === 'ERROR' ? '错误' : '忽略' }}</span></td>
+                <td>{{ row.sheetName }} · 第 {{ row.rowNumber }} 行</td>
+                <td>
+                  <dl class="supplier-preview-fields">
+                    <div v-for="field in displayedFields(row)" :key="field.key"><dt>{{ field.label }}</dt><dd>{{ field.value }}</dd></div>
+                  </dl>
+                  <p v-if="row.errorMessage" class="supplier-preview-error">{{ row.errorMessage }}</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="supplier-preview-actions">
+          <p v-if="supplierMode === 'REPLACE_ALL' && previewBatch.errorRows > 0">全量替换前必须修正所有错误行。</p>
+          <button
+            data-test="commit-import"
+            type="button"
+            class="primary-action"
+            :disabled="busy || (supplierMode === 'REPLACE_ALL' && previewBatch.errorRows > 0)"
+            @click="confirmSupplierImport"
+          >确认导入</button>
+        </div>
+      </section>
+
       <p v-else-if="importedRows !== null" data-test="import-success" class="simple-import-success">成功导入 {{ importedRows }} 条数据。关闭窗口后，列表会自动刷新。</p>
       <p v-else-if="errorMessage" class="simple-import-error">导入失败：{{ errorMessage }}</p>
     </div>
@@ -73,3 +162,20 @@ async function onFileChange(event: Event) {
     <footer class="simple-import-footer"><button type="button" class="secondary-action" @click="emit('close')">完成</button></footer>
   </section>
 </template>
+
+<style scoped>
+.supplier-preview-panel { width:min(920px,calc(100vw - 48px)); max-height:min(760px,calc(100vh - 48px)); }
+.supplier-preview-panel .simple-import-body { max-height:620px; overflow:auto; }
+.supplier-preview { width:100%; border-top:1px solid #e5e7eb; padding-top:14px; }
+.supplier-preview-summary { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
+.supplier-preview-summary span { padding:7px 10px; border:1px solid #e1e4e8; border-radius:3px; color:#555; background:#fafafa; font-size:13px; }
+.supplier-preview-table-wrap { overflow:auto; border:1px solid #e1e4e8; border-radius:4px; }
+.supplier-preview-table { width:100%; min-width:760px; border-collapse:collapse; }
+.supplier-preview-table th,.supplier-preview-table td { height:auto; padding:10px; border-bottom:1px solid #eceff1; text-align:left; vertical-align:top; font-size:12px; white-space:normal; }
+.supplier-preview-status { display:inline-flex; padding:3px 7px; border-radius:999px; }
+.supplier-preview-status.valid { color:#17633c; background:#eaf6ee; }.supplier-preview-status.error { color:#a13226; background:#fff0ee; }.supplier-preview-status.ignored { color:#666; background:#f1f2f3; }
+.supplier-preview-fields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px 10px; margin:0; }
+.supplier-preview-fields div { min-width:0; }.supplier-preview-fields dt { color:#777; }.supplier-preview-fields dd { margin:2px 0 0; overflow-wrap:anywhere; color:#222; }
+.supplier-preview-error { margin:8px 0 0; color:#a13226; }
+.supplier-preview-actions { display:flex; align-items:center; justify-content:flex-end; gap:12px; margin-top:12px; }.supplier-preview-actions p { margin:0 auto 0 0; color:#a13226; font-size:12px; }
+</style>

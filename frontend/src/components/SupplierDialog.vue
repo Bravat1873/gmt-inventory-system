@@ -15,18 +15,6 @@ const props = defineProps<{ row?: Record<string, unknown> }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
 
 type ProductRow = SupplierProductConfig & { label: string }
-type SupplierProfileCommand = SupplierCommand & {
-  manufacturerCategory?: string
-  manufacturerType?: string
-  supplierLocation?: string
-  productAttribute?: string
-  shortName?: string
-  contactTitle?: string
-  address?: string
-  currency?: string
-  taxRegistrationNo?: string
-  bankAddress?: string
-}
 
 const form = reactive({
   manufacturerCategory: '',
@@ -89,7 +77,7 @@ function preservedOrUndefined(value: string) {
   return value === '' ? undefined : value
 }
 
-function payload(): SupplierProfileCommand {
+function payload(): SupplierCommand {
   return {
     manufacturerCategory: trimmedOrUndefined(form.manufacturerCategory),
     manufacturerType: trimmedOrUndefined(form.manufacturerType),
