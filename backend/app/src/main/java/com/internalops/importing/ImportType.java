@@ -3,5 +3,6 @@ package com.internalops.importing;
 public enum ImportType {
     CUSTOMER,
     COST,
-    INVENTORY
+    INVENTORY,
+    SUPPLIER
 }

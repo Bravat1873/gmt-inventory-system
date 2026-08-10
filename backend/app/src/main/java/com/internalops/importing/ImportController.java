@@ -57,7 +57,10 @@ public class ImportController {
         ImportConflictPolicy policy = request == null
                 ? ImportConflictPolicy.UPSERT_KEEP_EXISTING_ON_BLANK
                 : request.resolvedPolicy();
-        return ApiResponse.ok(commitService.commit(batchId, policy));
+        ImportCommitRequest.SupplierMode supplierMode = request == null
+                ? ImportCommitRequest.SupplierMode.OVERWRITE
+                : request.resolvedSupplierMode();
+        return ApiResponse.ok(commitService.commit(batchId, policy, supplierMode));
     }
 
     @GetMapping("/{batchId}/errors.xlsx")

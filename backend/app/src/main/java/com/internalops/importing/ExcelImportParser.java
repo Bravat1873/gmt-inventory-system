@@ -13,6 +13,7 @@ public class ExcelImportParser {
                 case CUSTOMER -> new CustomerExcelParser().parse(workbook);
                 case COST -> new CostExcelParser().parse(workbook);
                 case INVENTORY -> new InventoryExcelParser().parse(workbook);
+                case SUPPLIER -> new SupplierExcelParser().parse(workbook);
             };
         } catch (IllegalArgumentException exception) {
             throw exception;

@@ -14,9 +14,11 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class ImportCommitService {
@@ -32,11 +34,17 @@ public class ImportCommitService {
 
     @Transactional
     public ImportBatchView commit(long batchId) {
-        return commit(batchId, null);
+        return commit(batchId, null, ImportCommitRequest.SupplierMode.OVERWRITE);
     }
 
     @Transactional
     public ImportBatchView commit(long batchId, ImportConflictPolicy policy) {
+        return commit(batchId, policy, ImportCommitRequest.SupplierMode.OVERWRITE);
+    }
+
+    @Transactional
+    public ImportBatchView commit(long batchId, ImportConflictPolicy policy,
+                                  ImportCommitRequest.SupplierMode supplierMode) {
         ImportBatchView batch = repository.findBatch(batchId);
         if (batch.importType() == ImportType.COST
                 && !CurrentUser.required().role().canEditProductPrice()) {
@@ -55,6 +63,9 @@ public class ImportCommitService {
             repository.markCommitted(batchId, batch.totalRows(), result);
             return repository.findBatch(batchId);
         }
+        if (batch.importType() == ImportType.SUPPLIER) {
+            return commitSuppliers(batch, supplierMode);
+        }
         int created = 0;
         int updated = 0;
         int committed = 0;
@@ -70,6 +81,7 @@ public class ImportCommitService {
                 case CUSTOMER -> commitCustomer(row.data());
                 case INVENTORY -> commitInventory(batchId, row.data());
                 case COST -> commitCost(batchId, row.data());
+                case SUPPLIER -> throw new IllegalStateException("供应商批次必须使用供应商提交策略");
             };
             if (wasCreated) created++; else updated++;
             committed++;
@@ -84,6 +96,131 @@ public class ImportCommitService {
         result.put("policy", policy == null ? "ROW_OVERRIDE" : policy.name());
         repository.markCommitted(batchId, committed, result);
         return repository.findBatch(batchId);
+    }
+
+    private ImportBatchView commitSuppliers(ImportBatchView batch, ImportCommitRequest.SupplierMode mode) {
+        if (mode == ImportCommitRequest.SupplierMode.REPLACE_ALL && batch.errorRows() > 0) {
+            throw new IllegalArgumentException("全量替换前必须修正所有错误行");
+        }
+        jdbc.queryForList("SELECT id FROM supplier FOR UPDATE", Long.class);
+        Map<String, Long> existingByName = new LinkedHashMap<>();
+        for (Map<String, Object> supplier : jdbc.queryForList("SELECT id,supplier_name FROM supplier ORDER BY id")) {
+            existingByName.putIfAbsent(normalizeName(String.valueOf(supplier.get("supplier_name"))),
+                    ((Number) supplier.get("id")).longValue());
+        }
+        Set<String> usedCodes = new LinkedHashSet<>(jdbc.queryForList(
+                "SELECT supplier_code FROM supplier", String.class));
+        int nextNumber = nextSupplierNumber(usedCodes);
+        Set<String> importedNames = new LinkedHashSet<>();
+        Set<Long> importedIds = new LinkedHashSet<>();
+        int created = 0;
+        int updated = 0;
+        for (ImportRowView row : batch.rows()) {
+            if (row.status() != ImportRowStatus.VALID) continue;
+            String name = text(row.data(), "supplierName");
+            if (name.isBlank()) throw new IllegalArgumentException("供应商名称不能为空");
+            String normalizedName = normalizeName(name);
+            if (!importedNames.add(normalizedName)) throw new IllegalArgumentException("供应商名称重复");
+            Long existingId = existingByName.get(normalizedName);
+            if (existingId == null) {
+                String code;
+                do {
+                    code = "SUP" + String.format("%05d", nextNumber++);
+                } while (!usedCodes.add(code));
+                long id = insertSupplier(code, name, row.data());
+                existingByName.put(normalizedName, id);
+                importedIds.add(id);
+                created++;
+            } else {
+                updateSupplier(existingId, name, row.data());
+                importedIds.add(existingId);
+                updated++;
+            }
+        }
+        int disabled = 0;
+        if (mode == ImportCommitRequest.SupplierMode.REPLACE_ALL) {
+            for (Long id : jdbc.queryForList("SELECT id FROM supplier", Long.class)) {
+                if (!importedIds.contains(id)) {
+                    disabled += jdbc.update("UPDATE supplier SET enabled=FALSE WHERE id=? AND enabled=TRUE", id);
+                }
+            }
+        }
+        int committed = created + updated;
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("created", created);
+        result.put("updated", updated);
+        result.put("committed", committed);
+        result.put("errors", batch.errorRows());
+        result.put("ignored", batch.ignoredRows());
+        result.put("skipped", 0);
+        result.put("disabled", disabled);
+        result.put("mode", mode.name());
+        repository.markCommitted(batch.batchId(), committed, result);
+        return repository.findBatch(batch.batchId());
+    }
+
+    private int nextSupplierNumber(Set<String> codes) {
+        int max = 0;
+        for (String code : codes) {
+            if (code == null || !code.matches("SUP\\d+")) continue;
+            try {
+                max = Math.max(max, Integer.parseInt(code.substring(3)));
+            } catch (NumberFormatException ignored) {
+                // Ignore supplier codes outside the generated integer range.
+            }
+        }
+        return max + 1;
+    }
+
+    private long insertSupplier(String code, String name, Map<String, Object> data) {
+        KeyHolder keys = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO supplier(
+                        supplier_code,supplier_name,manufacturer_category,manufacturer_type,supplier_location,
+                        product_attribute,short_name,contact_name,contact_title,phone,address,currency,
+                        tax_registration_no,bank_address,bank_account,enabled)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
+                    """, Statement.RETURN_GENERATED_KEYS);
+            statement.setString(1, code);
+            statement.setString(2, name);
+            statement.setObject(3, nullableText(data, "manufacturerCategory"));
+            statement.setObject(4, nullableText(data, "manufacturerType"));
+            statement.setObject(5, nullableText(data, "supplierLocation"));
+            statement.setObject(6, nullableText(data, "productAttribute"));
+            statement.setObject(7, nullableText(data, "shortName"));
+            statement.setObject(8, nullableText(data, "contactName"));
+            statement.setObject(9, nullableText(data, "contactTitle"));
+            statement.setObject(10, nullableText(data, "phone"));
+            statement.setObject(11, nullableText(data, "address"));
+            statement.setObject(12, nullableText(data, "currency"));
+            statement.setObject(13, nullableText(data, "taxRegistrationNo"));
+            statement.setObject(14, nullableText(data, "bankAddress"));
+            statement.setObject(15, nullableText(data, "bankAccount"));
+            return statement;
+        }, keys);
+        if (keys.getKey() == null) throw new IllegalStateException("新增供应商失败，未生成数据编号");
+        return keys.getKey().longValue();
+    }
+
+    private void updateSupplier(long id, String name, Map<String, Object> data) {
+        jdbc.update("""
+                        UPDATE supplier SET
+                            supplier_name=?,manufacturer_category=?,manufacturer_type=?,supplier_location=?,
+                            product_attribute=?,short_name=?,contact_name=?,contact_title=?,phone=?,address=?,
+                            currency=?,tax_registration_no=?,bank_address=?,bank_account=?,enabled=TRUE
+                        WHERE id=?
+                        """,
+                name, nullableText(data, "manufacturerCategory"), nullableText(data, "manufacturerType"),
+                nullableText(data, "supplierLocation"), nullableText(data, "productAttribute"),
+                nullableText(data, "shortName"), nullableText(data, "contactName"),
+                nullableText(data, "contactTitle"), nullableText(data, "phone"), nullableText(data, "address"),
+                nullableText(data, "currency"), nullableText(data, "taxRegistrationNo"),
+                nullableText(data, "bankAddress"), nullableText(data, "bankAccount"), id);
+    }
+
+    private Object nullableText(Map<String, Object> data, String key) {
+        return emptyToNull(text(data, key));
     }
 
     private boolean shouldSkip(ImportRowView row, boolean conflict, ImportConflictPolicy policy) {

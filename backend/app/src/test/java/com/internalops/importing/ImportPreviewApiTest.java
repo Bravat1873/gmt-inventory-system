@@ -1,5 +1,6 @@
 package com.internalops.importing;
 
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,17 @@ class ImportPreviewApiTest {
     MockMvc mvc;
     @Autowired
     ImportBatchRepository repository;
+
+    @Test
+    void previewsLegacyXlsSupplierWorkbook() throws Exception {
+        var file = new MockMultipartFile("file", "供应商.xls", "application/vnd.ms-excel", supplierXlsWorkbook());
+
+        mvc.perform(multipart("/api/imports/preview").file(file).param("type", "SUPPLIER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.importType").value("SUPPLIER"))
+                .andExpect(jsonPath("$.data.validRows").value(1))
+                .andExpect(jsonPath("$.data.rows[0].data.supplierName").value("旧版供应商"));
+    }
 
     @Test
     void createsANewImportBatchAndAllowsManualCorrection() throws Exception {
@@ -110,6 +122,21 @@ class ImportPreviewApiTest {
     private byte[] customerWorkbook() throws Exception {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             workbook.createSheet("Sheet1").createRow(0).createCell(0).setCellValue("测试客户");
+            workbook.write(output);
+            return output.toByteArray();
+        }
+    }
+
+    private byte[] supplierXlsWorkbook() throws Exception {
+        try (var workbook = new HSSFWorkbook(); var output = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("Sheet1");
+            sheet.createRow(0).createCell(0).setCellValue("供应商通讯录");
+            var header = sheet.createRow(1);
+            header.createCell(0).setCellValue("供应商名称");
+            header.createCell(1).setCellValue("联系方式");
+            var row = sheet.createRow(2);
+            row.createCell(0).setCellValue("旧版供应商");
+            row.createCell(1).setCellValue("00123");
             workbook.write(output);
             return output.toByteArray();
         }

@@ -52,6 +52,7 @@ public class ImportValidationService {
             case CUSTOMER -> validateCustomer(sheet, rowNumber, data);
             case COST -> validateCost(sheet, rowNumber, data);
             case INVENTORY -> validateInventory(sheet, rowNumber, data);
+            case SUPPLIER -> validateSupplier(sheet, rowNumber, data);
         };
     }
 
@@ -75,6 +76,8 @@ public class ImportValidationService {
                         .stream().map(this::normalizeCustomer).anyMatch(normalizeCustomer(text(data, "customerName"))::equals);
                 case COST, INVENTORY -> jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE sku_code=?", Integer.class,
                         text(data, "skuCode")) > 0;
+                case SUPPLIER -> jdbc.query("SELECT supplier_name FROM supplier", (rs, index) -> rs.getString(1))
+                        .stream().map(this::normalizeCustomer).anyMatch(normalizeCustomer(text(data, "supplierName"))::equals);
             };
         } catch (RuntimeException exception) {
             return false;
@@ -85,6 +88,12 @@ public class ImportValidationService {
         String name = text(data, "customerName").replace('(', '（').replace(')', '）').trim();
         data.put("customerName", name);
         return name.isBlank() ? error(sheet, row, data, "客户名称不能为空") : valid(sheet, row, data);
+    }
+
+    private ParsedImportRow validateSupplier(String sheet, int row, Map<String, Object> data) {
+        String name = text(data, "supplierName").replace('(', '（').replace(')', '）').trim();
+        data.put("supplierName", name);
+        return name.isBlank() ? error(sheet, row, data, "供应商名称不能为空") : valid(sheet, row, data);
     }
 
     private ParsedImportRow validateCost(String sheet, int row, Map<String, Object> data) {

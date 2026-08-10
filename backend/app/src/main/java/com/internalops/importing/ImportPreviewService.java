@@ -21,13 +21,15 @@ public class ImportPreviewService {
     @Transactional
     public ImportBatchView preview(ImportType type, MultipartFile file) {
         try {
-            if (file.isEmpty() || file.getOriginalFilename() == null || !file.getOriginalFilename().toLowerCase().endsWith(".xlsx")) {
-                throw new IllegalArgumentException("请选择有效的 .xlsx 文件");
+            String filename = file.getOriginalFilename();
+            if (file.isEmpty() || filename == null
+                    || !(filename.toLowerCase().endsWith(".xls") || filename.toLowerCase().endsWith(".xlsx"))) {
+                throw new IllegalArgumentException("请选择有效的 .xls 或 .xlsx 文件");
             }
             byte[] bytes = file.getBytes();
             List<ParsedImportRow> parsedRows = new ExcelImportParser().parse(type, new ByteArrayInputStream(bytes));
             List<ParsedImportRow> rows = validation.validateAll(type, parsedRows);
-            long id = repository.create(type, file.getOriginalFilename(), UUID.randomUUID().toString().replace("-", ""), rows);
+            long id = repository.create(type, filename, UUID.randomUUID().toString().replace("-", ""), rows);
             return repository.findBatch(id);
         } catch (IllegalArgumentException exception) {
             throw exception;
