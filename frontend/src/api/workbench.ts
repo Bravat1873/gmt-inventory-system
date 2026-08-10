@@ -9,10 +9,12 @@ export interface PageResult {
 const API_BASE = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL ?? ''
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const formData = init?.body instanceof FormData
+  const headers = { ...(formData ? {} : { 'Content-Type': 'application/json' }), ...(init?.headers ?? {}) }
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) }
+    headers
   })
   const payload = await response.json()
   if (!response.ok || !payload.success) throw new Error(payload.message || '操作失败')
@@ -21,6 +23,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function loadModule(module: string, query: URLSearchParams) {
   return request<PageResult>(`/api/workbench/${module}?${query.toString()}`)
+}
+
+export interface ProductImage {
+  id: number
+  productId: number
+  originalFilename: string
+  contentType: string
+  fileSize: number
+  primary: boolean
+  sortOrder: number
+  contentUrl: string
+}
+
+export function loadProductImages(productId: number) {
+  return request<ProductImage[]>(`/api/products/${productId}/images`)
+}
+
+export function uploadProductImages(productId: number, files: File[]) {
+  const body = new FormData()
+  files.forEach(file => body.append('files', file))
+  return request<ProductImage[]>(`/api/products/${productId}/images`, { method: 'POST', body })
+}
+
+export function setPrimaryProductImage(productId: number, imageId: number) {
+  return request<ProductImage[]>(`/api/products/${productId}/images/${imageId}/primary`, { method: 'PUT' })
+}
+
+export function reorderProductImages(productId: number, imageIds: number[]) {
+  return request<ProductImage[]>(`/api/products/${productId}/images/order`, {
+    method: 'PUT',
+    body: JSON.stringify({ imageIds })
+  })
+}
+
+export function deleteProductImage(productId: number, imageId: number) {
+  return request<ProductImage[]>(`/api/products/${productId}/images/${imageId}`, { method: 'DELETE' })
 }
 
 export interface InventoryMovement {
