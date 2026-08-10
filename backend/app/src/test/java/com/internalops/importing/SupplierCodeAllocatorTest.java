@@ -25,6 +25,12 @@ class SupplierCodeAllocatorTest {
     }
 
     @Test
+    void wrapsToTheFirstAvailableCodeWhenTheHighestCodeIsUsed() {
+        assertThat(ImportCommitService.nextSupplierCode(Set.of("SUP99999")))
+                .isEqualTo("SUP00001");
+    }
+
+    @Test
     void rejectsWhenAllFiveDigitSupplierCodesAreUsed() {
         Set<String> codes = IntStream.rangeClosed(1, 99_999)
                 .mapToObj(number -> "SUP" + String.format(Locale.ROOT, "%05d", number))

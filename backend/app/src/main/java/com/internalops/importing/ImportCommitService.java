@@ -184,6 +184,10 @@ public class ImportCommitService {
             String candidate = "SUP" + String.format(Locale.ROOT, "%05d", number);
             if (!normalizedCodes.contains(candidate)) return candidate;
         }
+        for (int number = 1; number <= max; number++) {
+            String candidate = "SUP" + String.format(Locale.ROOT, "%05d", number);
+            if (!normalizedCodes.contains(candidate)) return candidate;
+        }
         throw new IllegalStateException("\u4F9B\u5E94\u5546\u7F16\u7801 SUP \u4E94\u4F4D\u5E8F\u53F7\u5DF2\u8017\u5C3D");
     }
     private long insertSupplier(String code, String name, Map<String, Object> data) {
