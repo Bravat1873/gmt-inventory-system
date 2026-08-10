@@ -133,6 +133,15 @@ public class ImportBatchRepository {
         return findRow(batchId, rowId);
     }
 
+    public ImportBatchView findBatchForUpdate(long batchId) {
+        var batches = jdbc.query("SELECT * FROM import_batch WHERE id=? FOR UPDATE", (rs, index) -> new ImportBatchView(
+                rs.getLong("id"), ImportType.valueOf(rs.getString("import_type")), rs.getString("original_filename"),
+                rs.getString("status"), rs.getInt("total_rows"), rs.getInt("valid_rows"), rs.getInt("error_rows"),
+                rs.getInt("ignored_rows"), rs.getInt("committed_rows"), readJsonObject(rs.getString("result_detail")),
+                findRows(batchId)), batchId);
+        if (batches.isEmpty()) throw new IllegalArgumentException("\u5BFC\u5165\u6279\u6B21\u4E0D\u5B58\u5728");
+        return batches.get(0);
+    }
     public ImportBatchView findBatch(long batchId) {
         var batches = jdbc.query("SELECT * FROM import_batch WHERE id=?", (rs, index) -> new ImportBatchView(
                 rs.getLong("id"), ImportType.valueOf(rs.getString("import_type")), rs.getString("original_filename"),
