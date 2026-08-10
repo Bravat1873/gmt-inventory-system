@@ -47,6 +47,26 @@ class WorkbenchQueryApiTest {
     }
 
     @Test
+    void productRowsExposePrimaryImageSummaryWithoutLoadingTheGallery() throws Exception {
+        mvc.perform(get("/api/workbench/product")
+                        .param("keyword", "GALLERY-WITH-IMAGES"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].imageCount").value(3))
+                .andExpect(jsonPath("$.data.items[0].primaryImageId").value(502))
+                .andExpect(jsonPath("$.data.items[0].primaryImageUrl")
+                        .value("/api/product-images/502/content"));
+
+        mvc.perform(get("/api/workbench/product")
+                        .param("keyword", "GALLERY-WITHOUT-IMAGES"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].imageCount").value(0))
+                .andExpect(jsonPath("$.data.items[0].primaryImageId").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].primaryImageUrl").isEmpty());
+    }
+
+    @Test
     void rejectsUnknownSortFieldWithChineseMessage() throws Exception {
         mvc.perform(get("/api/workbench/customer").param("sort", "dropTable"))
                 .andExpect(status().isBadRequest())

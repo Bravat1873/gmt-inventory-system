@@ -18,6 +18,7 @@ public class WorkbenchQueryService {
             Map.entry("updatedat", "updatedAt"), Map.entry("skucode", "skuCode"),
             Map.entry("productname", "productName"), Map.entry("lockbody", "lockBody"),
             Map.entry("productversion", "productVersion"), Map.entry("currentcost", "currentCost"),
+            Map.entry("imagecount", "imageCount"), Map.entry("primaryimageid", "primaryImageId"),
             Map.entry("factoryprice", "factoryPrice"), Map.entry("pricedifference", "priceDifference"), Map.entry("remark", "remark"),
             Map.entry("supplierid", "supplierId"), Map.entry("suppliername", "supplierName"),
             Map.entry("suppliercode", "supplierCode"), Map.entry("bankaccount", "bankAccount"),
@@ -89,6 +90,15 @@ public class WorkbenchQueryService {
             items = items.stream().map(row -> {
                 Map<String, Object> item = new LinkedHashMap<>(row);
                 item.put("movementSummary", inventoryMovementSummary(((Number) item.get("id")).longValue()));
+                return item;
+            }).toList();
+        }
+        if ("product".equals(module)) {
+            items = items.stream().map(row -> {
+                Map<String, Object> item = new LinkedHashMap<>(row);
+                Object primaryImageId = item.get("primaryImageId");
+                item.put("primaryImageUrl", primaryImageId == null
+                        ? null : "/api/product-images/" + primaryImageId + "/content");
                 return item;
             }).toList();
         }
@@ -212,6 +222,8 @@ public class WorkbenchQueryService {
                 "SELECT s.id, s.sku_code AS `skuCode`, s.model, s.product_name AS `productName`, s.color, "
                         + "s.lock_body AS `lockBody`, s.product_version AS `productVersion`, s.configuration, s.unit, "
                         + "s.current_cost AS `currentCost`, s.factory_price AS `factoryPrice`, (s.factory_price-s.current_cost) AS `priceDifference`, s.product_remark AS remark, s.enabled, s.updated_at AS `updatedAt`, s.version, "
+                        + "(SELECT COUNT(*) FROM product_image pi WHERE pi.product_id=s.id) AS `imageCount`, "
+                        + "(SELECT pi.id FROM product_image pi WHERE pi.product_id=s.id AND pi.is_primary=TRUE LIMIT 1) AS `primaryImageId`, "
                         + "ssc.supplier_id AS `supplierId`, sp.supplier_name AS `supplierName`, ssc.purchase_price AS `purchasePrice`, "
                         + "ssc.moq, ssc.lead_time_days AS `leadTimeDays`",
                 "FROM sku s LEFT JOIN sku_supplier_config ssc ON ssc.sku_id=s.id AND ssc.enabled=TRUE "
