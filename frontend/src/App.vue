@@ -14,6 +14,7 @@ import ReceiptDialog from './components/ReceiptDialog.vue'
 import ShipmentQuantityDialog from './components/ShipmentQuantityDialog.vue'
 import InventoryMovementDialog from './components/InventoryMovementDialog.vue'
 import BusinessTraceDialog from './components/BusinessTraceDialog.vue'
+import ProductGalleryDialog from './components/ProductGalleryDialog.vue'
 import ActionInputDialog from './components/ActionInputDialog.vue'
 import { getOrder, loadBusinessTrace, loadInventoryMovements, loadPurchase, postAction, type BusinessTrace, type InventoryMovement, type PurchaseDetail } from './api/workbench'
 import { moduleDefinitions, type ModuleKey } from './modules/module-config'
@@ -37,6 +38,7 @@ const movementOpen = ref(false)
 const traceOpen = ref(false)
 const businessTrace = ref<BusinessTrace | null>(null)
 const inventoryMovements = ref<InventoryMovement[]>([])
+const productGalleryRow = ref<Record<string, unknown>>()
 const editRow = ref<Record<string, unknown>>()
 const list = ref<InstanceType<typeof ModuleListPage>>()
 const actionInput = ref<{ title: string; label: string; placeholder: string; submit: (value: string) => Promise<void> } | null>(null)
@@ -72,6 +74,7 @@ function selectModule(key: ModuleKey) {
   receiptOpen.value = false
   movementOpen.value = false
   traceOpen.value = false
+  productGalleryRow.value = undefined
   actionInput.value = null
   history.pushState(null, '', `${location.pathname}?${new URLSearchParams({ module: key, page: '1' })}`)
 }
@@ -95,6 +98,10 @@ function primary() {
 function manual() {
   editRow.value = undefined
   entityOpen.value = true
+}
+
+function openProductGallery(row: Record<string, unknown>) {
+  if (activeModule.value === 'product') productGalleryRow.value = row
 }
 
 async function edit(row: Record<string, unknown>) {
@@ -181,8 +188,8 @@ async function action(path: string, body: Record<string, unknown> = {}) {
   catch (cause) { showMessage(cause instanceof Error ? cause.message : '办理失败', 'error') }
 }
 
-async function saved() {
-  entityOpen.value = false
+async function saved(closeDialog = true) {
+  if (closeDialog) entityOpen.value = false
   supplierOpen.value = false
   orderOpen.value = false
   manualPurchaseOpen.value = false
@@ -200,7 +207,7 @@ async function saved() {
     <aside class="sidebar" aria-label="主导航"><nav class="nav-list"><button v-for="item in moduleDefinitions" :key="item.key" class="nav-item" :class="{ active: activeModule === item.key }" :data-module="item.key" @click="selectModule(item.key)">{{ item.label }}</button></nav></aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><ModuleListPage ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @shipment="shipment" @workflow="workflow" @message="showMessage" /></div></main>
+    <main><div class="content"><ModuleListPage ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @gallery="openProductGallery" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @shipment="shipment" @workflow="workflow" @message="showMessage" /></div></main>
     <div v-if="importOpen && currentModule.importType && canUseCurrentModulePrimary" class="dialog-mask import-dialog-mask" @click.self="importOpen=false"><ImportPanel :type="currentModule.importType" :title="currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <EntityDialog v-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <SupplierDialog v-if="supplierOpen" :row="editRow" @close="supplierOpen=false" @saved="saved" @message="showMessage" />
@@ -213,5 +220,6 @@ async function saved() {
     <InventoryMovementDialog v-if="movementOpen" :movements="inventoryMovements" @close="movementOpen=false" />
     <BusinessTraceDialog v-if="traceOpen && businessTrace" :trace="businessTrace" @close="traceOpen=false" />
     <ActionInputDialog v-if="actionInput" :title="actionInput.title" :label="actionInput.label" :placeholder="actionInput.placeholder" @close="actionInput=null" @confirm="submitActionInput" />
+    <ProductGalleryDialog v-if="productGalleryRow" :product-id="Number(productGalleryRow.id)" :initial-image-id="productGalleryRow.primaryImageId ? Number(productGalleryRow.primaryImageId) : undefined" @close="productGalleryRow=undefined" />
   </div>
 </template>

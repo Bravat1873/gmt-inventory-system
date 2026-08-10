@@ -5,7 +5,7 @@ import { loadModule, type PageResult } from '../api/workbench'
 import type { ModuleDefinition } from '../modules/module-config'
 
 const props = defineProps<{ module: ModuleDefinition; currentUserRole?: UserRole }>()
-const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
+const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
 const keyword = ref('')
 const loading = ref(false)
 const data = ref<PageResult>({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
@@ -36,7 +36,12 @@ const canUsePrimary = computed(() => Boolean(props.module.actionLabel)
   && (props.module.importType !== 'COST' || ['ADMIN', 'FINANCE'].includes(props.currentUserRole ?? 'USER')))
 function primary() { if (canUsePrimary.value) emit('action') }
 function columnWidth(field: string) {
+  if (field === 'productImage') return 84
   const widths: Record<string, number> = { skuCode: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 160, purchaseNo: 160, businessNo: 160, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 130, lockedQuantity: 130, lockedMingAiJunQiao: 104, lockedBoLeLongMi: 104, lockedLaos: 88, lockedBeiLang: 88, lockedMalaysia: 104, inTransitQuantity: 130, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
+function productImageUrl(row: Record<string, unknown>) {
+  if (row.primaryImageUrl) return String(row.primaryImageUrl)
+  return row.primaryImageId ? `/api/product-images/${Number(row.primaryImageId)}/content` : ''
+}
   return widths[field] ?? 150
 }
 const actionColumnWidth = computed(() => {
@@ -65,7 +70,23 @@ defineExpose({ reload: () => load(data.value.page) })
             <tr v-if="loading"><td :colspan="module.columns.length + 1" class="empty-state">正在读取</td></tr>
             <tr v-else-if="!data.items.length"><td :colspan="module.columns.length + 1" class="empty-state">暂无数据</td></tr>
             <tr v-for="row in data.items" v-else :key="`${String(row.recordType ?? module.key)}-${String(row.id)}`">
-              <td v-for="field in module.fields" :key="field" :title="text(row[field], field)"><span v-if="['order', 'purchase'].includes(module.key) && field === 'status'" class="order-shipment-status"><i class="shipment-status-dot" :class="shipmentCompleted(row) ? 'complete' : 'incomplete'"></i><span class="cell-content">{{ text(row[field], field) }}</span></span><span v-else-if="module.key === 'finance' && field === 'businessType'" data-test="finance-direction" class="finance-direction" :class="isReceivable(row) ? 'receivable' : 'payable'" :aria-label="isReceivable(row) ? '收款' : '付款'"><i aria-hidden="true"></i><span class="cell-content">{{ text(row[field], field) }}</span></span><span v-else class="cell-content">{{ text(row[field], field) }}</span></td>
+              <td v-for="field in module.fields" :key="field" :title="field === 'productImage' ? undefined : text(row[field], field)">
+                <button
+                  v-if="module.key === 'product' && field === 'productImage'"
+                  type="button"
+                  class="product-thumbnail"
+                  data-test="product-thumbnail"
+                  :aria-label="Number(row.imageCount ?? 0) > 0 ? `查看产品图片，共 ${Number(row.imageCount)} 张` : '查看产品图库，暂无图片'"
+                  @click="emit('gallery', row)"
+                >
+                  <img v-if="productImageUrl(row)" :src="productImageUrl(row)" alt="产品主图" width="56" height="56" loading="lazy">
+                  <span v-else class="product-thumbnail-empty">暂无图片</span>
+                  <span v-if="Number(row.imageCount ?? 0) > 1" class="product-image-count" data-test="product-image-count">{{ Number(row.imageCount) }}</span>
+                </button>
+                <span v-else-if="['order', 'purchase'].includes(module.key) && field === 'status'" class="order-shipment-status"><i class="shipment-status-dot" :class="shipmentCompleted(row) ? 'complete' : 'incomplete'"></i><span class="cell-content">{{ text(row[field], field) }}</span></span>
+                <span v-else-if="module.key === 'finance' && field === 'businessType'" data-test="finance-direction" class="finance-direction" :class="isReceivable(row) ? 'receivable' : 'payable'" :aria-label="isReceivable(row) ? '收款' : '付款'"><i aria-hidden="true"></i><span class="cell-content">{{ text(row[field], field) }}</span></span>
+                <span v-else class="cell-content">{{ text(row[field], field) }}</span>
+              </td>
               <td class="row-actions">
                 <button v-if="module.key === 'inventory'" data-test="inventory-details" @click="emit('details', row)">查看明细</button>
                 <button v-if="['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')" data-test="view-details" @click="emit('details', row)">查看</button>

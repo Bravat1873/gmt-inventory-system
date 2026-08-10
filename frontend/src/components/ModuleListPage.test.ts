@@ -84,6 +84,32 @@ it('hides only the completed purchase action', async () => {
   expect(wrapper.find('[data-test="purchase-receipt"]').exists()).toBe(true)
 })
 
+it('renders the product primary image, count badge and opens its gallery', async () => {
+  loadModule.mockResolvedValue({
+    items: [{ id: 7, primaryImageId: 9, primaryImageUrl: '/api/product-images/9/content', imageCount: 5 }],
+    total: 1, page: 1, pageSize: 10, totalPages: 1
+  })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')! } })
+  await flushPromises()
+
+  const thumbnail = wrapper.get('[data-test="product-thumbnail"]')
+  expect(thumbnail.get('img').attributes('src')).toBe('/api/product-images/9/content')
+  expect(wrapper.get('[data-test="product-image-count"]').text()).toBe('5')
+  await thumbnail.trigger('click')
+  expect(wrapper.emitted('gallery')?.[0]?.[0]).toMatchObject({ id: 7 })
+})
+
+it('renders a clickable no-image placeholder that opens the empty gallery', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 8, imageCount: 0 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')! } })
+  await flushPromises()
+
+  const placeholder = wrapper.get('[data-test="product-thumbnail"]')
+  expect(placeholder.text()).toContain('暂无图片')
+  await placeholder.trigger('click')
+  expect(wrapper.emitted('gallery')?.[0]?.[0]).toMatchObject({ id: 8 })
+})
+
 it.each([
   ['ADMIN', '管理员'],
   ['FINANCE', '财务'],

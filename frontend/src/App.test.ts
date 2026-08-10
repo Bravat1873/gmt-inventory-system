@@ -102,4 +102,27 @@ describe('连续导航和浏览器地址状态', () => {
     expect(wrapper.get('[role="dialog"]').text()).toContain('新增用户')
     expect(wrapper.text()).toContain('联系电话')
   })
+  it('opens the selected product gallery and clears it when closed', async () => {
+    history.replaceState(null, '', '/?module=product&page=1')
+    const wrapper = mount(App, {
+      global: {
+        stubs: {
+          ProductGalleryDialog: {
+            props: ['productId', 'initialImageId'],
+            emits: ['close'],
+            template: '<div data-test="gallery-dialog-stub" :data-product-id="productId" :data-image-id="initialImageId"><button data-test="gallery-close" @click="$emit(\'close\')">close</button></div>'
+          }
+        }
+      }
+    })
+    await flushPromises()
+
+    wrapper.getComponent(ModuleListPage).vm.$emit('gallery', { id: 7, primaryImageId: 9 })
+    await flushPromises()
+    expect(wrapper.get('[data-test="gallery-dialog-stub"]').attributes('data-product-id')).toBe('7')
+    expect(wrapper.get('[data-test="gallery-dialog-stub"]').attributes('data-image-id')).toBe('9')
+
+    await wrapper.get('[data-test="gallery-close"]').trigger('click')
+    expect(wrapper.find('[data-test="gallery-dialog-stub"]').exists()).toBe(false)
+  })
 })

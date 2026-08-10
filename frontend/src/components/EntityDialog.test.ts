@@ -1,10 +1,80 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import EntityDialog from './EntityDialog.vue'
 
-const api = vi.hoisted(() => ({ createEntity: vi.fn(), updateEntity: vi.fn(), loadOrderSkus: vi.fn() }))
+const api = vi.hoisted(() => ({
+  createEntity: vi.fn(),
+  updateEntity: vi.fn(),
+  loadOrderSkus: vi.fn(),
+  uploadProductImages: vi.fn(),
+  loadProductImages: vi.fn(),
+  setPrimaryProductImage: vi.fn(),
+  reorderProductImages: vi.fn(),
+  deleteProductImage: vi.fn()
+}))
 
 vi.mock('../api/workbench', () => api)
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  api.loadOrderSkus.mockResolvedValue([])
+  api.loadProductImages.mockResolvedValue([])
+  api.uploadProductImages.mockResolvedValue([])
+})
+
+const productFile = (name = 'product.jpg') => new File(['image'], name, { type: 'image/jpeg' })
+
+async function chooseProductImages(wrapper: ReturnType<typeof mount>, files: File[]) {
+  const input = wrapper.get('[data-test="product-image-input"]')
+  Object.defineProperty(input.element, 'files', { configurable: true, value: files })
+  await input.trigger('change')
+}
+
+it('saves a new product before uploading its selected images', async () => {
+  const selectedFiles = [productFile('primary.jpg'), productFile('detail.jpg')]
+  api.createEntity.mockResolvedValue({ id: 81 })
+  const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE' } })
+  await chooseProductImages(wrapper, selectedFiles)
+
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.createEntity).toHaveBeenCalledWith('product', expect.not.objectContaining({ images: expect.anything() }))
+  expect(api.uploadProductImages).toHaveBeenCalledWith(81, selectedFiles)
+  expect(api.createEntity.mock.invocationCallOrder[0]).toBeLessThan(api.uploadProductImages.mock.invocationCallOrder[0])
+  expect(wrapper.emitted('saved')).toHaveLength(1)
+})
+
+it('keeps failed product images for retry after the product has been saved', async () => {
+  const selectedFiles = [productFile('retry.jpg')]
+  api.createEntity.mockResolvedValue({ id: 81 })
+  api.uploadProductImages.mockRejectedValue(new Error('网络中断'))
+  const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE' } })
+  await chooseProductImages(wrapper, selectedFiles)
+
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(wrapper.emitted('saved')).toHaveLength(1)
+  expect(wrapper.emitted('message')?.at(-1)?.[0]).toContain('产品已保存，部分图片上传失败')
+  expect(wrapper.findAll('[data-test="pending-image-card"]')).toHaveLength(1)
+})
+
+it('uploads selected images directly to an existing product id after editing', async () => {
+  const selectedFiles = [productFile('new-detail.webp')]
+  api.updateEntity.mockResolvedValue({ id: 42, version: 4 })
+  const wrapper = mount(EntityDialog, {
+    props: { module: 'product', currentUserRole: 'FINANCE', row: { id: 42, model: 'P90', version: 3 } }
+  })
+  await flushPromises()
+  await chooseProductImages(wrapper, selectedFiles)
+
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.updateEntity).toHaveBeenCalledWith('product', 42, expect.any(Object))
+  expect(api.uploadProductImages).toHaveBeenCalledWith(42, selectedFiles)
+})
 
 it('includes the loaded version when saving an existing record', async () => {
   api.updateEntity.mockResolvedValue({ id: 7, version: 4 })
