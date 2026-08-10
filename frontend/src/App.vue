@@ -95,8 +95,10 @@ function primary() {
   if (activeModule.value === 'purchase') manualPurchaseOpen.value = true
 }
 
+
 function manual() {
   editRow.value = undefined
+  if (activeModule.value === 'supplier') { supplierOpen.value = true; return }
   entityOpen.value = true
 }
 

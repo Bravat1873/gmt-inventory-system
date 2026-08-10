@@ -1,7 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
+import EntityDialog from './components/EntityDialog.vue'
 import ModuleListPage from './components/ModuleListPage.vue'
+import SupplierDialog from './components/SupplierDialog.vue'
 
 const api = vi.hoisted(() => ({
   loadModule: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 }),
@@ -78,6 +80,18 @@ describe('连续导航和浏览器地址状态', () => {
     wrapper.getComponent(ModuleListPage).vm.$emit('action')
     await flushPromises()
     expect(wrapper.find('[aria-label="Excel 导入面板"]').exists()).toBe(false)
+  })
+
+  it('opens SupplierDialog instead of EntityDialog for a supplier manual add', async () => {
+    history.replaceState(null, '', '/?module=supplier&page=1')
+    const wrapper = mount(App)
+    await flushPromises()
+
+    wrapper.getComponent(ModuleListPage).vm.$emit('manual')
+    await flushPromises()
+
+    expect(wrapper.findComponent(SupplierDialog).exists()).toBe(true)
+    expect(wrapper.findComponent(EntityDialog).exists()).toBe(false)
   })
 
   it('生成采购打开手工采购表单，不弹出浏览器确认框', async () => {
