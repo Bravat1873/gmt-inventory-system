@@ -1,0 +1,10 @@
+ALTER TABLE supplier ADD COLUMN manufacturer_category VARCHAR(100) NULL;
+ALTER TABLE supplier ADD COLUMN manufacturer_type VARCHAR(100) NULL;
+ALTER TABLE supplier ADD COLUMN supplier_location VARCHAR(100) NULL;
+ALTER TABLE supplier ADD COLUMN product_attribute VARCHAR(100) NULL;
+ALTER TABLE supplier ADD COLUMN short_name VARCHAR(120) NULL;
+ALTER TABLE supplier ADD COLUMN contact_title VARCHAR(100) NULL;
+ALTER TABLE supplier ADD COLUMN address VARCHAR(500) NULL;
+ALTER TABLE supplier ADD COLUMN currency VARCHAR(100) NULL;
+ALTER TABLE supplier ADD COLUMN tax_registration_no VARCHAR(100) NULL;
+ALTER TABLE supplier ADD COLUMN bank_address VARCHAR(500) NULL;

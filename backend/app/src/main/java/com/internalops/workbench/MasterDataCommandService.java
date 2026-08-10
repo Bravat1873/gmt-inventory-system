@@ -37,6 +37,7 @@ public class MasterDataCommandService {
             case "customer" -> createCustomer(request);
             case "user" -> createUser(request, fields);
             case "product" -> createProduct(request, fields);
+            case "supplier" -> createSupplier(request, fields);
             case "inventory" -> createInventory(request);
             default -> throw new IllegalArgumentException("该模块不支持手工新增");
         };
@@ -54,6 +55,7 @@ public class MasterDataCommandService {
             case "customer" -> updateCustomer(id, request);
             case "user" -> updateUser(id, request, fields);
             case "product" -> updateProduct(id, request, fields);
+            case "supplier" -> updateSupplier(id, request, fields);
             case "inventory" -> updateInventory(id, request);
             default -> throw new IllegalArgumentException("该模块不支持手工修改");
         };
@@ -73,6 +75,46 @@ public class MasterDataCommandService {
                 r.customerName().trim(), r.contactName(), r.phone(), r.address(), enabled(r), id, r.version());
         conflictIfUnchanged(changed);
         return customer(id);
+    }
+
+    private Map<String, Object> createSupplier(EntityCommandRequest r, EntityCommandFields fields) {
+        requireText(fields.supplierText("supplierName"), "供应商名称不能为空");
+        String code = textOr(fields.supplierText("supplierCode"), generatedCode("SUP"));
+        long id = insert("""
+                        INSERT INTO supplier(
+                            supplier_code,supplier_name,contact_name,phone,bank_account,
+                            manufacturer_category,manufacturer_type,supplier_location,product_attribute,
+                            short_name,contact_title,address,currency,tax_registration_no,bank_address,enabled)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """,
+                code, fields.supplierText("supplierName").trim(), r.contactName(), r.phone(), fields.supplierText("bankAccount"),
+                fields.supplierText("manufacturerCategory"), fields.supplierText("manufacturerType"),
+                fields.supplierText("supplierLocation"), fields.supplierText("productAttribute"),
+                fields.supplierText("shortName"), fields.supplierText("contactTitle"),
+                fields.supplierText("address"), fields.supplierText("currency"),
+                fields.supplierText("taxRegistrationNo"), fields.supplierText("bankAddress"), enabled(r));
+        return supplier(id);
+    }
+
+    private Map<String, Object> updateSupplier(long id, EntityCommandRequest r, EntityCommandFields fields) {
+        requireText(fields.supplierText("supplierName"), "供应商名称不能为空");
+        int changed = jdbc.update("""
+                        UPDATE supplier
+                        SET supplier_name=?,contact_name=?,phone=?,bank_account=?,
+                            manufacturer_category=?,manufacturer_type=?,supplier_location=?,product_attribute=?,
+                            short_name=?,contact_title=?,address=?,currency=?,tax_registration_no=?,bank_address=?,
+                            enabled=?,version=version+1
+                        WHERE id=? AND version=?
+                        """,
+                fields.supplierText("supplierName").trim(), r.contactName(), r.phone(), fields.supplierText("bankAccount"),
+                fields.supplierText("manufacturerCategory"), fields.supplierText("manufacturerType"),
+                fields.supplierText("supplierLocation"), fields.supplierText("productAttribute"),
+                fields.supplierText("shortName"), fields.supplierText("contactTitle"),
+                fields.supplierText("address"), fields.supplierText("currency"),
+                fields.supplierText("taxRegistrationNo"), fields.supplierText("bankAddress"),
+                enabled(r), id, r.version());
+        conflictIfUnchanged(changed);
+        return supplier(id);
     }
 
     private Map<String, Object> createUser(EntityCommandRequest r, EntityCommandFields fields) {
@@ -295,6 +337,19 @@ public class MasterDataCommandService {
     private Map<String, Object> product(long id) {
         return map(jdbc.queryForMap("SELECT id,sku_code,model,product_name,color,lock_body,product_version,configuration,unit,current_cost,factory_price,product_remark,enabled,version FROM sku WHERE id=?", id),
                 "sku_code","skuCode","product_name","productName","lock_body","lockBody","product_version","productVersion","current_cost","currentCost","factory_price","factoryPrice","product_remark","remark");
+    }
+    private Map<String, Object> supplier(long id) {
+        return map(jdbc.queryForMap("""
+                        SELECT id,supplier_code,supplier_name,manufacturer_category,manufacturer_type,
+                               supplier_location,product_attribute,short_name,contact_name,contact_title,
+                               phone,address,currency,tax_registration_no,bank_account,bank_address,enabled,version
+                        FROM supplier WHERE id=?
+                        """, id),
+                "supplier_code","supplierCode","supplier_name","supplierName",
+                "manufacturer_category","manufacturerCategory","manufacturer_type","manufacturerType",
+                "supplier_location","supplierLocation","product_attribute","productAttribute",
+                "short_name","shortName","contact_name","contactName","contact_title","contactTitle",
+                "tax_registration_no","taxRegistrationNo","bank_account","bankAccount","bank_address","bankAddress");
     }
     private Map<String, Object> inventory(long id) {
         return map(jdbc.queryForMap("SELECT id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,source_supplier_name,inventory_remark,version FROM inventory_balance WHERE id=?", id),

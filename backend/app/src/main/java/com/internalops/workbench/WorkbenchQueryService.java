@@ -22,6 +22,10 @@ public class WorkbenchQueryService {
             Map.entry("factoryprice", "factoryPrice"), Map.entry("pricedifference", "priceDifference"), Map.entry("remark", "remark"),
             Map.entry("supplierid", "supplierId"), Map.entry("suppliername", "supplierName"),
             Map.entry("suppliercode", "supplierCode"), Map.entry("bankaccount", "bankAccount"),
+            Map.entry("manufacturercategory", "manufacturerCategory"), Map.entry("manufacturertype", "manufacturerType"),
+            Map.entry("supplierlocation", "supplierLocation"), Map.entry("productattribute", "productAttribute"),
+            Map.entry("shortname", "shortName"), Map.entry("contacttitle", "contactTitle"),
+            Map.entry("taxregistrationno", "taxRegistrationNo"), Map.entry("bankaddress", "bankAddress"),
             Map.entry("productcount", "productCount"),
             Map.entry("purchaseprice", "purchasePrice"), Map.entry("leadtimedays", "leadTimeDays"),
             Map.entry("orderno", "orderNo"), Map.entry("externalorderno", "externalOrderNo"),
@@ -169,7 +173,11 @@ public class WorkbenchQueryService {
     public Map<String, Object> supplierDetail(long supplierId) {
         List<Map<String, Object>> suppliers = jdbc.queryForList("""
                         SELECT id,supplier_code AS `supplierCode`,supplier_name AS `supplierName`,
-                               contact_name AS `contactName`,phone,bank_account AS `bankAccount`,
+                               manufacturer_category AS `manufacturerCategory`,manufacturer_type AS `manufacturerType`,
+                               supplier_location AS `supplierLocation`,product_attribute AS `productAttribute`,
+                               short_name AS `shortName`,contact_name AS `contactName`,contact_title AS `contactTitle`,
+                               phone,address,currency,tax_registration_no AS `taxRegistrationNo`,
+                               bank_account AS `bankAccount`,bank_address AS `bankAddress`,
                                enabled,version,updated_at AS `updatedAt`
                         FROM supplier WHERE id=?
                         """, supplierId).stream().map(this::normalizeKeys).toList();
@@ -232,8 +240,12 @@ public class WorkbenchQueryService {
                 sorts("id", "s.id", "skuCode", "s.sku_code", "model", "s.model", "productName", "s.product_name", "currentCost", "s.current_cost", "factoryPrice", "s.factory_price", "priceDifference", "(s.factory_price-s.current_cost)", "updatedAt", "s.updated_at"),
                 "s.updated_at", "s.id DESC"));
         modules.put("supplier", new ModuleSpec(
-                "SELECT sp.id,sp.supplier_name AS `supplierName`,sp.contact_name AS `contactName`,sp.phone,"
-                        + "sp.bank_account AS `bankAccount`,"
+                "SELECT sp.id,sp.supplier_code AS `supplierCode`,sp.supplier_name AS `supplierName`,"
+                        + "sp.manufacturer_category AS `manufacturerCategory`,sp.manufacturer_type AS `manufacturerType`,"
+                        + "sp.supplier_location AS `supplierLocation`,sp.product_attribute AS `productAttribute`,"
+                        + "sp.short_name AS `shortName`,sp.contact_name AS `contactName`,sp.contact_title AS `contactTitle`,"
+                        + "sp.phone,sp.address,sp.currency,sp.tax_registration_no AS `taxRegistrationNo`,"
+                        + "sp.bank_account AS `bankAccount`,sp.bank_address AS `bankAddress`,sp.enabled,"
                         + "(SELECT COUNT(*) FROM sku_supplier_config cfg WHERE cfg.supplier_id=sp.id AND cfg.enabled=TRUE) AS `productCount`,"
                         + "sp.updated_at AS `updatedAt`,sp.version",
                 "FROM supplier sp",
