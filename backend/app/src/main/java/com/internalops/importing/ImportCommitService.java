@@ -45,7 +45,7 @@ public class ImportCommitService {
     @Transactional
     public ImportBatchView commit(long batchId, ImportConflictPolicy policy,
                                   ImportCommitRequest.SupplierMode supplierMode) {
-        ImportBatchView batch = repository.findBatch(batchId);
+        ImportBatchView batch = repository.findBatchForUpdate(batchId);
         if (batch.importType() == ImportType.COST
                 && !CurrentUser.required().role().canEditProductPrice()) {
             throw new IllegalArgumentException("仅财务或管理员可修改产品价格");
@@ -110,7 +110,6 @@ public class ImportCommitService {
         }
         Set<String> usedCodes = new LinkedHashSet<>(jdbc.queryForList(
                 "SELECT supplier_code FROM supplier", String.class));
-        int nextNumber = nextSupplierNumber(usedCodes);
         Set<String> importedNames = new LinkedHashSet<>();
         Set<Long> importedIds = new LinkedHashSet<>();
         int created = 0;
@@ -123,10 +122,8 @@ public class ImportCommitService {
             if (!importedNames.add(normalizedName)) throw new IllegalArgumentException("供应商名称重复");
             Long existingId = existingByName.get(normalizedName);
             if (existingId == null) {
-                String code;
-                do {
-                    code = "SUP" + String.format("%05d", nextNumber++);
-                } while (!usedCodes.add(code));
+                String code = nextSupplierCode(usedCodes);
+                usedCodes.add(code);
                 long id = insertSupplier(code, name, row.data());
                 existingByName.put(normalizedName, id);
                 importedIds.add(id);
@@ -172,6 +169,23 @@ public class ImportCommitService {
         return max + 1;
     }
 
+    static String nextSupplierCode(Set<String> codes) {
+        Set<String> normalizedCodes = new LinkedHashSet<>();
+        int max = 0;
+        for (String code : codes) {
+            if (code == null) continue;
+            String normalized = code.trim().toUpperCase(Locale.ROOT);
+            normalizedCodes.add(normalized);
+            if (normalized.matches("SUP\\d{5}")) {
+                max = Math.max(max, Integer.parseInt(normalized.substring(3)));
+            }
+        }
+        for (int number = max + 1; number <= 99_999; number++) {
+            String candidate = "SUP" + String.format(Locale.ROOT, "%05d", number);
+            if (!normalizedCodes.contains(candidate)) return candidate;
+        }
+        throw new IllegalStateException("\u4F9B\u5E94\u5546\u7F16\u7801 SUP \u4E94\u4F4D\u5E8F\u53F7\u5DF2\u8017\u5C3D");
+    }
     private long insertSupplier(String code, String name, Map<String, Object> data) {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
