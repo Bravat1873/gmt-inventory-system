@@ -14,7 +14,7 @@ public final class LocalProductImageStorage implements ProductImageStorage {
     private final Path root;
 
     @Autowired
-    public LocalProductImageStorage(@Value("${internal-ops.product-image-root}") String root) {
+    public LocalProductImageStorage(@Value("${internal-ops.product-image-root:./data/product-images}") String root) {
         this(Path.of(root));
     }
 
