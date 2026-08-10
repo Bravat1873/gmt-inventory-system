@@ -40,6 +40,20 @@ class SupplierManagementApiTest {
     }
 
     @Test
+    void supplierListExcludesDisabledSuppliersButHistoricalDetailRemainsAvailable() throws Exception {
+        Cookie session = login();
+        mvc.perform(get("/api/workbench/supplier").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(201));
+
+        mvc.perform(get("/api/suppliers/202").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(202))
+                .andExpect(jsonPath("$.data.enabled").value(false));
+    }
+    @Test
     void createsSupplierAndPersistsTheSuppliedProductConfiguration() throws Exception {
         Cookie session = login();
         mvc.perform(post("/api/suppliers").cookie(session)

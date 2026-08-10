@@ -73,9 +73,10 @@ public class WorkbenchQueryService {
             }
         }
         List<Object> parameters = new ArrayList<>();
-        String where = "";
+        String where = "supplier".equals(module) ? " WHERE sp.enabled=TRUE" : "";
         if (!query.keyword().isBlank()) {
-            where = " WHERE " + spec.keywordPredicate();
+            where += where.isBlank() ? " WHERE " : " AND ";
+            where += spec.keywordPredicate();
             for (int i = 0; i < spec.keywordParameterCount(); i++) {
                 parameters.add(query.keyword());
             }

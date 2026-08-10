@@ -67,6 +67,14 @@ class WorkbenchQueryApiTest {
     }
 
     @Test
+    void supplierListAndTotalExcludeDisabledSuppliers() throws Exception {
+        mvc.perform(get("/api/workbench/supplier"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].supplierCode").value("SUP-ACTIVE"));
+    }
+    @Test
     void rejectsUnknownSortFieldWithChineseMessage() throws Exception {
         mvc.perform(get("/api/workbench/customer").param("sort", "dropTable"))
                 .andExpect(status().isBadRequest())

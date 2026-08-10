@@ -48,6 +48,8 @@ CREATE TABLE sku_supplier_config(
 
 INSERT INTO supplier(id,supplier_code,supplier_name,contact_name,phone,bank_account,updated_at,version)
 VALUES(201,'SUP-201','贝朗供应商','张三','13800138000','6222-201',TIMESTAMP '2026-08-06 10:00:00',0);
+INSERT INTO supplier(id,supplier_code,supplier_name,enabled,updated_at,version)
+VALUES(202,'SUP-202','Disabled legacy supplier',FALSE,TIMESTAMP '2026-08-06 10:00:00',0);
 INSERT INTO sku(id,sku_code,model,product_name,configuration,unit,updated_at)
 VALUES(101,'P90-001','P90','P90 智能锁','可视对讲','件',TIMESTAMP '2026-08-06 09:00:00');
 INSERT INTO sku_supplier_config(id,sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled,version)
