@@ -1,4 +1,5 @@
-export type ImportType = 'CUSTOMER' | 'COST' | 'INVENTORY'
+export type ImportType = 'CUSTOMER' | 'COST' | 'INVENTORY' | 'SUPPLIER'
+export type SupplierImportMode = 'OVERWRITE' | 'REPLACE_ALL'
 export type ImportRowStatus = 'VALID' | 'ERROR' | 'IGNORED'
 
 export interface ImportRow {
@@ -60,8 +61,11 @@ export function updateImportRow(id: number, rowId: number, data: Record<string, 
   return request(`/api/imports/${id}/rows/${rowId}`, jsonOptions('PUT', data))
 }
 
-export function commitImport(id: number): Promise<ImportBatch> {
-  return request(`/api/imports/${id}/commit`, { method: 'POST' })
+export function commitImport(id: number, supplierMode?: SupplierImportMode): Promise<ImportBatch> {
+  const options = supplierMode
+    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ supplierMode }) }
+    : { method: 'POST' }
+  return request(`/api/imports/${id}/commit`, options)
 }
 
 export async function downloadImportErrors(id: number): Promise<Blob> {

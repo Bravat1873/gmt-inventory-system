@@ -35,3 +35,46 @@ it('renders product suggestions above the scrollable supplier dialog', async () 
   expect(wrapper.text()).not.toContain('产品 ID')
   wrapper.unmount()
 })
+it('submits the complete supplier profile fields without losing text formatting', async () => {
+  const wrapper = mount(SupplierDialog)
+  await flushPromises()
+
+  const values: Record<string, string> = {
+    'manufacturer-category': '生产厂商',
+    'manufacturer-type': '战略供应商',
+    'supplier-location': '浙江',
+    'product-attribute': '智能锁',
+    'short-name': '威欧希',
+    'supplier-name': '浙江威欧希科技股份有限公司',
+    'contact-name': '王女士',
+    'contact-title': '销售经理',
+    phone: ' 0571 01234567 ',
+    address: '杭州市滨江区',
+    currency: 'CNY',
+    'tax-registration-no': ' 0012345000 ',
+    'bank-address': '中国银行杭州分行',
+    'bank-account': ' 0012 3456 7890 '
+  }
+  for (const [name, value] of Object.entries(values)) {
+    await wrapper.get(`[data-test="${name}"]`).setValue(value)
+  }
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.createSupplier).toHaveBeenCalledWith(expect.objectContaining({
+    manufacturerCategory: '生产厂商',
+    manufacturerType: '战略供应商',
+    supplierLocation: '浙江',
+    productAttribute: '智能锁',
+    shortName: '威欧希',
+    supplierName: '浙江威欧希科技股份有限公司',
+    contactName: '王女士',
+    contactTitle: '销售经理',
+    phone: ' 0571 01234567 ',
+    address: '杭州市滨江区',
+    currency: 'CNY',
+    taxRegistrationNo: ' 0012345000 ',
+    bankAddress: '中国银行杭州分行',
+    bankAccount: ' 0012 3456 7890 '
+  }))
+})

@@ -47,4 +47,17 @@ describe('导入接口客户端', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/imports/12/errors.xlsx')
     expect(blob).toBeInstanceOf(Blob)
   })
+  it('提交供应商导入时发送所选导入策略', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      success: true, data: { ...batch, importType: 'SUPPLIER' }, message: ''
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    await commitImport(12, 'REPLACE_ALL')
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/imports/12/commit', expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ supplierMode: 'REPLACE_ALL' })
+    }))
+  })
 })

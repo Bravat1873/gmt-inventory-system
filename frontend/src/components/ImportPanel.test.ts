@@ -30,4 +30,42 @@ describe('simple Excel import', () => {
     expect(wrapper.text()).not.toContain('导入批次')
     expect(wrapper.find('[data-test="commit-import"]').exists()).toBe(false)
   })
+  it('accepts both legacy and current Excel supplier files', () => {
+    const wrapper = mount(ImportPanel, { props: { type: 'SUPPLIER', title: '导入供应商' } })
+
+    expect(wrapper.get('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
+  })
+  it('defaults supplier imports to overwrite mode', () => {
+    const wrapper = mount(ImportPanel, { props: { type: 'SUPPLIER', title: '导入供应商' } })
+
+    expect(wrapper.get('[data-test="supplier-mode-overwrite"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('[data-test="supplier-mode-replace-all"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.text()).toContain('覆盖更新')
+  })
+
+  it('asks for a second confirmation before committing full replacement', async () => {
+    previewImport.mockResolvedValue({ ...structuredClone(batch), importType: 'SUPPLIER' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(ImportPanel, { props: { type: 'SUPPLIER', title: '导入供应商' } })
+    await wrapper.get('[data-test="supplier-mode-replace-all"]').setValue()
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['x'], 'suppliers.xlsx')] })
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(confirm).toHaveBeenCalledWith('全量替换将停用文件中不存在的供应商，是否继续？')
+    expect(commitImport).toHaveBeenCalledWith(8, 'REPLACE_ALL')
+  })
+
+  it('does not commit full replacement when the second confirmation is cancelled', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mount(ImportPanel, { props: { type: 'SUPPLIER', title: '导入供应商' } })
+    await wrapper.get('[data-test="supplier-mode-replace-all"]').setValue()
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['x'], 'suppliers.xlsx')] })
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(commitImport).not.toHaveBeenCalled()
+  })
 })

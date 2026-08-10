@@ -15,8 +15,35 @@ const props = defineProps<{ row?: Record<string, unknown> }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
 
 type ProductRow = SupplierProductConfig & { label: string }
+type SupplierProfileCommand = SupplierCommand & {
+  manufacturerCategory?: string
+  manufacturerType?: string
+  supplierLocation?: string
+  productAttribute?: string
+  shortName?: string
+  contactTitle?: string
+  address?: string
+  currency?: string
+  taxRegistrationNo?: string
+  bankAddress?: string
+}
 
-const form = reactive({ supplierName: '', contactName: '', phone: '', bankAccount: '' })
+const form = reactive({
+  manufacturerCategory: '',
+  manufacturerType: '',
+  supplierLocation: '',
+  productAttribute: '',
+  shortName: '',
+  supplierName: '',
+  contactName: '',
+  contactTitle: '',
+  phone: '',
+  address: '',
+  currency: '',
+  taxRegistrationNo: '',
+  bankAddress: '',
+  bankAccount: ''
+})
 const products = ref<ProductRow[]>([])
 const skus = ref<OrderSku[]>([])
 const pickedSku = ref<number | null>(null)
@@ -54,12 +81,30 @@ function removeProduct(index: number) {
   products.value.splice(index, 1)
 }
 
-function payload(): SupplierCommand {
+function trimmedOrUndefined(value: string) {
+  return value.trim() || undefined
+}
+
+function preservedOrUndefined(value: string) {
+  return value === '' ? undefined : value
+}
+
+function payload(): SupplierProfileCommand {
   return {
+    manufacturerCategory: trimmedOrUndefined(form.manufacturerCategory),
+    manufacturerType: trimmedOrUndefined(form.manufacturerType),
+    supplierLocation: trimmedOrUndefined(form.supplierLocation),
+    productAttribute: trimmedOrUndefined(form.productAttribute),
+    shortName: trimmedOrUndefined(form.shortName),
     supplierName: form.supplierName.trim(),
-    contactName: form.contactName.trim() || undefined,
-    phone: form.phone.trim() || undefined,
-    bankAccount: form.bankAccount.trim() || undefined,
+    contactName: trimmedOrUndefined(form.contactName),
+    contactTitle: trimmedOrUndefined(form.contactTitle),
+    phone: preservedOrUndefined(form.phone),
+    address: trimmedOrUndefined(form.address),
+    currency: trimmedOrUndefined(form.currency),
+    taxRegistrationNo: preservedOrUndefined(form.taxRegistrationNo),
+    bankAddress: trimmedOrUndefined(form.bankAddress),
+    bankAccount: preservedOrUndefined(form.bankAccount),
     products: products.value.map(({ skuId, purchasePrice, moq, leadTimeDays }) => ({ skuId, purchasePrice: Number(purchasePrice), moq: Number(moq), leadTimeDays: Number(leadTimeDays) })),
     version: version.value
   }
@@ -94,9 +139,19 @@ async function initialise() {
     skus.value = await loadOrderSkus()
     if (!props.row?.id) return
     const detail = await getSupplier(Number(props.row.id))
+    form.manufacturerCategory = String(detail.manufacturerCategory ?? '')
+    form.manufacturerType = String(detail.manufacturerType ?? '')
+    form.supplierLocation = String(detail.supplierLocation ?? '')
+    form.productAttribute = String(detail.productAttribute ?? '')
+    form.shortName = String(detail.shortName ?? '')
     form.supplierName = String(detail.supplierName ?? '')
     form.contactName = String(detail.contactName ?? '')
+    form.contactTitle = String(detail.contactTitle ?? '')
     form.phone = String(detail.phone ?? '')
+    form.address = String(detail.address ?? '')
+    form.currency = String(detail.currency ?? '')
+    form.taxRegistrationNo = String(detail.taxRegistrationNo ?? '')
+    form.bankAddress = String(detail.bankAddress ?? '')
     form.bankAccount = String(detail.bankAccount ?? '')
     version.value = Number(detail.version)
     const configured = Array.isArray(detail.products) ? detail.products : []
@@ -126,11 +181,21 @@ onMounted(initialise)
     <section class="dialog-card supplier-dialog" role="dialog" aria-modal="true" aria-labelledby="supplier-dialog-title">
       <header><h2 id="supplier-dialog-title">{{ row?.id ? '修改供应商' : '新增供应商' }}</h2><button type="button" :disabled="saving" @click="requestClose">关闭</button></header>
       <form novalidate @submit.prevent="save">
-        <div class="form-grid">
-          <label><span>供应商名称</span><input data-test="supplier-name" v-model="form.supplierName" :disabled="loading || saving" placeholder="请输入供应商名称"></label>
-          <label><span>联系人</span><input v-model="form.contactName" :disabled="loading || saving" placeholder="请输入联系人"></label>
-          <label><span>联系电话</span><input v-model="form.phone" :disabled="loading || saving" placeholder="请输入联系电话"></label>
-          <label><span>银行账户</span><input v-model="form.bankAccount" :disabled="loading || saving" placeholder="选填"></label>
+        <div class="form-grid supplier-profile-grid">
+          <label><span>厂商分类</span><input data-test="manufacturer-category" v-model="form.manufacturerCategory" :disabled="loading || saving" placeholder="选填"></label>
+          <label><span>厂商类型</span><input data-test="manufacturer-type" v-model="form.manufacturerType" :disabled="loading || saving" placeholder="选填"></label>
+          <label><span>供应商地点</span><input data-test="supplier-location" v-model="form.supplierLocation" :disabled="loading || saving" placeholder="选填"></label>
+          <label><span>产品属性</span><input data-test="product-attribute" v-model="form.productAttribute" :disabled="loading || saving" placeholder="选填"></label>
+          <label><span>简称</span><input data-test="short-name" v-model="form.shortName" :disabled="loading || saving" placeholder="选填"></label>
+          <label><span>供应商名称</span><input data-test="supplier-name" v-model="form.supplierName" :disabled="loading || saving" placeholder="请输入供应商名称" required></label>
+          <label><span>联系人</span><input data-test="contact-name" v-model="form.contactName" :disabled="loading || saving" placeholder="请输入联系人"></label>
+          <label><span>职称</span><input data-test="contact-title" v-model="form.contactTitle" :disabled="loading || saving" placeholder="选填"></label>
+          <label><span>联系方式</span><input data-test="phone" v-model="form.phone" :disabled="loading || saving" placeholder="请输入联系电话"></label>
+          <label><span>供应商地址</span><input data-test="address" v-model="form.address" :disabled="loading || saving" placeholder="选填"></label>
+          <label><span>币种</span><input data-test="currency" v-model="form.currency" :disabled="loading || saving" placeholder="例如 CNY"></label>
+          <label><span>税务登记号</span><input data-test="tax-registration-no" v-model="form.taxRegistrationNo" :disabled="loading || saving" placeholder="选填"></label>
+          <label><span>开户地址</span><input data-test="bank-address" v-model="form.bankAddress" :disabled="loading || saving" placeholder="选填"></label>
+          <label><span>开户账户</span><input data-test="bank-account" v-model="form.bankAccount" :disabled="loading || saving" placeholder="选填"></label>
         </div>
 
         <section class="supplier-products-section">

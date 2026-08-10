@@ -14,6 +14,17 @@ it('provides supplier management in the left navigation definitions', () => {
   expect(supplier.label).toBe('供应商管理')
   expect(supplier.fields).toContain('productCount')
 })
+it('offers supplier spreadsheet import and displays the complete supplier profile', () => {
+  const supplier = moduleDefinitions.find(item => item.key === 'supplier')!
+
+  expect(supplier.actionLabel).toBe('导入供应商')
+  expect(supplier.importType).toBe('SUPPLIER')
+  expect(supplier.fields).toEqual([
+    'manufacturerCategory', 'manufacturerType', 'supplierLocation', 'productAttribute',
+    'shortName', 'supplierName', 'contactName', 'contactTitle', 'phone', 'address',
+    'currency', 'taxRegistrationNo', 'bankAddress', 'bankAccount', 'productCount', 'updatedAt'
+  ])
+})
 
 it('places finance direction inside the business type cell instead of a standalone column', () => {
   const finance = moduleDefinitions.find(item => item.key === 'finance')!
