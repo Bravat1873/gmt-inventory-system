@@ -28,9 +28,11 @@ services:
       DB_USERNAME: root
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       ATTACHMENT_ROOT: /app/data/attachments
+      PRODUCT_IMAGE_ROOT: /app/data/product-images
       TZ: Asia/Shanghai
     volumes:
       - attachment_data:/app/data/attachments
+      - product_image_data:/app/data/product-images
     depends_on:
       mysql:
         condition: service_healthy
@@ -49,3 +51,4 @@ services:
 volumes:
   mysql_data:
   attachment_data:
+  product_image_data:
