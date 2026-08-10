@@ -2,22 +2,43 @@ package com.internalops.productimage;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.mock.web.MockMultipartFile;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -28,22 +49,41 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "internal-ops.product-image-root=target/product-image-test-storage")
+@SpringBootTest
 @AutoConfigureMockMvc
 @Sql("/product-image-schema.sql")
 @Sql(statements = "DROP TABLE IF EXISTS product_image", executionPhase = Sql.ExecutionPhase.AFTER_TEST_CLASS)
 class ProductImageApiTest {
     private static final long PRODUCT_ID = 1L;
 
+    @TempDir
+    static Path storageRoot;
+
+    @DynamicPropertySource
+    static void productImageStorage(DynamicPropertyRegistry registry) {
+        registry.add("internal-ops.product-image-root", () -> storageRoot.toString());
+    }
+
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper objectMapper;
+    @SpyBean ProductImageStorage storage;
 
     private Cookie session;
 
     @BeforeEach
     void login() throws Exception {
         session = loginAs("admin");
+    }
+
+    @AfterEach
+    void resetAndCleanStorage() throws IOException {
+        reset(storage);
+        try (var paths = Files.walk(storageRoot)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).filter(path -> !path.equals(storageRoot)).toList()) {
+                Files.deleteIfExists(path);
+            }
+        }
     }
 
     @Test
@@ -173,6 +213,109 @@ class ProductImageApiTest {
 
         assertThat(jdbc.queryForObject("SELECT sort_order FROM product_image WHERE id=?", Integer.class, second)).isZero();
         assertThat(jdbc.queryForObject("SELECT sort_order FROM product_image WHERE id=?", Integer.class, first)).isEqualTo(1);
+    }
+
+    @Test
+    void uploads_after_deleting_a_non_final_image_without_reusing_its_sort_order() throws Exception {
+        upload("first.jpg", jpeg(), session);
+        long second = upload("second.png", png(), session);
+        upload("third.webp", webp(), session);
+
+        mvc.perform(delete("/api/products/{productId}/images/{imageId}", PRODUCT_ID, second).cookie(session))
+                .andExpect(status().isOk());
+
+        mvc.perform(multipart("/api/products/{productId}/images", PRODUCT_ID)
+                        .file(file("fourth.jpg", jpeg())).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].sortOrder").value(3));
+
+        assertThat(jdbc.queryForList(
+                "SELECT sort_order FROM product_image WHERE product_id=? ORDER BY sort_order", Integer.class, PRODUCT_ID))
+                .containsExactly(0, 2, 3);
+    }
+
+    @Test
+    void rejects_an_order_that_does_not_contain_the_complete_current_id_set() throws Exception {
+        long first = upload("first.jpg", jpeg(), session);
+        upload("second.png", png(), session);
+
+        mvc.perform(put("/api/products/{productId}/images/order", PRODUCT_ID).cookie(session)
+                        .contentType("application/json")
+                        .content("{\"imageIds\":[" + first + ",999999]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void missing_content_on_disk_returns_not_found() throws Exception {
+        long imageId = upload("missing.jpg", jpeg(), session);
+        String storageKey = jdbc.queryForObject(
+                "SELECT storage_key FROM product_image WHERE id=?", String.class, imageId);
+        storage.delete(storageKey);
+
+        mvc.perform(get("/api/product-images/{imageId}/content", imageId).cookie(session))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void database_insert_failure_removes_the_stored_file_and_returns_internal_error() throws Exception {
+        mvc.perform(multipart("/api/products/{productId}/images", PRODUCT_ID)
+                        .file(file("x".repeat(256) + ".jpg", jpeg())).cookie(session))
+                .andExpect(status().isInternalServerError());
+
+        assertThat(storedFiles()).isZero();
+    }
+
+    @Test
+    void storage_write_failure_returns_internal_error_instead_of_conflict() throws Exception {
+        doThrow(new IOException("storage offline"))
+                .when(storage).store(anyLong(), anyString(), any(byte[].class));
+
+        mvc.perform(multipart("/api/products/{productId}/images", PRODUCT_ID)
+                        .file(file("camera.jpg", jpeg())).cookie(session))
+                .andExpect(status().isInternalServerError());
+    }
+
+    @Test
+    void failed_compensation_logs_the_storage_key_and_exception() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(ProductImageService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        doThrow(new IOException("cleanup offline")).when(storage).delete(anyString());
+
+        try {
+            mvc.perform(multipart("/api/products/{productId}/images", PRODUCT_ID)
+                            .file(file("x".repeat(256) + ".jpg", jpeg())).cookie(session))
+                    .andExpect(status().isInternalServerError());
+
+            assertThat(appender.list).anySatisfy(event -> {
+                assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                assertThat(event.getFormattedMessage())
+                        .contains("Failed to delete compensated product image storage key " + PRODUCT_ID + "/");
+                assertThat(event.getThrowableProxy().getClassName()).isEqualTo(IOException.class.getName());
+                assertThat(event.getThrowableProxy().getMessage()).isEqualTo("cleanup offline");
+            });
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void maps_only_the_dedicated_conflict_exception_to_conflict() throws Exception {
+        ProductImageService service = mock(ProductImageService.class);
+        when(service.list(PRODUCT_ID)).thenThrow(new ProductImageService.ConflictException("stale image version"));
+        MockMvc standalone = org.springframework.test.web.servlet.setup.MockMvcBuilders
+                .standaloneSetup(new ProductImageController(service)).build();
+
+        standalone.perform(get("/api/products/{productId}/images", PRODUCT_ID))
+                .andExpect(status().isConflict());
+    }
+
+    private long storedFiles() throws IOException {
+        try (var paths = Files.walk(storageRoot)) {
+            return paths.filter(Files::isRegularFile).count();
+        }
     }
 
     private long upload(String filename, byte[] bytes, Cookie userSession) throws Exception {

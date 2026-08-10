@@ -47,6 +47,7 @@ public class ProductImageService {
         lockProduct(productId);
         int currentCount = imageCount(productId);
         if (currentCount + uploads.size() > MAX_IMAGES) throw new IllegalArgumentException("A product can contain at most 10 images");
+        int nextSortOrder = nextSortOrder(productId);
 
         List<ProductImageView> result = new ArrayList<>();
         List<String> storedKeys = new ArrayList<>();
@@ -57,15 +58,17 @@ public class ProductImageService {
                 storage.store(productId, key, upload.content());
                 storedKeys.add(key);
                 long id = insert(productId, key, upload.filename(), upload.contentType(), upload.content().length,
-                        currentCount == 0 && index == 0, currentCount + index, user.username());
+                        currentCount == 0 && index == 0, nextSortOrder + index, user.username());
                 result.add(image(id));
             }
         } catch (IOException exception) {
             storedKeys.forEach(this::deleteQuietly);
-            throw new IllegalStateException("Unable to store product image", exception);
+            throw new InternalException("Unable to store product image", exception);
         } catch (RuntimeException exception) {
             storedKeys.forEach(this::deleteQuietly);
-            throw exception;
+            throw exception instanceof InternalException
+                    ? exception
+                    : new InternalException("Unable to create product image metadata", exception);
         }
         return result;
     }
@@ -129,7 +132,7 @@ public class ProductImageService {
         try {
             storage.delete(target.storageKey());
         } catch (IOException exception) {
-            throw new IllegalStateException("Unable to delete product image content", exception);
+            throw new InternalException("Unable to delete product image content", exception);
         }
         return images(productId);
     }
@@ -178,6 +181,13 @@ public class ProductImageService {
         return count == null ? 0 : count;
     }
 
+    private int nextSortOrder(long productId) {
+        Integer next = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM product_image WHERE product_id=?",
+                Integer.class, productId);
+        return next == null ? 0 : next;
+    }
+
     private long insert(long productId, String key, String filename, String contentType, long size, boolean primary, int sortOrder, String username) {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
@@ -194,7 +204,7 @@ public class ProductImageService {
             statement.setString(8, username);
             return statement;
         }, keys);
-        if (keys.getKey() == null) throw new IllegalStateException("Image metadata was not created");
+        if (keys.getKey() == null) throw new InternalException("Image metadata was not created");
         return keys.getKey().longValue();
     }
 
@@ -251,7 +261,11 @@ public class ProductImageService {
     }
 
     private void deleteQuietly(String key) {
-        try { storage.delete(key); } catch (IOException ignored) { }
+        try {
+            storage.delete(key);
+        } catch (IOException exception) {
+            log.warn("Failed to delete compensated product image storage key {}", key, exception);
+        }
     }
 
     private record Upload(String filename, String contentType, byte[] content) { }
@@ -260,5 +274,12 @@ public class ProductImageService {
     public static class NotFoundException extends RuntimeException {
         NotFoundException(String message) { super(message); }
         NotFoundException(String message, Throwable cause) { super(message, cause); }
+    }
+    public static class ConflictException extends RuntimeException {
+        ConflictException(String message) { super(message); }
+    }
+    public static class InternalException extends RuntimeException {
+        InternalException(String message) { super(message); }
+        InternalException(String message, Throwable cause) { super(message, cause); }
     }
 }

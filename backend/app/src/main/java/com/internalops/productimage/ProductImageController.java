@@ -70,8 +70,13 @@ public class ProductImageController {
         return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, exception.getMessage()));
     }
 
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ApiResponse<Void>> conflict(IllegalStateException exception) {
+    @ExceptionHandler(ProductImageService.ConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> conflict(ProductImageService.ConflictException exception) {
         return ResponseEntity.status(409).body(new ApiResponse<>(false, null, exception.getMessage()));
+    }
+
+    @ExceptionHandler(ProductImageService.InternalException.class)
+    public ResponseEntity<ApiResponse<Void>> internal(ProductImageService.InternalException exception) {
+        return ResponseEntity.status(500).body(new ApiResponse<>(false, null, exception.getMessage()));
     }
 }
