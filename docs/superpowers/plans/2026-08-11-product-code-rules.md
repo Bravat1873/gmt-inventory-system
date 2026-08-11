@@ -348,3 +348,13 @@ git add README.md
 git commit -m "docs: document product code maintenance"
 ```
 
+
+## Approved Entry-Door Extension
+
+- Add `ProductType`: `UNCLASSIFIED`, `SMART_LOCK`, `ENTRY_DOOR`.
+- Add V29 instead of rewriting committed V28.
+- Add rule categories `DOOR_MODEL`, `SECURITY_GRADE`, `BASE_MATERIAL`, `THICKNESS`, and `FINISH_COLOR` with the approved seeds.
+- Extend `ProductCodeSelection` and `ProductCodeGenerator` so smart locks generate `BR_P90HGT60WPZE` and entry doors generate `BR_MJ3080A`.
+- Product forms and imports select a product type and show/validate only that type's mappings.
+- Existing products remain `UNCLASSIFIED` with `OLD_******`; new products require a concrete type.
+- Add RED/GREEN tests for entry-door generation, missing fields, category isolation, mapping maintenance, migration, product CRUD, and frontend previews.
