@@ -5,5 +5,6 @@ public record FinanceActionRequest(
         String paymentMethod,
         String invoiceNo,
         LocalDate invoiceDate,
-        String paymentRemark) {
+        String paymentRemark,
+        LocalDate receivedAt) {
 }

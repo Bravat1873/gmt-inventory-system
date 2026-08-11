@@ -28,8 +28,22 @@ INSERT INTO product_code_rule(category,code,display_name,sort_order) VALUES
 ('OPERATING_ENTITY','Z','珠海',10),('OPERATING_ENTITY','S','深圳',20),('OPERATING_ENTITY','G','广州',30),
 ('LANGUAGE','E','英文版',10),('LANGUAGE','C','中文版',20),('LANGUAGE','S','西班牙语',30);
 
+SET @drop_sku_code_index = (
+    SELECT IF(
+        COUNT(*) > 0,
+        'ALTER TABLE sku DROP INDEX uk_sku_code',
+        'SELECT 1'
+    )
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'sku'
+      AND index_name = 'uk_sku_code'
+);
+PREPARE drop_sku_code_index_stmt FROM @drop_sku_code_index;
+EXECUTE drop_sku_code_index_stmt;
+DEALLOCATE PREPARE drop_sku_code_index_stmt;
+
 ALTER TABLE sku
-    DROP INDEX uk_sku_code,
     MODIFY COLUMN sku_code VARCHAR(80) NULL,
     ADD COLUMN product_code VARCHAR(80) NULL AFTER id,
     ADD COLUMN brand_rule_id BIGINT NULL,

@@ -2,46 +2,46 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
   createManualPurchase,
-  loadSupplierOptions,
-  loadSupplierProducts,
-  type SupplierOption,
-  type SupplierProductOption
+  loadOrderSkus,
+  loadProductSuppliers,
+  type OrderSku,
+  type ProductSupplierOption
 } from '../api/workbench'
 
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
-
 const form = reactive({ quantity: 1, purchasePrice: '', expectedArrivalDate: '', remark: '' })
-const suppliers = ref<SupplierOption[]>([])
-const products = ref<SupplierProductOption[]>([])
-const selectedSupplier = ref<SupplierOption | null>(null)
-const selectedProduct = ref<SupplierProductOption | null>(null)
-const supplierQuery = ref('')
+const products = ref<OrderSku[]>([])
+const suppliers = ref<ProductSupplierOption[]>([])
+const selectedProduct = ref<OrderSku | null>(null)
+const selectedSupplier = ref<ProductSupplierOption | null>(null)
 const productQuery = ref('')
-const supplierOpen = ref(false)
+const supplierQuery = ref('')
 const productOpen = ref(false)
+const supplierOpen = ref(false)
 const saving = ref(false)
-const loadingSuppliers = ref(false)
 const loadingProducts = ref(false)
+const loadingSuppliers = ref(false)
+const supplierRequest = ref(0)
 const errors = reactive<Record<string, string>>({})
 const dateInput = ref<HTMLInputElement>()
-
-const visibleSuppliers = computed(() => {
-  const keyword = supplierQuery.value.trim().toLowerCase()
-  if (!keyword) return suppliers.value
-  return suppliers.value.filter(item => [item.supplierName, item.supplierCode, item.contactName, item.phone]
-    .filter(Boolean).join(' ').toLowerCase().includes(keyword))
-})
 
 const visibleProducts = computed(() => {
   const keyword = productQuery.value.trim().toLowerCase()
   if (!keyword) return products.value
-  return products.value.filter(item => productLabel(item).toLowerCase().includes(keyword))
+  return products.value.filter(item => productSearchText(item).includes(keyword))
 })
 
-function productLabel(product: SupplierProductOption) {
+const visibleSuppliers = computed(() => suppliers.value)
+
+function productLabel(product: OrderSku) {
   const code = product.skuCode || product.model || `产品 ${product.id}`
   const name = product.productName || product.configuration || ''
   return name ? `${code} · ${name}` : code
+}
+
+function productSearchText(product: OrderSku) {
+  return [product.skuCode, product.productName, product.model, product.configuration]
+    .filter(Boolean).join(' ').toLowerCase()
 }
 
 function formattedArrivalDate() {
@@ -58,7 +58,6 @@ function openDatePicker() {
 }
 
 function setExpectedArrival(days: number) {
-  if (form.expectedArrivalDate) return
   const date = new Date()
   date.setDate(date.getDate() + days)
   const year = date.getFullYear()
@@ -67,81 +66,83 @@ function setExpectedArrival(days: number) {
   form.expectedArrivalDate = `${year}-${month}-${day}`
 }
 
-async function searchSuppliers() {
-  loadingSuppliers.value = true
-  try {
-    suppliers.value = await loadSupplierOptions(supplierQuery.value.trim())
-  } catch (cause) {
-    errors.supplier = cause instanceof Error ? cause.message : '读取供应商失败'
-  } finally {
-    loadingSuppliers.value = false
-  }
-}
-
-async function searchProducts() {
-  if (!selectedSupplier.value) return
+async function loadProducts() {
   loadingProducts.value = true
   try {
-    products.value = await loadSupplierProducts(selectedSupplier.value.id, productQuery.value.trim())
+    products.value = await loadOrderSkus()
   } catch (cause) {
-    errors.product = cause instanceof Error ? cause.message : '读取供应产品失败'
+    errors.product = cause instanceof Error ? cause.message : '读取产品失败'
   } finally {
     loadingProducts.value = false
   }
 }
 
-function hideLater(field: 'supplier' | 'product') {
+async function searchSuppliers() {
+  if (!selectedProduct.value) return
+  const request = ++supplierRequest.value
+  loadingSuppliers.value = true
+  try {
+    const result = await loadProductSuppliers(selectedProduct.value.id, supplierQuery.value.trim())
+    if (request === supplierRequest.value) suppliers.value = result
+  } catch (cause) {
+    if (request === supplierRequest.value) errors.supplier = cause instanceof Error ? cause.message : '读取供应商失败'
+  } finally {
+    if (request === supplierRequest.value) loadingSuppliers.value = false
+  }
+}
+
+function hideLater(field: 'product' | 'supplier') {
   window.setTimeout(() => {
-    if (field === 'supplier') supplierOpen.value = false
-    else productOpen.value = false
+    if (field === 'product') productOpen.value = false
+    else supplierOpen.value = false
   }, 120)
 }
 
-async function selectSupplier(supplier: SupplierOption) {
-  selectedSupplier.value = supplier
-  supplierQuery.value = supplier.supplierName
-  selectedProduct.value = null
-  productQuery.value = ''
-  products.value = []
-  supplierOpen.value = false
-  errors.supplier = ''
-  await searchProducts()
-}
-
-function selectProduct(product: SupplierProductOption) {
+async function selectProduct(product: OrderSku) {
   selectedProduct.value = product
   productQuery.value = productLabel(product)
   productOpen.value = false
-  form.purchasePrice = String(product.purchasePrice)
-  setExpectedArrival(product.leadTimeDays)
+  selectedSupplier.value = null
+  supplierQuery.value = ''
+  suppliers.value = []
+  form.purchasePrice = ''
+  form.expectedArrivalDate = ''
   errors.product = ''
+  errors.supplier = ''
+  errors.purchasePrice = ''
+  await searchSuppliers()
+}
+
+function selectSupplier(supplier: ProductSupplierOption) {
+  selectedSupplier.value = supplier
+  supplierQuery.value = supplier.supplierName
+  supplierOpen.value = false
+  form.purchasePrice = String(supplier.purchasePrice)
+  setExpectedArrival(supplier.leadTimeDays)
+  errors.supplier = ''
   errors.purchasePrice = ''
 }
 
 function validate() {
   Object.keys(errors).forEach(key => delete errors[key])
-  if (!selectedSupplier.value) errors.supplier = '请选择供应商'
-  if (!selectedProduct.value) errors.product = '请选择该供应商可供的产品'
+  if (!selectedProduct.value) errors.product = '请选择产品'
+  if (!selectedSupplier.value) errors.supplier = selectedProduct.value ? '请选择该产品的供应商' : '请先选择产品'
   const quantity = Number(form.quantity)
   if (!Number.isInteger(quantity) || quantity <= 0) errors.quantity = '采购数量必须是大于 0 的整数'
-  if (selectedProduct.value && quantity < selectedProduct.value.moq) {
-    errors.quantity = `采购数量不能低于最小起订量 ${selectedProduct.value.moq}`
-  }
+  if (selectedSupplier.value && quantity < selectedSupplier.value.moq) errors.quantity = `采购数量不能低于最小起订量 ${selectedSupplier.value.moq}`
   const price = Number(form.purchasePrice)
   if (!Number.isFinite(price) || price <= 0) errors.purchasePrice = '采购单价必须是大于 0 的有效数字'
   return Object.keys(errors).length === 0
 }
 
-function requestClose() {
-  if (!saving.value) emit('close')
-}
+function requestClose() { if (!saving.value) emit('close') }
 
 async function save() {
   if (saving.value || !validate() || !selectedSupplier.value || !selectedProduct.value) return
   saving.value = true
   try {
     const result = await createManualPurchase({
-      supplierId: selectedSupplier.value.id,
+      supplierId: selectedSupplier.value.supplierId,
       skuId: selectedProduct.value.id,
       quantity: Number(form.quantity),
       purchasePrice: Number(form.purchasePrice),
@@ -157,7 +158,7 @@ async function save() {
   }
 }
 
-onMounted(searchSuppliers)
+onMounted(loadProducts)
 </script>
 
 <template>
@@ -167,29 +168,29 @@ onMounted(searchSuppliers)
       <form novalidate @submit.prevent="save">
         <div class="form-grid">
           <label class="choice-field">
-            <span>供应商</span>
-            <input data-test="supplier-search" v-model="supplierQuery" type="search" autocomplete="off" placeholder="输入供应商名称、编码或联系人" :disabled="saving" @focus="supplierOpen=true" @blur="hideLater('supplier')" @input="searchSuppliers">
-            <div v-if="supplierOpen" class="choice-options" role="listbox">
-              <span v-if="loadingSuppliers" class="choice-empty">正在查询供应商…</span>
-              <button v-for="supplier in visibleSuppliers" v-else :key="supplier.id" :data-test="`supplier-option-${supplier.id}`" type="button" @mousedown.prevent @click="selectSupplier(supplier)">
-                <strong>{{ supplier.supplierName }}</strong><small>{{ supplier.supplierCode || '未设置编码' }}<template v-if="supplier.contactName"> · {{ supplier.contactName }}</template></small>
+            <span>产品</span>
+            <input data-test="product-search" v-model="productQuery" type="search" autocomplete="off" placeholder="输入产品编号、名称、型号或规格" :disabled="saving" @focus="productOpen=true" @blur="hideLater('product')">
+            <div v-if="productOpen" class="choice-options" role="listbox">
+              <span v-if="loadingProducts" class="choice-empty">正在加载产品…</span>
+              <button v-for="product in visibleProducts" v-else :key="product.id" :data-test="`product-option-${product.id}`" type="button" @mousedown.prevent @click="selectProduct(product)">
+                <strong>{{ productLabel(product) }}</strong><small>{{ product.model || '未设置型号' }}<template v-if="product.configuration"> · {{ product.configuration }}</template></small>
               </button>
-              <span v-if="!loadingSuppliers && visibleSuppliers.length===0" class="choice-empty">没有匹配的供应商，请先到供应商管理维护。</span>
+              <span v-if="!loadingProducts && visibleProducts.length===0" class="choice-empty">没有匹配的产品。</span>
             </div>
-            <small v-if="errors.supplier" class="field-error">{{ errors.supplier }}</small>
+            <small v-if="errors.product" class="field-error">{{ errors.product }}</small>
           </label>
           <label class="choice-field">
-            <span>产品</span>
-            <input data-test="product-search" v-model="productQuery" type="search" autocomplete="off" placeholder="先选择供应商，再搜索产品" :disabled="saving || !selectedSupplier" @focus="productOpen=true" @blur="hideLater('product')" @input="searchProducts">
-            <div v-if="productOpen && selectedSupplier" class="choice-options" role="listbox">
-              <span v-if="loadingProducts" class="choice-empty">正在查询产品…</span>
-              <button v-for="product in visibleProducts" v-else :key="product.id" :data-test="`product-option-${product.id}`" type="button" @mousedown.prevent @click="selectProduct(product)">
-                <strong>{{ productLabel(product) }}</strong><small>采购价 {{ product.purchasePrice }} · 起订 {{ product.moq }} · 交货 {{ product.leadTimeDays }} 天</small>
+            <span>供应商</span>
+            <input data-test="supplier-search" v-model="supplierQuery" type="search" autocomplete="off" placeholder="请先选择产品" :disabled="saving || !selectedProduct" @focus="supplierOpen=true" @blur="hideLater('supplier')" @input="searchSuppliers">
+            <div v-if="supplierOpen && selectedProduct" class="choice-options" role="listbox">
+              <span v-if="loadingSuppliers" class="choice-empty">正在查询供应商…</span>
+              <button v-for="supplier in visibleSuppliers" v-else :key="supplier.supplierId" :data-test="`supplier-option-${supplier.supplierId}`" type="button" @mousedown.prevent @click="selectSupplier(supplier)">
+                <strong>{{ supplier.supplierName }}</strong><small>{{ supplier.supplierCode || '未设置编码' }} · 采购价 {{ supplier.purchasePrice }} · 起订 {{ supplier.moq }} · 交货 {{ supplier.leadTimeDays }} 天</small>
               </button>
-              <span v-if="!loadingProducts && visibleProducts.length===0" class="choice-empty">该供应商暂未维护可供产品。</span>
+              <span v-if="!loadingSuppliers && visibleSuppliers.length===0" class="choice-empty">该产品暂无供应商，请先到供应商管理维护供货关系。</span>
             </div>
-            <small v-if="selectedProduct" class="field-hint">最小起订量：{{ selectedProduct.moq }}，交货天数：{{ selectedProduct.leadTimeDays }}</small>
-            <small v-if="errors.product" class="field-error">{{ errors.product }}</small>
+            <small v-if="selectedSupplier" class="field-hint">最小起订量：{{ selectedSupplier.moq }}，交货天数：{{ selectedSupplier.leadTimeDays }}</small>
+            <small v-if="errors.supplier" class="field-error">{{ errors.supplier }}</small>
           </label>
           <label><span>采购数量</span><input v-model.number="form.quantity" type="number" min="1" step="1" :aria-invalid="Boolean(errors.quantity)" :disabled="saving"><small v-if="errors.quantity" class="field-error">{{ errors.quantity }}</small></label>
           <label><span>采购单价</span><input data-test="purchase-price" v-model="form.purchasePrice" type="number" min="0.0001" step="0.0001" :aria-invalid="Boolean(errors.purchasePrice)" :disabled="saving"><small v-if="errors.purchasePrice" class="field-error">{{ errors.purchasePrice }}</small></label>

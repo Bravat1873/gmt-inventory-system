@@ -55,6 +55,31 @@ class MasterDataCommandApiTest {
     }
 
     @Test
+    void savesCustomerContactsAndInvoiceDetails() throws Exception {
+        String body = mvc.perform(post("/api/workbench/customer").cookie(session).contentType("application/json")
+                        .content("""
+                                {"customerCode":"C-COMPLETE","customerName":"完整客户","address":"珠海市香洲区",
+                                 "businessContactName":"业务张","businessContactPhone":"13800000001",
+                                 "orderContactName":"订单李","orderContactPhone":"13800000002",
+                                 "financeContactName":"财务王","financeContactPhone":"13800000003",
+                                 "invoiceTitle":"完整客户有限公司","taxpayerId":"91440400TEST",
+                                 "invoiceAddress":"珠海市开票地址","invoicePhone":"0756-1234567",
+                                 "bankName":"中国银行珠海分行","bankAccount":"621700001"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.customerCode").value("C-COMPLETE"))
+                .andExpect(jsonPath("$.data.orderContactName").value("订单李"))
+                .andExpect(jsonPath("$.data.financeContactPhone").value("13800000003"))
+                .andExpect(jsonPath("$.data.taxpayerId").value("91440400TEST"))
+                .andReturn().getResponse().getContentAsString();
+        long id = new com.fasterxml.jackson.databind.ObjectMapper().readTree(body).path("data").path("id").asLong();
+
+        assertThat(jdbc.queryForMap("SELECT * FROM customer WHERE id=?", id))
+                .containsEntry("order_contact_name", "订单李")
+                .containsEntry("bank_account", "621700001");
+    }
+
+    @Test
     void adjustsInventoryAndWritesTransaction() throws Exception {
         mvc.perform(put("/api/workbench/inventory/1").cookie(session).contentType("application/json")
                         .content("{\"actualQuantity\":12,\"lockedQuantity\":2,\"inTransitQuantity\":3,\"reason\":\"盘点调整\",\"version\":0}"))
@@ -76,17 +101,30 @@ class MasterDataCommandApiTest {
     }
 
     @Test
-    void createsInventoryBySkuCodeAndUsesTheFiveLockedSources() throws Exception {
-        mvc.perform(post("/api/workbench/inventory").cookie(session).contentType("application/json")
-                        .content("{\"skuCode\":\"SKU002\",\"actualQuantity\":10,\"inTransitQuantity\":1,\"inventoryMovements\":[{\"date\":\"2026-08-06\",\"direction\":\"INBOUND\",\"quantity\":10},{\"date\":\"2026-08-06\",\"direction\":\"OUTBOUND\",\"quantity\":2}],"
-                                + "\"lockedMingAiJunQiao\":2,\"lockedBoLeLongMi\":3,\"lockedLaos\":1,"
-                                + "\"lockedBeiLang\":0,\"lockedMalaysia\":2}"))
+    void createsInventoryWithDynamicLockedSources() throws Exception {
+        String response=mvc.perform(post("/api/workbench/inventory").cookie(session).contentType("application/json")
+                        .content("{\"skuCode\":\"SKU002\",\"actualQuantity\":10,\"lockedQuantity\":8,\"inTransitQuantity\":1,\"inventoryMovements\":[{\"date\":\"2026-08-06\",\"direction\":\"INBOUND\",\"quantity\":10},{\"date\":\"2026-08-06\",\"direction\":\"OUTBOUND\",\"quantity\":2}],"
+                                + "\"lockedAllocations\":[{\"lockSource\":\"新加坡\",\"quantity\":2},{\"lockSource\":\"越南\",\"quantity\":3}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.skuId").value(2))
                 .andExpect(jsonPath("$.data.actualQuantity").value(18))
-                .andExpect(jsonPath("$.data.lockedQuantity").value(8));
+                .andExpect(jsonPath("$.data.lockedQuantity").value(8))
+                .andReturn().getResponse().getContentAsString();
+        long id=new com.fasterxml.jackson.databind.ObjectMapper().readTree(response).path("data").path("id").asLong();
+        assertThat(jdbc.queryForList("SELECT lock_source FROM inventory_locked_allocation WHERE inventory_balance_id=? ORDER BY lock_source",String.class,id))
+                .containsExactly("新加坡","越南");
     }
 
+    @Test
+    void rejectsDuplicateOrOverAllocatedDynamicLockedSources() throws Exception {
+        String prefix="{\"skuCode\":\"SKU002\",\"actualQuantity\":10,\"lockedQuantity\":4,\"inTransitQuantity\":0,\"lockedAllocations\":";
+        mvc.perform(post("/api/workbench/inventory").cookie(session).contentType("application/json")
+                        .content(prefix+"[{\"lockSource\":\"新加坡\",\"quantity\":1},{\"lockSource\":\"新加坡\",\"quantity\":1}]}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("地点名称不能重复"));
+        mvc.perform(post("/api/workbench/inventory").cookie(session).contentType("application/json")
+                        .content(prefix+"[{\"lockSource\":\"新加坡\",\"quantity\":3},{\"lockSource\":\"越南\",\"quantity\":2}]}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("地点锁定数量合计不能超过已锁定数量"));
+    }
     @Test
     void savesEditableInventoryProductFieldsAndAcceptsAnAvailableQuantity() throws Exception {
         mvc.perform(post("/api/workbench/inventory").cookie(session).contentType("application/json")
@@ -107,7 +145,7 @@ class MasterDataCommandApiTest {
 
     @Test
     void rejectsARepeatedUsernameWithAnActionableMessage() throws Exception {
-        String body = "{\"username\":\"operator\",\"displayName\":\"操作员\",\"phone\":\"13800000000\"}";
+        String body = "{\"username\":\"operator\",\"displayName\":\"操作员\",\"phone\":\"13800000000\",\"password\":\"123\"}";
         mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json").content(body))
                 .andExpect(status().isOk());
 
@@ -199,30 +237,29 @@ class MasterDataCommandApiTest {
     }
 
     @Test
-    void regularUserCanMaintainUserDetailsButCannotAssignRoles() throws Exception {
+    void regularUserCannotMaintainUserAccounts() throws Exception {
         Cookie userSession = loginAs("regular-user");
 
         mvc.perform(put("/api/workbench/user/3").cookie(userSession).contentType("application/json")
                         .content("{\"displayName\":\"新操作员\",\"phone\":\"13900000000\",\"version\":0}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.displayName").value("新操作员"))
-                .andExpect(jsonPath("$.data.role").value("USER"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅管理员可管理用户账号"));
 
         mvc.perform(put("/api/workbench/user/3").cookie(userSession).contentType("application/json")
-                        .content("{\"displayName\":\"新操作员\",\"role\":\"FINANCE\",\"version\":1}"))
+                        .content("{\"displayName\":\"新操作员\",\"role\":\"FINANCE\",\"version\":0}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("仅管理员可分配用户角色"));
+                .andExpect(jsonPath("$.message").value("仅管理员可管理用户账号"));
     }
 
     @Test
     void newUsersDefaultToUserAndAdminCanAssignAValidRole() throws Exception {
         mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json")
-                        .content("{\"username\":\"new-user\",\"displayName\":\"新用户\"}"))
+                        .content("{\"username\":\"new-user\",\"displayName\":\"新用户\",\"password\":\"123\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.role").value("USER"));
 
         mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json")
-                        .content("{\"username\":\"new-finance\",\"displayName\":\"新财务\",\"role\":\"FINANCE\"}"))
+                        .content("{\"username\":\"new-finance\",\"displayName\":\"新财务\",\"password\":\"123\",\"role\":\"FINANCE\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.role").value("FINANCE"));
 
@@ -234,7 +271,7 @@ class MasterDataCommandApiTest {
     @Test
     void adminCannotAssignAnInvalidRole() throws Exception {
         mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json")
-                        .content("{\"username\":\"bad-role\",\"displayName\":\"非法角色\",\"role\":\"OWNER\"}"))
+                        .content("{\"username\":\"bad-role\",\"displayName\":\"非法角色\",\"password\":\"123\",\"role\":\"OWNER\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("用户角色无效"));
     }
@@ -285,7 +322,7 @@ class MasterDataCommandApiTest {
         mvc.perform(put("/api/workbench/user/3").cookie(userSession).contentType("application/json")
                         .content("{\"displayName\":\"操作员\",\"role\":null,\"version\":0}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("仅管理员可分配用户角色"));
+                .andExpect(jsonPath("$.message").value("仅管理员可管理用户账号"));
     }
 
     @Test
@@ -297,9 +334,9 @@ class MasterDataCommandApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
         mvc.perform(post("/api/workbench/user").cookie(userSession).contentType("application/json")
-                        .content("{\"username\":\"forbidden-finance\",\"displayName\":\"越权财务\",\"role\":\"FINANCE\"}"))
+                        .content("{\"username\":\"forbidden-finance\",\"displayName\":\"越权财务\",\"password\":\"123\",\"role\":\"FINANCE\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("仅管理员可分配用户角色"));
+                .andExpect(jsonPath("$.message").value("仅管理员可管理用户账号"));
 
         mvc.perform(put("/api/workbench/user/3").cookie(session).contentType("application/json")
                         .content("{\"displayName\":\"操作员\",\"role\":\"FINANCE\",\"version\":0}"))
@@ -314,6 +351,62 @@ class MasterDataCommandApiTest {
                         .content("{\"displayName\":\"不存在\",\"version\":0}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("数据已被其他操作修改，请重新打开后再试"));
+    }
+
+    @Test
+    void adminCreatesAUserWithASimplePlaintextPasswordAndCanResetIt() throws Exception {
+        mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json")
+                        .content("{\"username\":\"plain-user\",\"displayName\":\"明文用户\",\"password\":\"123\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.password").doesNotExist());
+
+        assertThat(jdbc.queryForObject("SELECT password_hash FROM sys_user WHERE username='plain-user'", String.class))
+                .isEqualTo("123");
+        loginAs("plain-user");
+        long id = jdbc.queryForObject("SELECT id FROM sys_user WHERE username='plain-user'", Long.class);
+
+        mvc.perform(put("/api/workbench/user/{id}", id).cookie(session).contentType("application/json")
+                        .content("{\"displayName\":\"明文用户\",\"password\":\"456\",\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.password").doesNotExist());
+
+        mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"plain-user\",\"password\":\"123\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"plain-user\",\"password\":\"456\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void creatingAUserRequiresANonBlankPasswordAndBlankResetKeepsTheOldPassword() throws Exception {
+        mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json")
+                        .content("{\"username\":\"missing-password\",\"displayName\":\"缺密码\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("初始密码不能为空"));
+        mvc.perform(post("/api/workbench/user").cookie(session).contentType("application/json")
+                        .content("{\"username\":\"blank-password\",\"displayName\":\"空密码\",\"password\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("初始密码不能为空"));
+
+        mvc.perform(put("/api/workbench/user/3").cookie(session).contentType("application/json")
+                        .content("{\"displayName\":\"操作员\",\"password\":\"   \",\"version\":0}"))
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT password_hash FROM sys_user WHERE id=3", String.class)).isEqualTo("123");
+    }
+
+    @Test
+    void financeCannotCreateOrResetUserAccounts() throws Exception {
+        Cookie financeSession = loginAs("finance");
+        mvc.perform(post("/api/workbench/user").cookie(financeSession).contentType("application/json")
+                        .content("{\"username\":\"forbidden\",\"displayName\":\"禁止\",\"password\":\"123\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅管理员可管理用户账号"));
+        mvc.perform(put("/api/workbench/user/3").cookie(financeSession).contentType("application/json")
+                        .content("{\"displayName\":\"操作员\",\"password\":\"456\",\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅管理员可管理用户账号"));
+        assertThat(jdbc.queryForObject("SELECT password_hash FROM sys_user WHERE id=3", String.class)).isEqualTo("123");
     }
 
     @Test
@@ -465,5 +558,22 @@ class MasterDataCommandApiTest {
         jdbc.execute("ALTER TABLE supplier ADD COLUMN currency VARCHAR(100)");
         jdbc.execute("ALTER TABLE supplier ADD COLUMN tax_registration_no VARCHAR(100)");
         jdbc.execute("ALTER TABLE supplier ADD COLUMN bank_address VARCHAR(500)");
+    }
+
+    @Test
+    void updatesAndReturnsProductMaterialType() throws Exception {
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"materialType\":\"PART\",\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.materialType").value("PART"));
+        assertThat(jdbc.queryForObject("SELECT material_type FROM sku WHERE id=1", String.class)).isEqualTo("PART");
+    }
+
+    @Test
+    void rejectsUnknownProductMaterialType() throws Exception {
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"materialType\":\"RAW\",\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("请选择物料类型：成品或零件"));
     }
 }

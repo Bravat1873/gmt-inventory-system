@@ -84,6 +84,15 @@ it('hides only the completed purchase action', async () => {
   expect(wrapper.find('[data-test="purchase-receipt"]').exists()).toBe(true)
 })
 
+it('formats inventory age zero and dates using the list display convention', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, oldestStockDate: '2026-08-01T09:10:11', inventoryAgeDays: 0 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'inventory')! } })
+  await flushPromises()
+
+  expect(wrapper.text()).toContain('2026-08-01 09:10:11')
+  expect(wrapper.text()).toContain('0 天')
+})
+
 it('renders the product primary image, count badge and opens its gallery', async () => {
   loadModule.mockResolvedValue({
     items: [{ id: 7, primaryImageId: 9, primaryImageUrl: '/api/product-images/9/content', imageCount: 5 }],
@@ -121,4 +130,22 @@ it.each([
 
   expect(wrapper.text()).toContain(label)
   expect(wrapper.text()).not.toContain(`>${role}<`)
+})
+
+it.each([
+  ['FINISHED_PRODUCT', '成品'],
+  ['PART', '零件']
+])('renders product material type %s as %s', async (materialType, label) => {
+  loadModule.mockResolvedValue({ items: [{ id: 7, materialType }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')! } })
+  await flushPromises()
+  expect(wrapper.text()).toContain(label)
+})
+it('shows only the edit action for inventory rows', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, skuCode: 'P50' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'inventory')! } })
+  await flushPromises()
+  const actions = wrapper.get('.row-actions')
+  expect(actions.text()).toBe('修改')
+  expect(actions.find('[data-test="inventory-details"]').exists()).toBe(false)
 })

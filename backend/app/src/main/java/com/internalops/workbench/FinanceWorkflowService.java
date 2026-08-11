@@ -27,10 +27,11 @@ public class FinanceWorkflowService {
         if (receiptAmount == null || receiptAmount.signum() <= 0) throw new IllegalArgumentException("本次收款金额必须大于 0");
         if (receiptAmount.compareTo(outstanding) > 0) throw new IllegalArgumentException("本次收款金额不能超过未收金额");
 
-        jdbc.update("INSERT INTO customer_receipt(sales_order_id,amount,payment_method,received_at,confirmed_by) VALUES(?,?,?,?,1)", id, receiptAmount, text(request.paymentMethod(), "银行转账"), LocalDateTime.now());
-        jdbc.update("UPDATE sales_order SET receipt_confirmed_at=?,version=version+1 WHERE id=?", LocalDateTime.now(), id);
+        LocalDateTime receiptTime = request.receivedAt() == null ? LocalDateTime.now() : request.receivedAt().atStartOfDay();
+        jdbc.update("INSERT INTO customer_receipt(sales_order_id,amount,payment_method,received_at,confirmed_by) VALUES(?,?,?,?,1)", id, receiptAmount, text(request.paymentMethod(), "银行转账"), receiptTime);
+        jdbc.update("UPDATE sales_order SET receipt_confirmed_at=?,version=version+1 WHERE id=?", receiptTime, id);
         BigDecimal totalReceived = received.add(receiptAmount);
-        return Map.of("id", id, "status", status, "receivableAmount", receivable, "receivedAmount", totalReceived, "outstandingAmount", receivable.subtract(totalReceived).max(BigDecimal.ZERO));
+        return Map.of("id", id, "status", status, "receivableAmount", receivable, "receivedAmount", totalReceived, "outstandingAmount", receivable.subtract(totalReceived).max(BigDecimal.ZERO), "receivedAt", receiptTime);
     }
 
     private Map<String, Object> order(long id) { return jdbc.queryForMap("SELECT status,total_amount FROM sales_order WHERE id=? FOR UPDATE", id); }

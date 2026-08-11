@@ -5,7 +5,7 @@ import { loadModule, type PageResult } from '../api/workbench'
 import type { ModuleDefinition } from '../modules/module-config'
 
 const props = defineProps<{ module: ModuleDefinition; currentUserRole?: UserRole }>()
-const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
+const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
 const keyword = ref('')
 const loading = ref(false)
 const data = ref<PageResult>({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
@@ -19,8 +19,10 @@ function search() { load(1) }
 function orderBy(field: string) { if (!field) return; direction.value = sort.value === field && direction.value === 'asc' ? 'desc' : 'asc'; sort.value = field; load(1) }
 function text(value: unknown, field?: string) {
   if (value === true) return '启用'; if (value === false) return '停用'; if (value == null || value === '') return '—'
+  if (field === 'inventoryAgeDays') return `${Number(value)} 天`
+  if (field === 'materialType') return ({ FINISHED_PRODUCT: '成品', PART: '零件' } as Record<string, string>)[String(value)] ?? String(value)
   if (field === 'role') return ({ ADMIN: '管理员', FINANCE: '财务', USER: '普通用户' } as Record<string, string>)[String(value)] ?? String(value)
-  if (field === 'createdAt' || field === 'updatedAt') { const matched = String(value).match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2})/); if (matched) return `${matched[1]} ${matched[2]}` }
+  if (field === 'createdAt' || field === 'updatedAt' || field === 'oldestStockDate') { const matched = String(value).match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2})/); if (matched) return `${matched[1]} ${matched[2]}` }
   const statuses: Record<string, string> = { DRAFT: '草稿', PENDING_CUSTOMER_PAYMENT: '确认订单并分配库存', WAITING_STOCK: '等待齐货', READY_TO_SHIP: '等待发货', SHIPPED: '已发货', PENDING_SUPPLIER_PAYMENT: '待登记付款', EXECUTING: '采购执行中', RECEIVED: '已入库', COMPLETED: '已完成', UNPAID: '未付款', PARTIALLY_PAID: '部分付款', PAID: '已付清', UNRECEIVED: '未收货', PARTIALLY_RECEIVED: '部分收货', RECEIVABLE: '收', PAYABLE: '付' }
   return statuses[String(value)] ?? String(value)
 }
@@ -33,20 +35,21 @@ function isReceivable(row: Record<string, unknown>) { return String(row.cashDire
 function hasOutstandingAmount(row: Record<string, unknown>) { return Number(row.outstandingAmount ?? 0) > 0 }
 const canManual = computed(() => ['customer', 'user', 'product', 'supplier', 'inventory'].includes(props.module.key))
 const canUsePrimary = computed(() => Boolean(props.module.actionLabel)
+  && (props.module.key !== 'user' || props.currentUserRole === 'ADMIN')
   && (props.module.importType !== 'COST' || ['ADMIN', 'FINANCE'].includes(props.currentUserRole ?? 'USER')))
 function primary() { if (canUsePrimary.value) emit('action') }
-function columnWidth(field: string) {
-  if (field === 'productImage') return 84
-  const widths: Record<string, number> = { skuCode: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 160, purchaseNo: 160, businessNo: 160, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 130, lockedQuantity: 130, lockedMingAiJunQiao: 104, lockedBoLeLongMi: 104, lockedLaos: 88, lockedBeiLang: 88, lockedMalaysia: 104, inTransitQuantity: 130, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
+function canEditRow() { return props.module.key !== 'user' || props.currentUserRole === 'ADMIN' }
 function productImageUrl(row: Record<string, unknown>) {
   if (row.primaryImageUrl) return String(row.primaryImageUrl)
   return row.primaryImageId ? `/api/product-images/${Number(row.primaryImageId)}/content` : ''
 }
+function columnWidth(field: string) {
+  if (field === 'productImage') return 84
+  const widths: Record<string, number> = { skuCode: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 160, purchaseNo: 160, businessNo: 160, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, oldestStockDate: 170, inventoryAgeDays: 90, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 130, lockedQuantity: 130, inTransitQuantity: 130, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
   return widths[field] ?? 150
 }
 const actionColumnWidth = computed(() => {
-  if (props.module.key === 'order') return 292
-  if (props.module.key === 'inventory') return 190
+  if (props.module.key === 'order') return 390
   if (props.module.key === 'purchase') return 240
   if (props.module.key === 'finance') return 210
   return 110
@@ -88,10 +91,10 @@ defineExpose({ reload: () => load(data.value.page) })
                 <span v-else class="cell-content">{{ text(row[field], field) }}</span>
               </td>
               <td class="row-actions">
-                <button v-if="module.key === 'inventory'" data-test="inventory-details" @click="emit('details', row)">查看明细</button>
                 <button v-if="['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')" data-test="view-details" @click="emit('details', row)">查看</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('receipt', row)">登记收款</button>
-                <button v-if="['customer', 'user', 'product', 'supplier', 'inventory'].includes(module.key) || (module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT'].includes(String(row.status)))" @click="emit('edit', row)">修改</button>
+                <button v-if="module.key === 'order' && ['READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))" data-test="order-allocation" @click="emit('allocation', row)">分配库存</button>
+                <button v-if="canEditRow() && (['customer', 'user', 'product', 'supplier', 'inventory'].includes(module.key) || (module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT', 'READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))))" @click="emit('edit', row)">修改</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('shipment', row)">发货</button>
                 <button v-if="module.key === 'finance' && isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-receipt" @click="emit('receipt', row)">登记收款</button>
                 <button v-if="module.key === 'finance' && !isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-payment" @click="emit('payment', row)">登记付款</button>

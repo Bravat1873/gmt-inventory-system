@@ -32,6 +32,23 @@ it('places finance direction inside the business type cell instead of a standalo
   expect(finance.fields).toContain('businessType')
 })
 
+it('places oldest stock date and inventory age after the available inventory quantities', () => {
+  const inventory = moduleDefinitions.find(item => item.key === 'inventory')!
+  const availableIndex = inventory.fields.indexOf('availableQuantity')
+
+  expect(inventory.fields.slice(availableIndex + 1, availableIndex + 3)).toEqual(['oldestStockDate', 'inventoryAgeDays'])
+  expect(inventory.columns.slice(availableIndex + 1, availableIndex + 3)).toEqual(['最早在库日期', '库龄'])
+})
+
+it('does not offer sorting for inventory age fields without backend sort support', () => {
+  const inventory = moduleDefinitions.find(item => item.key === 'inventory')!
+  const oldestStockDateIndex = inventory.fields.indexOf('oldestStockDate')
+  const inventoryAgeDaysIndex = inventory.fields.indexOf('inventoryAgeDays')
+
+  expect(inventory.sortable[oldestStockDateIndex]).toBe('')
+  expect(inventory.sortable[inventoryAgeDaysIndex]).toBe('')
+})
+
 it('prepends the non-sortable product image gallery column', () => {
   const product = moduleDefinitions.find(item => item.key === 'product')!
 
@@ -46,4 +63,18 @@ it('includes a Chinese role column in the user list', () => {
 
   expect(roleIndex).toBeGreaterThanOrEqual(0)
   expect(user.columns[roleIndex]).toBe('角色')
+})
+
+it('includes the product material type column', () => {
+  const product = moduleDefinitions.find(item => item.key === 'product')!
+  const index = product.fields.indexOf('materialType')
+  expect(index).toBeGreaterThanOrEqual(0)
+  expect(product.columns[index]).toBe('物料类型')
+})
+it('keeps location allocations out of the extensible inventory table', () => {
+  const inventory = moduleDefinitions.find(item => item.key === 'inventory')!
+  expect(inventory.fields).not.toEqual(expect.arrayContaining([
+    'lockedMingAiJunQiao', 'lockedBoLeLongMi', 'lockedLaos', 'lockedBeiLang', 'lockedMalaysia'
+  ]))
+  expect(inventory.columns).not.toEqual(expect.arrayContaining(['铭爱钧乔', '博乐龙米', '老挝', '贝朗', '马来西亚']))
 })

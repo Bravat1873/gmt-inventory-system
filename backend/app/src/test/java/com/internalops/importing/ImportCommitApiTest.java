@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Sql(scripts = {"/auth-schema.sql", "/import-schema.sql", "/import-commit-schema.sql"})
 class ImportCommitApiTest {
-    private static final String PASSWORD_HASH = "$2b$12$budbHP4blgVi7rbdpNMA5eYa/D83VYzeh/I7RcK7dLLn/qSVwmu7O";
+    private static final String PASSWORD = "123";
 
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
@@ -34,9 +34,9 @@ class ImportCommitApiTest {
     @BeforeEach
     void addRoleUsers() {
         jdbc.update("INSERT INTO sys_user(username,password_hash,display_name,enabled,role) VALUES(?,?,?,?,?)",
-                "finance", PASSWORD_HASH, "财务", true, "FINANCE");
+                "finance", PASSWORD, "财务", true, "FINANCE");
         jdbc.update("INSERT INTO sys_user(username,password_hash,display_name,enabled,role) VALUES(?,?,?,?,?)",
-                "regular-user", PASSWORD_HASH, "操作员", true, "USER");
+                "regular-user", PASSWORD, "操作员", true, "USER");
     }
 
     @Test

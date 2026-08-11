@@ -25,7 +25,9 @@ class ProductCodeRuleApiTest {
                         .param("category", "BRAND").param("includeDisabled", "true"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].code").value("BR"))
-                .andExpect(jsonPath("$.data[0].referenced").value(true));
+                .andExpect(jsonPath("$.data[0].referenced").value(true))
+                .andExpect(jsonPath("$.data[0].updatedAt").exists())
+                .andExpect(jsonPath("$.data[1].code").value("OLD"));
     }
 
     @Test
@@ -49,12 +51,12 @@ class ProductCodeRuleApiTest {
     }
 
     @Test
-    void referencedRuleCannotBeRecodedOrDeletedButCanBeRenamedAndDisabled() throws Exception {
+    void referencedRuleCannotBeRecodedOrDeletedAndAlwaysRemainsEnabled() throws Exception {
         Cookie session = login("admin");
         mvc.perform(put("/api/product-code-rules/1").cookie(session).contentType("application/json")
                         .content("{\"category\":\"BRAND\",\"displayName\":\"STANLEY 新名称\",\"code\":\"BR\",\"enabled\":false,\"sortOrder\":5,\"version\":0}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.enabled").value(false));
+                .andExpect(jsonPath("$.data.enabled").value(true));
         mvc.perform(put("/api/product-code-rules/1").cookie(session).contentType("application/json")
                         .content("{\"category\":\"BRAND\",\"displayName\":\"STANLEY\",\"code\":\"ST\",\"version\":1}"))
                 .andExpect(status().isConflict());

@@ -109,17 +109,49 @@ export interface OrderSku {
   color?: string | null
   lockBody?: string | null
   unit?: string | null
+  primaryImageId?: number | null
+  actualQuantity: number
+  availableQuantity: number
 }
 export function loadOrderSkus() { return request<OrderSku[]>('/api/orders/skus') }
-export interface OrderCustomer { id:number; customerCode:string; customerName:string; contactName?:string; phone?:string; address?:string }
+export interface OrderCustomer {
+  id: number
+  customerCode: string
+  customerName: string
+  contactName?: string
+  phone?: string
+  address?: string
+  businessContactName?: string
+  businessContactPhone?: string
+  orderContactName?: string
+  orderContactPhone?: string
+  financeContactName?: string
+  financeContactPhone?: string
+}
 export function loadOrderCustomers() { return request<OrderCustomer[]>('/api/orders/customers') }
+export async function loadContractPrice(customerId: number, skuId: number) {
+  const data = await request<{ salePrice?: number | null }>(`/api/orders/contract-price?customerId=${customerId}&skuId=${skuId}`)
+  return data.salePrice == null ? null : Number(data.salePrice)
+}
+export interface CustomerContractPrice { skuId:number; salePrice:number; skuCode?:string; productName?:string }
+export interface CustomerContract { id?:number; contractNo:string; startDate:string; endDate:string; remark?:string; prices:CustomerContractPrice[] }
+export interface CustomerCommand {
+  customerCode?:string; customerName:string; address?:string
+  businessContactName?:string; businessContactPhone?:string; orderContactName?:string; orderContactPhone?:string
+  financeContactName?:string; financeContactPhone?:string; invoiceTitle?:string; taxpayerId?:string
+  invoiceAddress?:string; invoicePhone?:string; bankName?:string; bankAccount?:string
+  contracts:CustomerContract[]; version?:number
+}
+export function getCustomer(id:number) { return request<Record<string,unknown>>(`/api/customers/${id}`) }
+export function createCustomer(data:CustomerCommand) { return request<Record<string,unknown>>('/api/customers',{method:'POST',body:JSON.stringify(data)}) }
+export function updateCustomer(id:number,data:CustomerCommand) { return request<Record<string,unknown>>(`/api/customers/${id}`,{method:'PUT',body:JSON.stringify(data)}) }
 export function updateOrder(id: number, data: Record<string, unknown>) {
   return request<Record<string, unknown>>(`/api/orders/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 }
 export interface ShipmentQuantityItem { lineNo: number; shippedQuantity: number }
-export function updateShipmentQuantities(orderId: number, items: ShipmentQuantityItem[]) {
+export function updateShipmentQuantities(orderId: number, deliveryAddress: string, items: ShipmentQuantityItem[], remark?: string) {
   return request<Record<string, unknown>>(`/api/orders/${orderId}/shipment-quantities`, {
-    method: 'PUT', body: JSON.stringify({ items })
+    method: 'PUT', body: JSON.stringify({ deliveryAddress, items, ...(remark === undefined ? {} : { remark }) })
   })
 }
 export function postAction<T = Record<string, unknown>>(path: string, data: Record<string, unknown> = {}) {
@@ -181,6 +213,16 @@ export interface SupplierCommand {
   version?: number
 }
 
+export interface ProductSupplierOption extends SupplierOption {
+  supplierId: number
+  purchasePrice: number
+  moq: number
+  leadTimeDays: number
+}
+
+export function loadProductSuppliers(skuId: number, keyword = '') {
+  return request<ProductSupplierOption[]>(`/api/products/${skuId}/suppliers?keyword=${encodeURIComponent(keyword)}`)
+}
 export function loadSupplierOptions(keyword = '') {
   return request<SupplierOption[]>(`/api/suppliers/options?keyword=${encodeURIComponent(keyword)}`)
 }
@@ -248,4 +290,39 @@ export function receivePurchase(id: number, items: { purchaseOrderItemId: number
   return request<Record<string, unknown>>(`/api/procurement/purchases/${id}/receive`, {
     method: 'POST', body: JSON.stringify({ items })
   })
+}
+
+export interface ProductCodeRule {
+  id: number
+  category: string
+  code: string
+  displayName: string
+  enabled: boolean
+  sortOrder: number
+  version: number
+  updatedAt?: string
+}
+export type ProductCodeRuleCommand = Omit<ProductCodeRule, 'id'>
+export async function loadProductCodeRules(category?: string) {
+  if (category) return request<ProductCodeRule[]>(`/api/product-code-rules?category=${encodeURIComponent(category)}&includeDisabled=true`)
+  const categories = ['BRAND','SERIES','BODY_COLOR','LOCK_TYPE','CONNECTIVITY','SALES_CHANNEL','OPERATING_ENTITY','LANGUAGE','DOOR_MODEL','SECURITY_GRADE','BASE_MATERIAL','THICKNESS','FINISH_COLOR']
+  const groups = await Promise.all(categories.map(item => request<ProductCodeRule[]>(`/api/product-code-rules?category=${item}&includeDisabled=true`)))
+  return groups.flat()
+}export function createProductCodeRule(data: ProductCodeRuleCommand) {
+  return request<ProductCodeRule>('/api/product-code-rules', { method: 'POST', body: JSON.stringify(data) })
+}
+export function updateProductCodeRule(id: number, data: ProductCodeRuleCommand) {
+  return request<ProductCodeRule>(`/api/product-code-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+export function deleteProductCodeRule(id: number) {
+  return request<void>(`/api/product-code-rules/${id}`, { method: 'DELETE' })
+}
+export interface OrderAllocationItem {
+  lineNo: number; skuCode?: string; productName?: string; quantity: number; shippedQuantity: number
+  lockedQuantity: number; uncoveredQuantity: number; actualQuantity: number; availableQuantity: number
+}
+export interface OrderAllocation { id: number; version: number; status: string; adjustable: boolean; items: OrderAllocationItem[] }
+export function loadOrderAllocations(id: number) { return request<OrderAllocation>(`/api/orders/${id}/allocations`) }
+export function updateOrderAllocations(id: number, version: number, items: { lineNo: number; lockedQuantity: number }[]) {
+  return request<OrderAllocation>(`/api/orders/${id}/allocations`, { method: 'PUT', body: JSON.stringify({ version, items }) })
 }

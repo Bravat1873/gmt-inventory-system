@@ -88,6 +88,20 @@ it('includes the loaded version when saving an existing record', async () => {
   expect(api.updateEntity).toHaveBeenCalledWith('customer', 7, expect.objectContaining({ customerName: 'Customer A', version: 3 }))
 })
 
+it('shows complete customer details and locks the existing customer code', () => {
+  const wrapper = mount(EntityDialog, {
+    props: { module: 'customer', row: { id: 7, customerCode: 'C0007', customerName: 'Customer A', version: 3 } }
+  })
+
+  expect(wrapper.text()).toContain('客户编码')
+  expect(wrapper.text()).toContain('业务联系人')
+  expect(wrapper.text()).toContain('订单联系人')
+  expect(wrapper.text()).toContain('财务联系人')
+  expect(wrapper.text()).toContain('纳税人识别号')
+  expect(wrapper.text()).toContain('开户银行')
+  expect(wrapper.get('[data-test="customer-code"]').attributes('disabled')).toBeDefined()
+})
+
 it('产品弹窗只显示产品列表字段并自动计算价格差异', async () => {
   const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE' } })
   expect(wrapper.text()).not.toContain('供应商编号')
@@ -188,19 +202,63 @@ it('shows but does not submit the role control for non-administrators', async ()
   expect(api.updateEntity.mock.calls.at(-1)?.[2]).not.toHaveProperty('role')
 })
 
-it('lets the backend apply the USER default when an administrator does not select a role', async () => {
+it('shows exactly three roles and defaults a new user to USER', async () => {
   api.createEntity.mockResolvedValue({ id: 8 })
   const wrapper = mount(EntityDialog, {
     props: { module: 'user', currentUserRole: 'ADMIN' }
   })
 
-  expect((wrapper.get('[data-test="user-role"]').element as HTMLSelectElement).value).toBe('')
+  const role = wrapper.get('[data-test="user-role"]')
+  expect(role.findAll('option').map(option => option.attributes('value'))).toEqual(['ADMIN', 'FINANCE', 'USER'])
+  expect((role.element as HTMLSelectElement).value).toBe('USER')
   await wrapper.get('[data-test="user-username"]').setValue('new-user')
   await wrapper.get('[data-test="user-display-name"]').setValue('新用户')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
 
-  expect(api.createEntity.mock.calls.at(-1)?.[1]).not.toHaveProperty('role')
+  expect(api.createEntity.mock.calls.at(-1)?.[1]).toMatchObject({ role: 'USER' })
+})
+
+it('shows the initial password in plaintext and prevents login autofill', async () => {
+  api.createEntity.mockResolvedValue({ id: 8 })
+  const wrapper = mount(EntityDialog, { props: { module: 'user', currentUserRole: 'ADMIN' } })
+
+  const password = wrapper.get('[data-test="user-password"]')
+  expect(wrapper.get('form').attributes('autocomplete')).toBe('off')
+  expect(wrapper.get('input[type="tel"]').attributes('autocomplete')).toBe('off')
+  expect(password.attributes('type')).toBe('text')
+  expect(password.attributes('autocomplete')).toBe('new-password')
+  expect(password.attributes('required')).toBeDefined()
+  expect(wrapper.text()).toContain('初始密码')
+
+  await wrapper.get('[data-test="user-username"]').setValue('simple-user')
+  await wrapper.get('[data-test="user-display-name"]').setValue('简单用户')
+  await password.setValue('123')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.createEntity).toHaveBeenLastCalledWith('user', expect.objectContaining({ password: '123' }))
+  expect((password.element as HTMLInputElement).value).toBe('')
+})
+
+it('keeps an existing password when reset is blank and submits a nonblank reset', async () => {
+  api.updateEntity.mockResolvedValue({ id: 7, version: 4 })
+  const wrapper = mount(EntityDialog, {
+    props: { module: 'user', currentUserRole: 'ADMIN', row: { id: 7, username: 'staff', displayName: '员工', role: 'USER', version: 3 } }
+  })
+
+  const password = wrapper.get('[data-test="user-password"]')
+  expect(password.attributes('required')).toBeUndefined()
+  expect(wrapper.text()).toContain('重置密码')
+  expect(wrapper.text()).toContain('留空表示不修改')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.updateEntity.mock.calls.at(-1)?.[2]).not.toHaveProperty('password')
+
+  await password.setValue('456')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.updateEntity.mock.calls.at(-1)?.[2]).toEqual(expect.objectContaining({ password: '456' }))
 })
 
 it('库存弹窗使用页面库存字段而不暴露内部调整原因', () => {
@@ -217,6 +275,31 @@ it('库存弹窗使用页面库存字段而不暴露内部调整原因', () => {
   expect(wrapper.text()).not.toContain('调整原因')
 })
 
+it('库存修改弹窗以动态列表编辑任意地点锁定数量', async () => {
+  api.updateEntity.mockResolvedValue({ id: 7 })
+  const wrapper = mount(EntityDialog, { props: { module: 'inventory', row: {
+    id: 7, skuId: 1, skuCode: 'P50', actualQuantity: 20, availableQuantity: 10,
+    lockedQuantity: 10, inTransitQuantity: 0, version: 2,
+    lockedAllocations: [{ lockSource: '新加坡', quantity: 2 }, { lockSource: '越南', quantity: 3 }]
+  } } })
+  await flushPromises()
+
+  expect(wrapper.findAll('[data-test="locked-allocation-row"]')).toHaveLength(2)
+  expect((wrapper.findAll('[data-test="locked-allocation-source"]')[0].element as HTMLInputElement).value).toBe('新加坡')
+  await wrapper.findAll('[data-test="remove-locked-allocation"]')[0].trigger('click')
+  await wrapper.get('[data-test="add-locked-allocation"]').trigger('click')
+  const sources = wrapper.findAll('[data-test="locked-allocation-source"]')
+  const quantities = wrapper.findAll('[data-test="locked-allocation-quantity"]')
+  await sources[1].setValue('香港')
+  await quantities[1].setValue('4')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.updateEntity).toHaveBeenCalledWith('inventory', 7, expect.objectContaining({
+    lockedQuantity: 10,
+    lockedAllocations: [{ lockSource: '越南', quantity: 3 }, { lockSource: '香港', quantity: 4 }]
+  }))
+})
 it('新增库存允许编辑产品字段与库存汇总字段，并将选择的产品编号提交保存', async () => {
   api.loadOrderSkus.mockResolvedValue([
     {
@@ -258,4 +341,22 @@ it('新增库存允许编辑产品字段与库存汇总字段，并将选择的�
     availableQuantity: 12
   }))
   wrapper.unmount()
+})
+
+it('defaults and submits the product material type while preserving edit values', async () => {
+  api.createEntity.mockResolvedValue({ id: 1 })
+  const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE' } })
+  await flushPromises()
+  const select = wrapper.get('[data-test="product-material-type"]')
+  expect((select.element as HTMLSelectElement).value).toBe('FINISHED_PRODUCT')
+  expect(select.findAll('option').map(option => option.text())).toEqual(['成品', '零件'])
+  await select.setValue('PART')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.createEntity).toHaveBeenCalledWith('product', expect.objectContaining({ materialType: 'PART' }))
+
+  const editing = mount(EntityDialog, {
+    props: { module: 'product', currentUserRole: 'FINANCE', row: { id: 2, materialType: 'PART', version: 0 } }
+  })
+  expect((editing.get('[data-test="product-material-type"]').element as HTMLSelectElement).value).toBe('PART')
 })

@@ -5,6 +5,7 @@ import { currentUser, logout, type CurrentUser } from './api/auth'
 import ImportPanel from './components/ImportPanel.vue'
 import ModuleListPage from './components/ModuleListPage.vue'
 import EntityDialog from './components/EntityDialog.vue'
+import CustomerDialog from './components/CustomerDialog.vue'
 import SupplierDialog from './components/SupplierDialog.vue'
 import OrderDialog from './components/OrderDialog.vue'
 import ManualPurchaseDialog from './components/ManualPurchaseDialog.vue'
@@ -12,11 +13,12 @@ import PaymentDialog from './components/PaymentDialog.vue'
 import PurchaseReceiptDialog from './components/PurchaseReceiptDialog.vue'
 import ReceiptDialog from './components/ReceiptDialog.vue'
 import ShipmentQuantityDialog from './components/ShipmentQuantityDialog.vue'
-import InventoryMovementDialog from './components/InventoryMovementDialog.vue'
+import OrderAllocationDialog from './components/OrderAllocationDialog.vue'
 import BusinessTraceDialog from './components/BusinessTraceDialog.vue'
 import ProductGalleryDialog from './components/ProductGalleryDialog.vue'
+import ProductCodeRulesDialog from './components/ProductCodeRulesDialog.vue'
 import ActionInputDialog from './components/ActionInputDialog.vue'
-import { getOrder, loadBusinessTrace, loadInventoryMovements, loadPurchase, postAction, type BusinessTrace, type InventoryMovement, type PurchaseDetail } from './api/workbench'
+import { getOrder, loadBusinessTrace, loadOrderAllocations, loadPurchase, postAction, type BusinessTrace, type OrderAllocation, type PurchaseDetail } from './api/workbench'
 import { moduleDefinitions, type ModuleKey } from './modules/module-config'
 
 const fromAddress = new URLSearchParams(location.search).get('module') as ModuleKey | null
@@ -34,23 +36,28 @@ const purchaseReceiptOpen = ref(false)
 const purchaseReceiptOrder = ref<PurchaseDetail>()
 const receiptOpen = ref(false)
 const receiptRow = ref<Record<string, unknown>>()
-const movementOpen = ref(false)
 const traceOpen = ref(false)
 const businessTrace = ref<BusinessTrace | null>(null)
-const inventoryMovements = ref<InventoryMovement[]>([])
 const productGalleryRow = ref<Record<string, unknown>>()
+const productCodeRulesOpen = ref(false)
+const productMenuOpen = ref(activeModule.value === 'product')
 const editRow = ref<Record<string, unknown>>()
 const list = ref<InstanceType<typeof ModuleListPage>>()
 const actionInput = ref<{ title: string; label: string; placeholder: string; submit: (value: string) => Promise<void> } | null>(null)
 const shipmentOpen = ref(false)
 const shipmentOrder = ref<any>()
+const allocationOpen = ref(false)
+const orderAllocation = ref<OrderAllocation>()
 const user = ref<CurrentUser | null>(null)
 const authReady = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
 
 const currentModule = computed(() => moduleDefinitions.find(item => item.key === activeModule.value) ?? moduleDefinitions[0])
-const canUseCurrentModulePrimary = computed(() => currentModule.value.importType !== 'COST'
-  || user.value?.role === 'ADMIN' || user.value?.role === 'FINANCE')
+const canUseCurrentModulePrimary = computed(() => {
+  if (currentModule.value.key === 'user') return user.value?.role === 'ADMIN'
+  return currentModule.value.importType !== 'COST'
+    || user.value?.role === 'ADMIN' || user.value?.role === 'FINANCE'
+})
 
 onMounted(async () => {
   try { user.value = await currentUser() } catch {} finally { authReady.value = true }
@@ -72,13 +79,26 @@ function selectModule(key: ModuleKey) {
   purchaseReceiptOpen.value = false
   purchaseReceiptOrder.value = undefined
   receiptOpen.value = false
-  movementOpen.value = false
+  allocationOpen.value = false
+  orderAllocation.value = undefined
   traceOpen.value = false
   productGalleryRow.value = undefined
   actionInput.value = null
   history.pushState(null, '', `${location.pathname}?${new URLSearchParams({ module: key, page: '1' })}`)
 }
 
+function navigateModule(key: ModuleKey) {
+  if (key === 'product') {
+    const alreadyOnProduct = activeModule.value === 'product'
+    productCodeRulesOpen.value = false
+    selectModule(key)
+    productMenuOpen.value = alreadyOnProduct ? !productMenuOpen.value : true
+    return
+  }
+  productMenuOpen.value = false
+  productCodeRulesOpen.value = false
+  selectModule(key)
+}
 function showMessage(text: string, kind: 'success' | 'error' = 'success') {
   if (timer) clearTimeout(timer)
   message.value = text
@@ -107,9 +127,10 @@ function openProductGallery(row: Record<string, unknown>) {
 }
 
 async function edit(row: Record<string, unknown>) {
+  if (activeModule.value === 'user' && user.value?.role !== 'ADMIN') return
   if (activeModule.value === 'order') {
     try { editRow.value = await getOrder(Number(row.id)); orderOpen.value = true }
-    catch (cause) { showMessage(cause instanceof Error ? cause.message : '读取订单失败', 'error') }
+    catch (cause) { showMessage(cause instanceof Error ? cause.message : '璇诲彇璁㈠崟澶辫触', 'error') }
     return
   }
   editRow.value = row
@@ -119,17 +140,12 @@ async function edit(row: Record<string, unknown>) {
 
 async function openTrace(type: 'order' | 'purchase', id: number) {
   try { businessTrace.value = await loadBusinessTrace(type, id); traceOpen.value = true }
-  catch (cause) { showMessage(cause instanceof Error ? cause.message : '读取业务轨迹失败', 'error') }
+  catch (cause) { showMessage(cause instanceof Error ? cause.message : '璇诲彇涓氬姟杞ㄨ抗澶辫触', 'error') }
 }
 
 async function details(row: Record<string, unknown>) {
-  if (activeModule.value === 'inventory') {
-    try { inventoryMovements.value = await loadInventoryMovements(Number(row.id)); movementOpen.value = true }
-    catch (cause) { showMessage(cause instanceof Error ? cause.message : '读取入/出库明细失败', 'error') }
-    return
-  }
   const type = activeModule.value === 'finance'
-    ? (row.businessType === '采购订单' ? 'purchase' : 'order')
+    ? (row.businessType === '閲囪喘璁㈠崟' ? 'purchase' : 'order')
     : activeModule.value as 'order' | 'purchase'
   await openTrace(type, Number(row.id))
 }
@@ -147,7 +163,7 @@ async function submitActionInput(value: string) {
 
 async function receipt(row: Record<string, unknown>) {
   try { receiptRow.value = await getOrder(Number(row.id)); receiptOpen.value = true }
-  catch (cause) { showMessage(cause instanceof Error ? cause.message : '读取订单收款信息失败', 'error') }
+  catch (cause) { showMessage(cause instanceof Error ? cause.message : '璇诲彇璁㈠崟鏀舵淇℃伅澶辫触', 'error') }
 }
 
 function payment(row: Record<string, unknown>) {
@@ -157,12 +173,16 @@ function payment(row: Record<string, unknown>) {
 
 async function purchaseReceipt(row: Record<string, unknown>) {
   try { purchaseReceiptOrder.value = await loadPurchase(Number(row.id)); purchaseReceiptOpen.value = true }
-  catch (cause) { showMessage(cause instanceof Error ? cause.message : '读取采购收货信息失败', 'error') }
+  catch (cause) { showMessage(cause instanceof Error ? cause.message : '璇诲彇閲囪喘鏀惰揣淇℃伅澶辫触', 'error') }
 }
 
+async function allocation(row: Record<string, unknown>) {
+  try { orderAllocation.value = await loadOrderAllocations(Number(row.id)); allocationOpen.value = true }
+  catch (cause) { showMessage(cause instanceof Error ? cause.message : '璇诲彇搴撳瓨鍒嗛厤澶辫触', 'error') }
+}
 async function shipment(row: Record<string, unknown>) {
   try { shipmentOrder.value = await getOrder(Number(row.id)); shipmentOpen.value = true }
-  catch (cause) { showMessage(cause instanceof Error ? cause.message : '读取订单发货信息失败', 'error') }
+  catch (cause) { showMessage(cause instanceof Error ? cause.message : '璇诲彇璁㈠崟鍙戣揣淇℃伅澶辫触', 'error') }
 }
 
 async function workflow(row: Record<string, unknown>) {
@@ -170,14 +190,14 @@ async function workflow(row: Record<string, unknown>) {
   const id = Number(row.id)
   if (status === 'DRAFT') {
     if (activeModule.value === 'purchase') {
-      if (window.confirm('确认该采购建议并创建采购单吗？')) await action(`/api/procurement/suggestions/${id}/confirm`)
+if (window.confirm('确认该采购建议并创建采购单吗？')) await action(`/api/procurement/suggestions/${id}/confirm`)
       return
     }
     showMessage('草稿订单请先修改为确认订单')
     return
   }
   if (status === 'READY_TO_SHIP') {
-    openActionInput('订单发货', '物流单号', '请输入物流单号', value => action(`/api/orders/${id}/ship`, { carrier: '物流', trackingNo: value }))
+openActionInput('订单发货', '物流单号', '请输入物流单号', value => action(`/api/orders/${id}/ship`, { carrier: '物流', trackingNo: value }))
     return
   }
   if (status === 'PENDING_SUPPLIER_PAYMENT') { payment(row); return }
@@ -186,8 +206,8 @@ async function workflow(row: Record<string, unknown>) {
 }
 
 async function action(path: string, body: Record<string, unknown> = {}) {
-  try { await postAction(path, body); showMessage('业务办理成功'); list.value?.reload() }
-  catch (cause) { showMessage(cause instanceof Error ? cause.message : '办理失败', 'error') }
+  try { await postAction(path, body); showMessage('涓氬姟鍔炵悊鎴愬姛'); list.value?.reload() }
+  catch (cause) { showMessage(cause instanceof Error ? cause.message : '鍔炵悊澶辫触', 'error') }
 }
 
 async function saved(closeDialog = true) {
@@ -206,22 +226,33 @@ async function saved(closeDialog = true) {
   <div v-if="!authReady" class="login-page">正在检查登录状态…</div>
   <LoginPage v-else-if="!user" @logged-in="user=$event" />
   <div v-else class="app-shell">
-    <aside class="sidebar" aria-label="主导航"><nav class="nav-list"><button v-for="item in moduleDefinitions" :key="item.key" class="nav-item" :class="{ active: activeModule === item.key }" :data-module="item.key" @click="selectModule(item.key)">{{ item.label }}</button></nav></aside>
+    <aside class="sidebar" aria-label="主导航">
+      <nav class="nav-list">
+        <template v-for="item in moduleDefinitions" :key="item.key">
+          <button class="nav-item" :class="{ active: activeModule === item.key }" :data-module="item.key" @click="navigateModule(item.key)">
+            <span>{{ item.label }}</span><svg v-if="item.key === 'product'" class="nav-chevron" :class="{ open: productMenuOpen }" aria-hidden="true" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </button>
+          <button v-if="item.key === 'product' && productMenuOpen" class="nav-subitem" :class="{ active: productCodeRulesOpen }" @click="selectModule('product'); productCodeRulesOpen=true">产品编号规则</button>
+        </template>
+      </nav>
+    </aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><ModuleListPage ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @gallery="openProductGallery" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @shipment="shipment" @workflow="workflow" @message="showMessage" /></div></main>
+    <main><div class="content"><ProductCodeRulesDialog v-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @gallery="openProductGallery" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @shipment="shipment" @allocation="allocation" @workflow="workflow" @message="showMessage" /></div></main>
     <div v-if="importOpen && currentModule.importType && canUseCurrentModulePrimary" class="dialog-mask import-dialog-mask" @click.self="importOpen=false"><ImportPanel :type="currentModule.importType" :title="currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
-    <EntityDialog v-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
+    <CustomerDialog v-if="entityOpen && activeModule === 'customer'" :row="editRow" @close="entityOpen=false" @saved="saved" @message="showMessage" />
+    <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <SupplierDialog v-if="supplierOpen" :row="editRow" @close="supplierOpen=false" @saved="saved" @message="showMessage" />
     <OrderDialog v-if="orderOpen" :row="editRow" :default-salesperson="user?.displayName" @close="orderOpen=false" @saved="saved" @message="showMessage" />
     <ManualPurchaseDialog v-if="manualPurchaseOpen" @close="manualPurchaseOpen=false" @saved="saved" @message="showMessage" />
     <PaymentDialog v-if="paymentOpen && paymentRow" :purchase="paymentRow" @close="paymentOpen=false; paymentRow=undefined" @saved="saved" @message="showMessage" />
     <PurchaseReceiptDialog v-if="purchaseReceiptOpen && purchaseReceiptOrder" :purchase="purchaseReceiptOrder" @close="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined" @saved="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined; saved()" @message="showMessage" />
     <ReceiptDialog v-if="receiptOpen && receiptRow" :order="receiptRow" @close="receiptOpen=false" @saved="receiptOpen=false; saved()" @message="showMessage" />
+    <OrderAllocationDialog v-if="allocationOpen && orderAllocation" :allocation="orderAllocation" @close="allocationOpen=false; orderAllocation=undefined" @saved="allocationOpen=false; orderAllocation=undefined; list?.reload()" @message="showMessage" />
     <ShipmentQuantityDialog v-if="shipmentOpen && shipmentOrder" :order="shipmentOrder" @close="shipmentOpen=false" @saved="shipmentOpen=false; list?.reload()" @message="showMessage" />
-    <InventoryMovementDialog v-if="movementOpen" :movements="inventoryMovements" @close="movementOpen=false" />
     <BusinessTraceDialog v-if="traceOpen && businessTrace" :trace="businessTrace" @close="traceOpen=false" />
-    <ActionInputDialog v-if="actionInput" :title="actionInput.title" :label="actionInput.label" :placeholder="actionInput.placeholder" @close="actionInput=null" @confirm="submitActionInput" />
+
     <ProductGalleryDialog v-if="productGalleryRow" :product-id="Number(productGalleryRow.id)" :initial-image-id="productGalleryRow.primaryImageId ? Number(productGalleryRow.primaryImageId) : undefined" @close="productGalleryRow=undefined" />
+    <ActionInputDialog v-if="actionInput" :title="actionInput.title" :label="actionInput.label" :placeholder="actionInput.placeholder" @close="actionInput=null" @confirm="submitActionInput" />
   </div>
 </template>

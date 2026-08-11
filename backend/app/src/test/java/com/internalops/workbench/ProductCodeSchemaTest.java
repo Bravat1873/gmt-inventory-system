@@ -42,4 +42,16 @@ class ProductCodeSchemaTest {
             assertTrue(sql.contains(seed), "missing seed " + seed);
         }
     }
-}
+
+    @Test
+    void entryDoorMigrationAddsProductTypeFiveReferencesAndSeeds() throws Exception {
+        String sql = new ClassPathResource("db/migration/V29__entry_door_product_codes.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertTrue(sql.contains("product_type VARCHAR(30) NOT NULL DEFAULT 'UNCLASSIFIED'"));
+        for (String column : new String[]{"door_model_rule_id", "security_grade_rule_id", "base_material_rule_id", "thickness_rule_id", "finish_color_rule_id"}) {
+            assertTrue(sql.contains(column + " BIGINT NULL"), "missing " + column);
+        }
+        for (String seed : new String[]{"'DOOR_MODEL','M','单开门'", "'SECURITY_GRADE','J','甲'", "'BASE_MATERIAL','3','304不锈钢'", "'THICKNESS','080','80mm'", "'FINISH_COLOR','A','花色A'"}) {
+            assertTrue(sql.contains(seed), "missing seed " + seed);
+        }
+    }}

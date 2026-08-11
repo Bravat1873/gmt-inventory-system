@@ -54,8 +54,15 @@ INSERT INTO sku(id,sku_code,model,configuration,product_version,color,lock_body,
 VALUES(1,'SKU-LOCK','P90','智能锁','V1','宇宙黑','6068','套');
 INSERT INTO inventory_balance(id,warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,source_supplier_name,inventory_remark)
 VALUES(1,1,1,20,15,5,'易达胜','库存备注');
+INSERT INTO inventory_balance(id,warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,source_supplier_name,inventory_remark,updated_at)
+VALUES(2,1,1,0,0,0,'零库存','',TIMESTAMP '2000-01-01 00:00:00'),
+      (3,1,1,21,0,0,'流水不足','',TIMESTAMP '2000-01-01 00:00:00');
 INSERT INTO inventory_locked_allocation(inventory_balance_id,lock_source,quantity) VALUES
 (1,'铭爱钧乔',1),(1,'博乐龙米',2),(1,'老挝',3),(1,'贝朗',4),(1,'马来西亚',5);
 INSERT INTO inventory_transaction(warehouse_id,sku_id,transaction_type,business_type,business_no,actual_delta,locked_delta,transit_delta,actual_before,actual_after,locked_before,locked_after,transit_before,transit_after,operated_at) VALUES
 (1,1,'EXCEL_OUTBOUND','EXCEL_IMPORT_HISTORY','B7:T:0622出库',7,0,0,20,20,15,15,5,5,TIMESTAMP '2026-06-22 00:00:00'),
 (1,1,'EXCEL_INBOUND','EXCEL_IMPORT_HISTORY','B7:U:0804入库',9,0,0,20,20,15,15,5,5,TIMESTAMP '2026-08-04 00:00:00');
+
+INSERT INTO inventory_transaction(warehouse_id,sku_id,transaction_type,business_type,business_no,actual_delta,locked_delta,transit_delta,actual_before,actual_after,locked_before,locked_after,transit_before,transit_after,operated_at)
+VALUES(1,1,'PURCHASE_RECEIPT','PURCHASE_ORDER','PO-20260601',18,0,0,0,18,0,0,0,0,TIMESTAMP '2026-06-01 00:00:00'),
+      (1,1,'INITIAL_IMPORT','EXCEL_IMPORT','7',20,0,0,0,20,0,0,0,0,TIMESTAMP '2026-08-07 12:00:00');

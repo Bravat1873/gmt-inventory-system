@@ -27,7 +27,7 @@ class ShipmentQuantityServiceTest {
         ));
         ShipmentQuantityService service = new ShipmentQuantityService(jdbc, mock(InventoryAllocationService.class));
 
-        Throwable failure = catchThrowable(() -> service.update(1L, new ShipmentQuantityRequest(List.of(new ShipmentQuantityRequest.Item(10000, 3)))));
+        Throwable failure = catchThrowable(() -> service.update(1L, new ShipmentQuantityRequest("测试地址", null, List.of(new ShipmentQuantityRequest.Item(10000, 3)))));
 
         assertThat(failure).isInstanceOf(IllegalStateException.class);
         assertThat(failure).hasMessageContaining("SKU-9").hasMessageContaining("本单已备货 2");

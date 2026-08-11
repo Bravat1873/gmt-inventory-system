@@ -22,5 +22,7 @@ CREATE TABLE sku(
 );
 INSERT INTO product_code_rule(id,category,code,display_name,enabled,sort_order,version) VALUES
 (1,'BRAND','BR','STANLEY',TRUE,10,0),(2,'BODY_COLOR','HGT','红钻铜',TRUE,10,0),(3,'LANGUAGE','E','英文版',FALSE,10,0);
+UPDATE product_code_rule SET updated_at=TIMESTAMP '2026-08-11 16:00:00' WHERE id=1;
+INSERT INTO product_code_rule(id,category,code,display_name,enabled,sort_order,version,updated_at) VALUES (4,'BRAND','OLD','旧品牌',TRUE,5,0,TIMESTAMP '2026-08-10 16:00:00');
 INSERT INTO sku(product_code,product_name,brand_rule_id) VALUES('BR_P90HGT60WPZE','测试产品',1);
 INSERT INTO sys_user(username,password_hash,display_name,enabled,role) VALUES('writer','123','普通用户',TRUE,'USER');

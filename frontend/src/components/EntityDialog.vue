@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { createEntity, loadOrderSkus, type OrderSku, updateEntity } from '../api/workbench'
+import { createEntity, loadOrderSkus, loadProductCodeRules, type ProductCodeRule, type OrderSku, updateEntity, uploadProductImages } from '../api/workbench'
 import ChineseDatePicker from './ChineseDatePicker.vue'
 import FuzzyPicker, { type FuzzyPickerOption } from './FuzzyPicker.vue'
+import ProductImagePicker from './ProductImagePicker.vue'
 import type { ModuleKey } from '../modules/module-config'
 import type { UserRole } from '../api/auth'
 
 const props = withDefaults(defineProps<{ module: ModuleKey; row?: Record<string, unknown>; currentUserRole?: UserRole }>(), {
   currentUserRole: 'USER'
 })
-const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
+const emit = defineEmits<{ close: []; saved: [closeDialog?: boolean]; message: [text: string, kind?: 'success' | 'error'] }>()
 
 interface Field {
   key: string
@@ -18,21 +19,52 @@ interface Field {
   required?: boolean
   multiline?: boolean
   readOnly?: boolean
+  optionCategory?: string
 }
 
 const definitions: Record<string, Field[]> = {
   customer: [
     { key: 'customerCode', label: '客户编码' },
-    { key: 'customerName', label: '客户名称', required: true }
+    { key: 'customerName', label: '客户名称', required: true },
+    { key: 'address', label: '客户地址', multiline: true },
+    { key: 'businessContactName', label: '业务联系人' },
+    { key: 'businessContactPhone', label: '业务联系人电话', type: 'tel' },
+    { key: 'orderContactName', label: '订单联系人' },
+    { key: 'orderContactPhone', label: '订单联系人电话', type: 'tel' },
+    { key: 'financeContactName', label: '财务联系人' },
+    { key: 'financeContactPhone', label: '财务联系人电话', type: 'tel' },
+    { key: 'invoiceTitle', label: '发票抬头' },
+    { key: 'taxpayerId', label: '纳税人识别号' },
+    { key: 'invoiceAddress', label: '开票地址', multiline: true },
+    { key: 'invoicePhone', label: '开票电话', type: 'tel' },
+    { key: 'bankName', label: '开户银行' },
+    { key: 'bankAccount', label: '银行账号' }
   ],
   user: [
     { key: 'username', label: '用户名', required: true },
     { key: 'displayName', label: '姓名', required: true },
     { key: 'phone', label: '联系电话', type: 'tel' },
+    { key: 'password', label: '密码', type: 'text' },
     { key: 'role', label: '角色' }
   ],
   product: [
-    { key: 'skuCode', label: '物料编号' },
+        { key: 'productCode', label: '产品编号', readOnly: true },
+    { key: 'customerCode', label: '客户编号' },
+    { key: 'productType', label: '产品分类', required: true, optionCategory: 'PRODUCT_TYPE' },
+    { key: 'materialType', label: '物料类型', required: true },
+    { key: 'brandRuleId', label: '品牌', required: true, optionCategory: 'BRAND' },
+    { key: 'seriesRuleId', label: '系列', optionCategory: 'SERIES' },
+    { key: 'bodyColorRuleId', label: '锁体颜色', optionCategory: 'BODY_COLOR' },
+    { key: 'lockTypeRuleId', label: '锁体类型', optionCategory: 'LOCK_TYPE' },
+    { key: 'connectivityRuleId', label: '联网方式', optionCategory: 'CONNECTIVITY' },
+    { key: 'salesChannelRuleId', label: '销售渠道', optionCategory: 'SALES_CHANNEL' },
+    { key: 'operatingEntityRuleId', label: '运营主体', optionCategory: 'OPERATING_ENTITY' },
+    { key: 'languageRuleId', label: '语言', optionCategory: 'LANGUAGE' },
+    { key: 'doorModelRuleId', label: '成品型号', optionCategory: 'DOOR_MODEL' },
+    { key: 'securityGradeRuleId', label: '安全等级', optionCategory: 'SECURITY_GRADE' },
+    { key: 'baseMaterialRuleId', label: '主基材料', optionCategory: 'BASE_MATERIAL' },
+    { key: 'thicknessRuleId', label: '成品厚度', optionCategory: 'THICKNESS' },
+    { key: 'finishColorRuleId', label: '花色', optionCategory: 'FINISH_COLOR' },
     { key: 'model', label: '型号', required: true },
     { key: 'color', label: '颜色' },
     { key: 'lockBody', label: '锁体' },
@@ -53,11 +85,6 @@ const definitions: Record<string, Field[]> = {
     { key: 'actualQuantity', label: '实际库存数量', type: 'number', required: true },
     { key: 'availableQuantity', label: '可用库存数量', type: 'number' },
     { key: 'lockedQuantity', label: '已锁定数量', type: 'number' },
-    { key: 'lockedMingAiJunQiao', label: '铭爱钧乔', type: 'number' },
-    { key: 'lockedBoLeLongMi', label: '博乐龙米', type: 'number' },
-    { key: 'lockedLaos', label: '老挝', type: 'number' },
-    { key: 'lockedBeiLang', label: '贝朗', type: 'number' },
-    { key: 'lockedMalaysia', label: '马来西亚', type: 'number' },
     { key: 'inTransitQuantity', label: '在途数量', type: 'number', required: true },
     { key: 'sourceSupplierName', label: '供应商' },
     { key: 'inventoryRemark', label: '备注', multiline: true }
@@ -77,12 +104,10 @@ if (props.module === 'inventory' && !props.row?.id) {
     availableQuantity: 0,
     lockedQuantity: 0,
     inTransitQuantity: 0,
-    lockedMingAiJunQiao: 0,
-    lockedBoLeLongMi: 0,
-    lockedLaos: 0,
-    lockedBeiLang: 0,
-    lockedMalaysia: 0
   })
+}
+if (props.module === 'user' && !props.row?.id) {
+  initialForm.role = 'USER'
 }
 const form = reactive(initialForm)
 const canEditProductPrice = computed(() => ['ADMIN', 'FINANCE'].includes(props.currentUserRole))
@@ -92,10 +117,17 @@ const roleOptions: { value: UserRole; label: string }[] = [
   { value: 'FINANCE', label: '财务' },
   { value: 'USER', label: '普通用户' }
 ]
+
+function fieldAutocomplete(field: Field): string | undefined {
+  if (props.module !== 'user') return undefined
+  return field.key === 'password' ? 'new-password' : 'off'
+}
 const initialInventorySkuValues = Object.fromEntries(
   ['model', 'configuration', 'productVersion', 'color', 'lockBody', 'unit'].map(key => [key, form[key] ?? null])
 )
 const saving = ref(false)
+const pendingImages = ref<File[]>([])
+const productCodeRules = ref<ProductCodeRule[]>([])
 type InventoryMovement = { date: string; direction: 'INBOUND' | 'OUTBOUND'; quantity: number | null }
 const inventoryMovements = ref<InventoryMovement[]>([])
 const inventorySkus = ref<OrderSku[]>([])
@@ -122,10 +154,11 @@ const priceDifference = computed(() => {
   return Number((factoryPrice - currentCost).toFixed(4))
 })
 
-const lockedQuantity = computed(() => {
-  const keys = ['lockedMingAiJunQiao', 'lockedBoLeLongMi', 'lockedLaos', 'lockedBeiLang', 'lockedMalaysia']
-  return keys.reduce((total, key) => total + (Number(form[key]) || 0), 0)
-})
+type LockedAllocation = { lockSource: string; quantity: number | null }
+const lockedAllocations = ref<LockedAllocation[]>(Array.isArray(props.row?.lockedAllocations)
+  ? (props.row.lockedAllocations as Array<Record<string, unknown>>).map(item => ({ lockSource: String(item.lockSource ?? ''), quantity: Number(item.quantity ?? 0) }))
+  : [])
+const lockedQuantity = computed(() => inventoryNumber('lockedQuantity'))
 
 const availableQuantity = computed(() => {
   const actual = Number(form.actualQuantity)
@@ -151,27 +184,13 @@ function refreshActualQuantity() {
   form.actualQuantity = Math.max(0, inventoryNumber('availableQuantity') + inventoryNumber('lockedQuantity') - inventoryNumber('inTransitQuantity'))
 }
 
-function syncLockedAllocations(total: number) {
-  form.lockedMingAiJunQiao = total
-  form.lockedBoLeLongMi = 0
-  form.lockedLaos = 0
-  form.lockedBeiLang = 0
-  form.lockedMalaysia = 0
-}
 
 function onInventoryMetricChange(metric: 'actual' | 'available' | 'locked' | 'transit') {
   if (metric === 'available') refreshActualQuantity()
-  else if (metric === 'locked') {
-    const locked = inventoryNumber('lockedQuantity')
-    syncLockedAllocations(locked)
-    refreshActualQuantity()
-  } else refreshAvailableQuantity()
+  else if (metric === 'locked') refreshActualQuantity()
+  else refreshAvailableQuantity()
 }
 
-function onInventoryAllocationChange() {
-  form.lockedQuantity = lockedQuantity.value
-  refreshAvailableQuantity()
-}
 
 function selectInventorySku(skuId: number | null) {
   form.skuId = skuId
@@ -194,6 +213,7 @@ function inventoryFieldTestId(key: string) {
   if (props.module === 'user') {
     if (key === 'username') return 'user-username'
     if (key === 'displayName') return 'user-display-name'
+    if (key === 'password') return 'user-password'
   }
   if (props.module !== 'inventory') return undefined
   const names: Record<string, string> = {
@@ -204,6 +224,23 @@ function inventoryFieldTestId(key: string) {
   return names[key]
 }
 
+function fieldLabel(field: Field) {
+  if (props.module === 'user' && field.key === 'password') {
+    return props.row?.id ? '重置密码（留空表示不修改）' : '初始密码'
+  }
+  return field.label
+}
+
+function fieldVisible(field: Field) {
+  if (props.module !== 'product' || !field.optionCategory || ['PRODUCT_TYPE', 'BRAND'].includes(field.optionCategory)) return true
+  const smart = ['SERIES','BODY_COLOR','LOCK_TYPE','CONNECTIVITY','SALES_CHANNEL','OPERATING_ENTITY','LANGUAGE']
+  return form.productType === 'ENTRY_DOOR' ? !smart.includes(field.optionCategory) : smart.includes(field.optionCategory)
+}
+function fieldRequired(field: Field) {
+  if (props.module === 'user' && field.key === 'password') return !props.row?.id
+  return field.required
+}
+
 function today() {
   const date = new Date()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -211,6 +248,21 @@ function today() {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+function addLockedAllocation() { lockedAllocations.value.push({ lockSource: '', quantity: 0 }) }
+function removeLockedAllocation(index: number) { lockedAllocations.value.splice(index, 1) }
+function validateLockedAllocations() {
+  const sources = new Set<string>()
+  let total = 0
+  for (const allocation of lockedAllocations.value) {
+    const source = allocation.lockSource.trim()
+    const quantity = Number(allocation.quantity)
+    if (!source) return '地点名称不能为空'
+    if (sources.has(source)) return '地点名称不能重复'
+    if (!Number.isInteger(quantity) || quantity < 0) return '地点锁定数量必须是非负整数'
+    sources.add(source); total += quantity
+  }
+  return total > inventoryNumber('lockedQuantity') ? '地点锁定数量合计不能超过已锁定数量' : ''
+}
 function addInventoryMovement() {
   inventoryMovements.value.push({ date: today(), direction: 'INBOUND', quantity: null })
 }
@@ -233,6 +285,7 @@ function createPayload() {
     if (props.module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice.value) continue
     const value = form[field.key]
     if (field.key === 'role' && (!canManageUserRoles.value || value == null || value === '')) continue
+    if (field.key === 'password' && props.row?.id && (value == null || String(value).trim() === '')) continue
     body[field.key] = field.type === 'number' && value !== '' && value != null ? Number(value) : value
   }
   if (props.row?.id && typeof form.version === 'number') {
@@ -248,6 +301,7 @@ function createPayload() {
         if (String(form[key] ?? '') === String(initialInventorySkuValues[key] ?? '')) delete body[key]
       }
     }
+    body.lockedAllocations = lockedAllocations.value.map(allocation => ({ lockSource: allocation.lockSource.trim(), quantity: Number(allocation.quantity) }))
     body.inventoryMovements = inventoryMovements.value
       .filter(movement => Number(movement.quantity) > 0)
       .map(movement => ({ ...movement, quantity: Number(movement.quantity) }))
@@ -257,6 +311,12 @@ function createPayload() {
 }
 
 onMounted(async () => {
+  if (props.module === 'product') {
+    try { productCodeRules.value = await loadProductCodeRules() } catch { productCodeRules.value = [] }
+    if (!form.productType && !props.row?.id) form.productType = 'SMART_LOCK'
+    if (!form.materialType && !props.row?.id) form.materialType = 'FINISHED_PRODUCT'
+    return
+  }
   if (props.module !== 'inventory') return
   try {
     inventorySkus.value = (await loadOrderSkus()) ?? []
@@ -267,11 +327,28 @@ onMounted(async () => {
 })
 
 async function save() {
+  if (props.module === 'inventory') {
+    const error = validateLockedAllocations()
+    if (error) { emit('message', error, 'error'); return }
+  }
   saving.value = true
   try {
     const body = createPayload()
-    if (props.row?.id) await updateEntity(props.module, Number(props.row.id), body)
-    else await createEntity(props.module, body)
+    const savedEntity = props.row?.id
+      ? await updateEntity(props.module, Number(props.row.id), body)
+      : await createEntity(props.module, body)
+    if (props.module === 'user') form.password = ''
+    if (props.module === 'product' && pendingImages.value.length) {
+      try {
+        const productId = Number(savedEntity.id ?? props.row?.id)
+        await uploadProductImages(productId, pendingImages.value)
+        pendingImages.value = []
+      } catch {
+        emit('saved', false)
+        emit('message', '产品已保存，部分图片上传失败，请重试', 'error')
+        return
+      }
+    }
     emit('message', '保存成功')
     emit('saved')
   } catch (error) {
@@ -289,17 +366,36 @@ async function save() {
         <h2>{{ row?.id ? '修改' : '新增' }}{{ module === 'customer' ? '客户' : module === 'user' ? '用户' : module === 'product' ? '产品' : '库存' }}</h2>
         <button @click="emit('close')">关闭</button>
       </header>
-      <form @submit.prevent="save">
+      <form autocomplete="off" @submit.prevent="save">
         <div class="form-grid">
-          <label v-for="field in fields" :key="field.key">
-            <span>{{ field.label }}</span>
+          <template v-for="field in fields" :key="field.key">
+          <label v-if="fieldVisible(field)">
+            <span>{{ fieldLabel(field) }}</span>
             <select
-              v-if="field.key === 'role'"
+              v-if="field.optionCategory"
+              v-model="form[field.key]"
+              :required="fieldRequired(field)"
+            >
+              <option value="">请选择</option>
+              <option v-if="field.optionCategory === 'PRODUCT_TYPE'" value="SMART_LOCK">智能锁</option>
+              <option v-if="field.optionCategory === 'PRODUCT_TYPE'" value="ENTRY_DOOR">入户门</option>
+              <option v-for="rule in productCodeRules.filter(item => item.category === field.optionCategory && item.enabled)" :key="rule.id" :value="rule.id">{{ rule.displayName }}（{{ rule.code }}）</option>
+            </select>
+            <select
+              v-else-if="field.key === 'materialType'"
+              v-model="form[field.key]"
+              data-test="product-material-type"
+              required
+            >
+              <option value="FINISHED_PRODUCT">成品</option>
+              <option value="PART">零件</option>
+            </select>
+            <select
+              v-else-if="field.key === 'role'"
               v-model="form[field.key]"
               data-test="user-role"
               :disabled="!canManageUserRoles"
             >
-              <option value="">默认普通用户</option>
               <option v-for="option in roleOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
             <FuzzyPicker
@@ -313,8 +409,8 @@ async function save() {
             <textarea
               v-else-if="field.multiline && !field.readOnly"
               v-model="form[field.key]"
-              :data-test="inventoryFieldTestId(field.key)"
-              :required="field.required"
+              :data-test="field.key === 'customerCode' ? 'customer-code' : inventoryFieldTestId(field.key)"
+              :required="fieldRequired(field)"
               :disabled="Boolean(row?.id) && ['customerCode', 'username', 'skuCode', 'skuId'].includes(field.key)"
             />
             <textarea
@@ -333,17 +429,34 @@ async function save() {
             <input
               v-else
               v-model="form[field.key]"
-              :data-test="inventoryFieldTestId(field.key)"
+              :data-test="field.key === 'customerCode' ? 'customer-code' : inventoryFieldTestId(field.key)"
               :type="field.type ?? 'text'"
-              :required="field.required"
+              :autocomplete="fieldAutocomplete(field)"
+              :required="fieldRequired(field)"
               :disabled="(module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice) || (Boolean(row?.id) && ['customerCode', 'username', 'skuCode', 'skuId'].includes(field.key))"
               step="any"
-              @input="field.key === 'actualQuantity' ? onInventoryMetricChange('actual') : field.key === 'availableQuantity' ? onInventoryMetricChange('available') : field.key === 'lockedQuantity' ? onInventoryMetricChange('locked') : field.key === 'inTransitQuantity' ? onInventoryMetricChange('transit') : ['lockedMingAiJunQiao', 'lockedBoLeLongMi', 'lockedLaos', 'lockedBeiLang', 'lockedMalaysia'].includes(field.key) ? onInventoryAllocationChange() : undefined"
+              @input="field.key === 'actualQuantity' ? onInventoryMetricChange('actual') : field.key === 'availableQuantity' ? onInventoryMetricChange('available') : field.key === 'lockedQuantity' ? onInventoryMetricChange('locked') : field.key === 'inTransitQuantity' ? onInventoryMetricChange('transit') : undefined"
             />
           </label>
+          </template>
         </div>
         <p v-if="module === 'product' && !canEditProductPrice" data-test="product-price-permission-hint" class="field-hint">仅财务或管理员可修改</p>
-        <section v-if="module === 'inventory'" class="order-section inventory-movement-section">
+        <ProductImagePicker
+          v-if="module === 'product'"
+          v-model="pendingImages"
+          :product-id="row?.id ? Number(row.id) : undefined"
+          @message="(text, kind) => emit('message', text, kind)"
+          @changed="emit('saved', false)"
+        />
+        <section v-if="module === 'inventory'" class="order-section locked-allocation-section">
+          <div class="line-title"><div><h3>地点锁定分配</h3><p>按地点维护锁定数量，地点可随时新增；合计不能超过已锁定数量。</p></div><button type="button" data-test="add-locked-allocation" @click="addLockedAllocation">新增地点</button></div>
+          <p v-if="!lockedAllocations.length" class="inventory-movement-empty">暂无地点分配</p>
+          <div v-for="(allocation, index) in lockedAllocations" :key="index" class="locked-allocation-row" data-test="locked-allocation-row">
+            <label><span>地点名称</span><input v-model="allocation.lockSource" data-test="locked-allocation-source" placeholder="例如：新加坡"></label>
+            <label><span>锁定数量</span><input v-model.number="allocation.quantity" data-test="locked-allocation-quantity" type="number" min="0" step="1"></label>
+            <button type="button" data-test="remove-locked-allocation" @click="removeLockedAllocation(index)">删除</button>
+          </div>
+        </section>        <section v-if="module === 'inventory'" class="order-section inventory-movement-section">
           <div class="line-title">
             <h3>入/出库明细</h3>
             <button type="button" data-test="add-inventory-movement" @click="addInventoryMovement">新增明细</button>

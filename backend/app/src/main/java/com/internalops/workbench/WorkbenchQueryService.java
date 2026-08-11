@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,9 +13,25 @@ import java.util.Set;
 
 @Service
 public class WorkbenchQueryService {
+    private static final Set<String> FIFO_INBOUND_TRANSACTION_TYPES = Set.of(
+            "EXCEL_INBOUND", "MANUAL_INBOUND", "PURCHASE_RECEIPT");
+    private static final Set<String> FIFO_OUTBOUND_TRANSACTION_TYPES = Set.of(
+            "EXCEL_OUTBOUND", "MANUAL_OUTBOUND", "SALES_SHIPMENT");
+    private static final Set<String> FIFO_SIGNED_TRANSACTION_TYPES = Set.of("MANUAL_ADJUST");
+    private static final Set<String> FIFO_IGNORED_TRANSACTION_TYPES = Set.of(
+            "INITIAL_IMPORT", "ALLOCATE", "PURCHASE_TRANSIT");
+    private static final Set<String> INVENTORY_MOVEMENT_TRANSACTION_TYPES = Set.of(
+            "EXCEL_INBOUND", "EXCEL_OUTBOUND", "MANUAL_INBOUND", "MANUAL_OUTBOUND");
+    private static final Set<String> INVENTORY_MOVEMENT_INBOUND_TYPES = Set.of("EXCEL_INBOUND", "MANUAL_INBOUND");
     private static final Map<String, String> CAMEL_KEYS = Map.ofEntries(
             Map.entry("customercode", "customerCode"), Map.entry("customername", "customerName"),
             Map.entry("contactname", "contactName"), Map.entry("displayname", "displayName"),
+            Map.entry("businesscontactname", "businessContactName"), Map.entry("businesscontactphone", "businessContactPhone"),
+            Map.entry("ordercontactname", "orderContactName"), Map.entry("ordercontactphone", "orderContactPhone"),
+            Map.entry("financecontactname", "financeContactName"), Map.entry("financecontactphone", "financeContactPhone"),
+            Map.entry("invoicetitle", "invoiceTitle"), Map.entry("taxpayerid", "taxpayerId"),
+            Map.entry("invoiceaddress", "invoiceAddress"), Map.entry("invoicephone", "invoicePhone"), Map.entry("bankname", "bankName"),
+            Map.entry("contractstatus", "contractStatus"), Map.entry("contractenddate", "contractEndDate"),
             Map.entry("updatedat", "updatedAt"), Map.entry("skucode", "skuCode"),
             Map.entry("productname", "productName"), Map.entry("lockbody", "lockBody"),
             Map.entry("productversion", "productVersion"), Map.entry("currentcost", "currentCost"),
@@ -51,6 +68,7 @@ public class WorkbenchQueryService {
             Map.entry("productids", "productIds"), Map.entry("productsummary", "productSummary")
     );
     private final JdbcTemplate jdbc;
+    private final InventoryAgeCalculator inventoryAgeCalculator = new InventoryAgeCalculator();
     private final Map<String, ModuleSpec> modules = new LinkedHashMap<>();
 
     public WorkbenchQueryService(JdbcTemplate jdbc) {
@@ -92,9 +110,23 @@ public class WorkbenchQueryService {
         List<Map<String, Object>> items = jdbc.queryForList(sql, itemParameters.toArray()).stream()
                 .map(this::normalizeKeys).toList();
         if ("inventory".equals(module)) {
+            Map<Long, List<InventoryTransactionRow>> transactionsByInventoryId = inventoryTransactions(items);
+            Map<Long, List<Map<String, Object>>> allocationsByInventoryId = inventoryLockedAllocations(items);
             items = items.stream().map(row -> {
                 Map<String, Object> item = new LinkedHashMap<>(row);
-                item.put("movementSummary", inventoryMovementSummary(((Number) item.get("id")).longValue()));
+                long inventoryId = ((Number) item.get("id")).longValue();
+                List<InventoryTransactionRow> transactions = transactionsByInventoryId.getOrDefault(inventoryId, List.of());
+                item.put("lockedAllocations", allocationsByInventoryId.getOrDefault(inventoryId, List.of()));
+                item.put("movementSummary", inventoryMovementSummary(transactions));
+                inventoryAge(transactions, ((Number) item.get("actualQuantity")).intValue()).ifPresentOrElse(
+                        age -> {
+                            item.put("oldestStockDate", age.oldestStockDate());
+                            item.put("inventoryAgeDays", age.inventoryAgeDays());
+                        },
+                        () -> {
+                            item.put("oldestStockDate", null);
+                            item.put("inventoryAgeDays", null);
+                        });
                 return item;
             }).toList();
         }
@@ -132,7 +164,7 @@ public class WorkbenchQueryService {
             String businessNo = String.valueOf(row.get("businessNo"));
             int firstSeparator = businessNo.indexOf(':');
             movement.put("date", date);
-            movement.put("direction", Set.of("EXCEL_INBOUND", "MANUAL_INBOUND").contains(transactionType) ? "入库" : "出库");
+            movement.put("direction", INVENTORY_MOVEMENT_INBOUND_TYPES.contains(transactionType) ? "入库" : "出库");
             movement.put("quantity", Math.abs(((Number) row.get("actualDelta")).intValue()));
             movement.put("sourceColumn", firstSeparator < 0 ? businessNo : businessNo.substring(firstSeparator + 1));
             return movement;
@@ -171,6 +203,24 @@ public class WorkbenchQueryService {
                         """, supplierId, search, search, search).stream().map(this::normalizeKeys).toList();
     }
 
+    public List<Map<String, Object>> productSuppliers(long skuId, String keyword) {
+        String search = keyword == null ? "" : keyword.trim();
+        return jdbc.queryForList("""
+                        SELECT sp.id AS `supplierId`,sp.supplier_code AS `supplierCode`,
+                               sp.supplier_name AS `supplierName`,sp.contact_name AS `contactName`,sp.phone,
+                               ssc.purchase_price AS `purchasePrice`,ssc.moq,
+                               ssc.lead_time_days AS `leadTimeDays`
+                        FROM sku_supplier_config ssc
+                        JOIN supplier sp ON sp.id=ssc.supplier_id
+                        JOIN sku s ON s.id=ssc.sku_id
+                        WHERE ssc.sku_id=? AND ssc.enabled=TRUE AND sp.enabled=TRUE AND s.enabled=TRUE
+                          AND (LOCATE(?,COALESCE(sp.supplier_name,''))>0
+                               OR LOCATE(?,COALESCE(sp.supplier_code,''))>0
+                               OR LOCATE(?,COALESCE(sp.contact_name,''))>0)
+                        ORDER BY sp.supplier_name,sp.id
+                        LIMIT 30
+                        """, skuId, search, search, search).stream().map(this::normalizeKeys).toList();
+    }
     public Map<String, Object> supplierDetail(long supplierId) {
         List<Map<String, Object>> suppliers = jdbc.queryForList("""
                         SELECT id,supplier_code AS `supplierCode`,supplier_name AS `supplierName`,
@@ -198,28 +248,107 @@ public class WorkbenchQueryService {
         return supplier;
     }
 
-    private String inventoryMovementSummary(long inventoryId) {
-        List<Map<String, Object>> movements = inventoryMovements(inventoryId);
+    private String inventoryMovementSummary(List<InventoryTransactionRow> transactions) {
+        List<InventoryTransactionRow> movements = transactions.stream()
+                .filter(transaction -> INVENTORY_MOVEMENT_TRANSACTION_TYPES.contains(transaction.transactionType()))
+                .toList();
         if (movements.isEmpty()) return "—";
         StringBuilder summary = new StringBuilder();
         int visible = Math.min(3, movements.size());
         for (int index = 0; index < visible; index++) {
-            Map<String, Object> movement = movements.get(index);
+            InventoryTransactionRow movement = movements.get(index);
             if (index > 0) summary.append('；');
-            String date = String.valueOf(movement.get("date"));
+            String date = movement.operatedAt().toLocalDate().toString();
             summary.append(date.length() >= 10 ? date.substring(5).replace('-', '/') : date)
-                    .append(' ').append(movement.get("direction"))
-                    .append(' ').append(movement.get("quantity"));
+                    .append(' ').append(INVENTORY_MOVEMENT_INBOUND_TYPES.contains(movement.transactionType()) ? "入库" : "出库")
+                    .append(' ').append(Math.abs(movement.actualDelta()));
         }
         if (movements.size() > visible) summary.append("；…");
         return summary.toString();
     }
 
+    private Map<Long, List<Map<String, Object>>> inventoryLockedAllocations(List<Map<String, Object>> items) {
+        if (items.isEmpty()) return Map.of();
+        List<Long> inventoryIds = items.stream().map(item -> ((Number) item.get("id")).longValue()).toList();
+        String placeholders = String.join(",", inventoryIds.stream().map(ignored -> "?").toList());
+        List<Map<String, Object>> rows = jdbc.query(("SELECT inventory_balance_id,lock_source,quantity FROM inventory_locked_allocation "
+                + "WHERE inventory_balance_id IN (%s) ORDER BY inventory_balance_id,id").formatted(placeholders),
+                (resultSet, rowNumber) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("inventoryBalanceId", resultSet.getLong("inventory_balance_id"));
+                    row.put("lockSource", resultSet.getString("lock_source"));
+                    row.put("quantity", resultSet.getInt("quantity"));
+                    return row;
+                }, inventoryIds.toArray());
+        Map<Long, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            long inventoryId = ((Number) row.get("inventoryBalanceId")).longValue();
+            Map<String, Object> allocation = new LinkedHashMap<>();
+            allocation.put("lockSource", row.get("lockSource"));
+            allocation.put("quantity", row.get("quantity"));
+            grouped.computeIfAbsent(inventoryId, ignored -> new ArrayList<>()).add(allocation);
+        }
+        return grouped;
+    }
+    private Map<Long, List<InventoryTransactionRow>> inventoryTransactions(List<Map<String, Object>> items) {
+        if (items.isEmpty()) return Map.of();
+        List<Long> inventoryIds = items.stream()
+                .map(item -> ((Number) item.get("id")).longValue())
+                .toList();
+        String placeholders = String.join(",", inventoryIds.stream().map(ignored -> "?").toList());
+        List<InventoryTransactionRow> transactions = jdbc.query("""
+                        SELECT b.id AS inventory_id,tx.id,tx.operated_at,tx.transaction_type,tx.actual_delta
+                        FROM inventory_balance b
+                        JOIN inventory_transaction tx
+                          ON tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id
+                        WHERE b.id IN (%s)
+                        ORDER BY b.id,tx.operated_at,tx.id
+                        """.formatted(placeholders),
+                (resultSet, rowNumber) -> new InventoryTransactionRow(
+                        resultSet.getLong("inventory_id"), resultSet.getLong("id"),
+                        resultSet.getTimestamp("operated_at").toLocalDateTime(),
+                        resultSet.getString("transaction_type"), resultSet.getInt("actual_delta")),
+                inventoryIds.toArray());
+        Map<Long, List<InventoryTransactionRow>> grouped = new LinkedHashMap<>();
+        for (InventoryTransactionRow transaction : transactions) {
+            grouped.computeIfAbsent(transaction.inventoryId(), ignored -> new ArrayList<>()).add(transaction);
+        }
+        return grouped;
+    }
+
+    private java.util.Optional<InventoryAgeCalculator.InventoryAge> inventoryAge(
+            List<InventoryTransactionRow> transactions, int actualQuantity) {
+        List<InventoryAgeCalculator.Movement> movements = transactions.stream()
+                .filter(transaction -> transaction.actualDelta() != 0)
+                .map(transaction -> new InventoryAgeCalculator.Movement(
+                        transaction.id(), transaction.operatedAt(),
+                        fifoActualDelta(transaction.transactionType(), transaction.actualDelta())))
+                .filter(movement -> movement.actualDelta() != 0)
+                .toList();
+        return inventoryAgeCalculator.calculate(movements, actualQuantity, LocalDate.now());
+    }
+
+    private int fifoActualDelta(String transactionType, int actualDelta) {
+        if (FIFO_INBOUND_TRANSACTION_TYPES.contains(transactionType)) return Math.abs(actualDelta);
+        if (FIFO_OUTBOUND_TRANSACTION_TYPES.contains(transactionType)) return -Math.abs(actualDelta);
+        if (FIFO_SIGNED_TRANSACTION_TYPES.contains(transactionType)) return actualDelta;
+        if (FIFO_IGNORED_TRANSACTION_TYPES.contains(transactionType)) return 0;
+        return 0;
+    }
+
     private void registerModules() {
         modules.put("customer", new ModuleSpec(
-                "SELECT c.id, c.customer_code AS `customerCode`, c.customer_name AS `customerName`, "
-                        + "c.contact_name AS `contactName`, c.phone, c.address, c.enabled, c.updated_at AS `updatedAt`, c.version",
-                "FROM customer c", "LOCATE(?, COALESCE(c.customer_code,''))>0 OR LOCATE(?, COALESCE(c.customer_name,''))>0 OR LOCATE(?, COALESCE(c.contact_name,''))>0 OR LOCATE(?, COALESCE(c.phone,''))>0", 4,
+                "SELECT c.id, c.customer_code AS `customerCode`, c.customer_name AS `customerName`, c.address, "
+                        + "c.business_contact_name AS `businessContactName`, c.business_contact_phone AS `businessContactPhone`, "
+                        + "c.order_contact_name AS `orderContactName`, c.order_contact_phone AS `orderContactPhone`, "
+                        + "c.finance_contact_name AS `financeContactName`, c.finance_contact_phone AS `financeContactPhone`, "
+                        + "c.invoice_title AS `invoiceTitle`, c.taxpayer_id AS `taxpayerId`, c.invoice_address AS `invoiceAddress`, "
+                        + "c.invoice_phone AS `invoicePhone`, c.bank_name AS `bankName`, c.bank_account AS `bankAccount`, "
+                        + "CASE WHEN NOT EXISTS(SELECT 1 FROM customer_contract cc0 WHERE cc0.customer_id=c.id AND cc0.enabled=TRUE) THEN '未设置合同' "
+                        + "WHEN EXISTS(SELECT 1 FROM customer_contract cc1 WHERE cc1.customer_id=c.id AND cc1.enabled=TRUE AND CURRENT_DATE BETWEEN cc1.start_date AND cc1.end_date) THEN '有效' ELSE '已到期' END AS `contractStatus`, "
+                        + "(SELECT MAX(cc2.end_date) FROM customer_contract cc2 WHERE cc2.customer_id=c.id AND cc2.enabled=TRUE) AS `contractEndDate`, "
+                        + "c.enabled, c.updated_at AS `updatedAt`, c.version",
+                "FROM customer c", "LOCATE(?, COALESCE(c.customer_code,''))>0 OR LOCATE(?, COALESCE(c.customer_name,''))>0 OR LOCATE(?, COALESCE(c.order_contact_name,''))>0 OR LOCATE(?, COALESCE(c.order_contact_phone,''))>0", 4,
                 sorts("id", "c.id", "customerCode", "c.customer_code", "customerName", "c.customer_name", "updatedAt", "c.updated_at"),
                 "c.updated_at", "c.id DESC"));
         modules.put("user", new ModuleSpec(
@@ -228,19 +357,26 @@ public class WorkbenchQueryService {
                 sorts("id", "u.id", "username", "u.username", "displayName", "u.display_name", "updatedAt", "u.updated_at"),
                 "u.updated_at", "u.id DESC"));
         modules.put("product", new ModuleSpec(
-                "SELECT s.id, s.sku_code AS `skuCode`, s.model, s.product_name AS `productName`, s.color, "
+                "SELECT s.id, s.product_code AS `productCode`, s.sku_code AS `customerCode`, s.sku_code AS `skuCode`, s.model, s.product_name AS `productName`, s.color, "
                         + "s.lock_body AS `lockBody`, s.product_version AS `productVersion`, s.configuration, s.unit, "
+                        + "s.brand_rule_id AS `brandRuleId`,s.series_rule_id AS `seriesRuleId`,s.body_color_rule_id AS `bodyColorRuleId`,s.lock_type_rule_id AS `lockTypeRuleId`,"
+                        + "s.connectivity_rule_id AS `connectivityRuleId`,s.sales_channel_rule_id AS `salesChannelRuleId`,s.operating_entity_rule_id AS `operatingEntityRuleId`,s.language_rule_id AS `languageRuleId`,"
+                        + "s.product_type AS `productType`,s.material_type AS `materialType`,s.door_model_rule_id AS `doorModelRuleId`,s.security_grade_rule_id AS `securityGradeRuleId`,s.base_material_rule_id AS `baseMaterialRuleId`,s.thickness_rule_id AS `thicknessRuleId`,s.finish_color_rule_id AS `finishColorRuleId`,"
+                        + "br.display_name AS brand,COALESCE(sr.display_name,dmr.display_name) AS series,bcr.display_name AS `bodyColor`,ltr.display_name AS `lockType`,cr.display_name AS connectivity,scr.display_name AS `salesChannel`,oer.display_name AS `operatingEntity`,lr.display_name AS language,"
                         + "s.current_cost AS `currentCost`, s.factory_price AS `factoryPrice`, (s.factory_price-s.current_cost) AS `priceDifference`, s.product_remark AS remark, s.enabled, s.updated_at AS `updatedAt`, s.version, "
                         + "(SELECT COUNT(*) FROM product_image pi WHERE pi.product_id=s.id) AS `imageCount`, "
                         + "(SELECT pi.id FROM product_image pi WHERE pi.product_id=s.id AND pi.is_primary=TRUE LIMIT 1) AS `primaryImageId`, "
                         + "ssc.supplier_id AS `supplierId`, sp.supplier_name AS `supplierName`, ssc.purchase_price AS `purchasePrice`, "
                         + "ssc.moq, ssc.lead_time_days AS `leadTimeDays`",
                 "FROM sku s LEFT JOIN sku_supplier_config ssc ON ssc.sku_id=s.id AND ssc.enabled=TRUE "
-                        + "LEFT JOIN supplier sp ON sp.id=ssc.supplier_id",
-                "LOCATE(?, COALESCE(s.sku_code,''))>0 OR LOCATE(?, COALESCE(s.model,''))>0 OR LOCATE(?, COALESCE(s.product_name,''))>0 OR LOCATE(?, COALESCE(s.configuration,''))>0", 4,
-                sorts("id", "s.id", "skuCode", "s.sku_code", "model", "s.model", "productName", "s.product_name", "currentCost", "s.current_cost", "factoryPrice", "s.factory_price", "priceDifference", "(s.factory_price-s.current_cost)", "updatedAt", "s.updated_at"),
-                "s.updated_at", "s.id DESC"));
-        modules.put("supplier", new ModuleSpec(
+                        + "LEFT JOIN supplier sp ON sp.id=ssc.supplier_id "
+                        + "LEFT JOIN product_code_rule br ON br.id=s.brand_rule_id LEFT JOIN product_code_rule sr ON sr.id=s.series_rule_id "
+                        + "LEFT JOIN product_code_rule bcr ON bcr.id=s.body_color_rule_id LEFT JOIN product_code_rule ltr ON ltr.id=s.lock_type_rule_id "
+                        + "LEFT JOIN product_code_rule cr ON cr.id=s.connectivity_rule_id LEFT JOIN product_code_rule scr ON scr.id=s.sales_channel_rule_id "
+                        + "LEFT JOIN product_code_rule oer ON oer.id=s.operating_entity_rule_id LEFT JOIN product_code_rule lr ON lr.id=s.language_rule_id LEFT JOIN product_code_rule dmr ON dmr.id=s.door_model_rule_id",
+                "LOCATE(?, COALESCE(s.product_code,''))>0 OR LOCATE(?, COALESCE(s.sku_code,''))>0 OR LOCATE(?, COALESCE(br.display_name,''))>0 OR LOCATE(?, COALESCE(br.code,''))>0 OR LOCATE(?, COALESCE(sr.display_name,''))>0 OR LOCATE(?, COALESCE(sr.code,''))>0 OR LOCATE(?, COALESCE(s.product_name,''))>0 OR LOCATE(?, COALESCE(s.configuration,''))>0", 8,
+                sorts("id", "s.id", "productCode", "s.product_code", "customerCode", "s.sku_code", "skuCode", "s.sku_code", "model", "s.model", "productName", "s.product_name", "currentCost", "s.current_cost", "factoryPrice", "s.factory_price", "priceDifference", "(s.factory_price-s.current_cost)", "updatedAt", "s.updated_at"),
+                "s.updated_at", "s.id DESC"));        modules.put("supplier", new ModuleSpec(
                 "SELECT sp.id,sp.supplier_code AS `supplierCode`,sp.supplier_name AS `supplierName`,"
                         + "sp.manufacturer_category AS `manufacturerCategory`,sp.manufacturer_type AS `manufacturerType`,"
                         + "sp.supplier_location AS `supplierLocation`,sp.product_attribute AS `productAttribute`,"
@@ -264,11 +400,7 @@ public class WorkbenchQueryService {
         modules.put("inventory", new ModuleSpec(
                 "SELECT b.id, b.sku_id AS `skuId`, s.sku_code AS `skuCode`, s.model, s.configuration, s.product_version AS `productVersion`, s.color, s.lock_body AS `lockBody`, s.unit, "
                         + "b.actual_quantity AS `actualQuantity`, b.locked_quantity AS `lockedQuantity`, "
-                        + "COALESCE((SELECT a.quantity FROM inventory_locked_allocation a WHERE a.inventory_balance_id=b.id AND a.lock_source='铭爱钧乔'),0) AS `lockedMingAiJunQiao`, "
-                        + "COALESCE((SELECT a.quantity FROM inventory_locked_allocation a WHERE a.inventory_balance_id=b.id AND a.lock_source='博乐龙米'),0) AS `lockedBoLeLongMi`, "
-                        + "COALESCE((SELECT a.quantity FROM inventory_locked_allocation a WHERE a.inventory_balance_id=b.id AND a.lock_source='老挝'),0) AS `lockedLaos`, "
-                        + "COALESCE((SELECT a.quantity FROM inventory_locked_allocation a WHERE a.inventory_balance_id=b.id AND a.lock_source='贝朗'),0) AS `lockedBeiLang`, "
-                        + "COALESCE((SELECT a.quantity FROM inventory_locked_allocation a WHERE a.inventory_balance_id=b.id AND a.lock_source='马来西亚'),0) AS `lockedMalaysia`, "
+
                         + "(b.actual_quantity+b.in_transit_quantity-b.locked_quantity) AS `availableQuantity`, b.in_transit_quantity AS `inTransitQuantity`, "
                         + "(SELECT COUNT(*) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.business_type='EXCEL_IMPORT_HISTORY') AS `movementCount`, "
                         + "b.source_supplier_name AS `sourceSupplierName`, b.inventory_remark AS `inventoryRemark`, b.updated_at AS `updatedAt`, b.version",
@@ -334,6 +466,10 @@ public class WorkbenchQueryService {
             result.put(values[i], values[i + 1]);
         }
         return Map.copyOf(result);
+    }
+
+    private record InventoryTransactionRow(long inventoryId, long id, java.time.LocalDateTime operatedAt,
+                                           String transactionType, int actualDelta) {
     }
 
     private record ModuleSpec(String selectClause, String fromClause, String keywordPredicate,

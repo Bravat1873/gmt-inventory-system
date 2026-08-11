@@ -25,6 +25,16 @@ public class ProductCodeGenerator {
         return brand + "_" + series + color + lock + connectivity + channel + entity + language;
     }
 
+    public String generateEntryDoor(EntryDoorProductCodeSelection selection) {
+        if (selection == null || !selection.complete()) throw new IllegalArgumentException("请补齐入户门产品编号信息");
+        String brand = code(selection.brandRuleId(), ProductCodeCategory.BRAND);
+        String model = code(selection.doorModelRuleId(), ProductCodeCategory.DOOR_MODEL);
+        String security = code(selection.securityGradeRuleId(), ProductCodeCategory.SECURITY_GRADE);
+        String material = code(selection.baseMaterialRuleId(), ProductCodeCategory.BASE_MATERIAL);
+        String thickness = code(selection.thicknessRuleId(), ProductCodeCategory.THICKNESS);
+        String finish = code(selection.finishColorRuleId(), ProductCodeCategory.FINISH_COLOR);
+        return brand + "_" + model + security + material + thickness + finish;
+    }
     private String code(long id, ProductCodeCategory expected) {
         List<Map<String,Object>> rows = jdbc.queryForList("SELECT category,code,enabled FROM product_code_rule WHERE id=?", id);
         if (rows.isEmpty()) throw new IllegalArgumentException("产品编码映射不存在");

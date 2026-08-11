@@ -24,11 +24,13 @@ public class MasterDataController {
     @PostMapping("/{module}")
     public ApiResponse<Map<String,Object>> create(@PathVariable String module, @RequestBody JsonNode body) {
         requireProductPricePermission(module, body);
+        requireUserManagementPermission(module);
         return ApiResponse.ok(service.create(module, request(body), EntityCommandFields.from(body)));
     }
     @PutMapping("/{module}/{id}")
     public ApiResponse<Map<String,Object>> update(@PathVariable String module, @PathVariable long id, @RequestBody JsonNode body) {
         requireProductPricePermission(module, body);
+        requireUserManagementPermission(module);
         return ApiResponse.ok(service.update(module, id, request(body), EntityCommandFields.from(body)));
     }
     private void requireProductPricePermission(String module, JsonNode body) {
@@ -36,6 +38,11 @@ public class MasterDataController {
                 && (body.has("currentCost") || body.has("factoryPrice"))
                 && !CurrentUser.required().role().canEditProductPrice()) {
             throw new IllegalArgumentException("仅财务或管理员可修改产品价格");
+        }
+    }
+    private void requireUserManagementPermission(String module) {
+        if ("user".equals(module) && !CurrentUser.required().role().canManageRoles()) {
+            throw new IllegalArgumentException("仅管理员可管理用户账号");
         }
     }
     private EntityCommandRequest request(JsonNode body) { return objectMapper.convertValue(body, EntityCommandRequest.class); }

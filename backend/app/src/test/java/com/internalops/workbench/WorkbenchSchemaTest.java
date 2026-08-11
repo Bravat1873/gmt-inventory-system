@@ -35,4 +35,39 @@ class WorkbenchSchemaTest {
             assertTrue(sql.contains(index), "缺少索引 " + index);
         }
     }
+
+    @Test
+    void shipmentMigrationRequiresAnOperatorName() throws Exception {
+        String sql = new ClassPathResource("db/migration/V22__shipment_batches.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        assertTrue(sql.contains("operator_name VARCHAR(100) NOT NULL"),
+                "发货批次必须持久化非空操作人名称");
+    }
+
+    @Test
+    void orderContactSnapshotMigrationAddsAllSixNullableColumns() throws Exception {
+        String sql = new ClassPathResource("db/migration/V23__sales_order_contact_snapshots.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        for (String column : new String[]{
+                "business_contact_name VARCHAR(100) NULL",
+                "business_contact_phone VARCHAR(60) NULL",
+                "order_contact_name VARCHAR(100) NULL",
+                "order_contact_phone VARCHAR(60) NULL",
+                "finance_contact_name VARCHAR(100) NULL",
+                "finance_contact_phone VARCHAR(60) NULL"
+        }) {
+            assertTrue(sql.contains(column), "订单联系人快照迁移缺少 " + column);
+        }
+    }
+
+    @Test
+    void plaintextPasswordMigrationResetsEveryExistingUserTo123() throws Exception {
+        String sql = new ClassPathResource("db/migration/V25__plaintext_user_passwords.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        assertTrue(sql.contains("UPDATE sys_user SET password_hash = '123'"),
+                "V25 必须把所有现有账号密码统一重置为明文 123");
+    }
 }

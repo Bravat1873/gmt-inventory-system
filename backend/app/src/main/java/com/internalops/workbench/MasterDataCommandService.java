@@ -2,6 +2,10 @@ package com.internalops.workbench;
 
 import com.internalops.auth.CurrentUser;
 import com.internalops.auth.UserRole;
+import com.internalops.productcode.ProductCodeGenerator;
+import com.internalops.productcode.EntryDoorProductCodeSelection;
+import com.internalops.productcode.ProductCodeSelection;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -16,14 +20,18 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class MasterDataCommandService {
     private final JdbcTemplate jdbc;
+    private final ProductCodeGenerator productCodeGenerator;
 
-    public MasterDataCommandService(JdbcTemplate jdbc) {
+    public MasterDataCommandService(JdbcTemplate jdbc, ProductCodeGenerator productCodeGenerator) {
         this.jdbc = jdbc;
+        this.productCodeGenerator = productCodeGenerator;
     }
 
     @Transactional
@@ -38,7 +46,7 @@ public class MasterDataCommandService {
             case "user" -> createUser(request, fields);
             case "product" -> createProduct(request, fields);
             case "supplier" -> createSupplier(request, fields);
-            case "inventory" -> createInventory(request);
+            case "inventory" -> createInventory(request, fields);
             default -> throw new IllegalArgumentException("该模块不支持手工新增");
         };
     }
@@ -56,7 +64,7 @@ public class MasterDataCommandService {
             case "user" -> updateUser(id, request, fields);
             case "product" -> updateProduct(id, request, fields);
             case "supplier" -> updateSupplier(id, request, fields);
-            case "inventory" -> updateInventory(id, request);
+            case "inventory" -> updateInventory(id, request, fields);
             default -> throw new IllegalArgumentException("该模块不支持手工修改");
         };
     }
@@ -64,15 +72,19 @@ public class MasterDataCommandService {
     private Map<String, Object> createCustomer(EntityCommandRequest r) {
         requireText(r.customerName(), "客户名称不能为空");
         String code = textOr(r.customerCode(), generatedCode("C"));
-        long id = insert("INSERT INTO customer(customer_code,customer_name,contact_name,phone,address,enabled) VALUES(?,?,?,?,?,?)",
-                code, r.customerName().trim(), r.contactName(), r.phone(), r.address(), enabled(r));
+        long id = insert("INSERT INTO customer(customer_code,customer_name,contact_name,phone,address,business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,finance_contact_name,finance_contact_phone,invoice_title,taxpayer_id,invoice_address,invoice_phone,bank_name,bank_account,enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                code, r.customerName().trim(), businessName(r), businessPhone(r), r.address(), businessName(r), businessPhone(r),
+                r.orderContactName(), r.orderContactPhone(), r.financeContactName(), r.financeContactPhone(), r.invoiceTitle(),
+                r.taxpayerId(), r.invoiceAddress(), r.invoicePhone(), r.bankName(), r.bankAccount(), enabled(r));
         return customer(id);
     }
 
     private Map<String, Object> updateCustomer(long id, EntityCommandRequest r) {
         requireText(r.customerName(), "客户名称不能为空");
-        int changed = jdbc.update("UPDATE customer SET customer_name=?,contact_name=?,phone=?,address=?,enabled=?,version=version+1 WHERE id=? AND version=?",
-                r.customerName().trim(), r.contactName(), r.phone(), r.address(), enabled(r), id, r.version());
+        int changed = jdbc.update("UPDATE customer SET customer_name=?,contact_name=?,phone=?,address=?,business_contact_name=?,business_contact_phone=?,order_contact_name=?,order_contact_phone=?,finance_contact_name=?,finance_contact_phone=?,invoice_title=?,taxpayer_id=?,invoice_address=?,invoice_phone=?,bank_name=?,bank_account=?,enabled=?,version=version+1 WHERE id=? AND version=?",
+                r.customerName().trim(), businessName(r), businessPhone(r), r.address(), businessName(r), businessPhone(r),
+                r.orderContactName(), r.orderContactPhone(), r.financeContactName(), r.financeContactPhone(), r.invoiceTitle(),
+                r.taxpayerId(), r.invoiceAddress(), r.invoicePhone(), r.bankName(), r.bankAccount(), enabled(r), id, r.version());
         conflictIfUnchanged(changed);
         return customer(id);
     }
@@ -118,21 +130,28 @@ public class MasterDataCommandService {
     }
 
     private Map<String, Object> createUser(EntityCommandRequest r, EntityCommandFields fields) {
+        requireUserManagementPermission();
         requireText(r.username(), "用户名不能为空");
         requireText(r.displayName(), "姓名不能为空");
+        if (!fields.passwordPresent() || r.password() == null || r.password().trim().isEmpty()) {
+            throw new IllegalArgumentException("初始密码不能为空");
+        }
         Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM sys_user WHERE username=?", Integer.class, r.username().trim());
         if (existing != null && existing > 0) throw new IllegalArgumentException("用户名已存在，请换一个");
         UserRole role = fields.rolePresent() ? requestedRole(r) : UserRole.USER;
         long id = insert("INSERT INTO sys_user(username,password_hash,display_name,phone,enabled,role) VALUES(?,?,?,?,?,?)",
-                r.username().trim(), "{noop}internal", r.displayName().trim(), r.phone(), enabled(r), role.name());
+                r.username().trim(), r.password().trim(), r.displayName().trim(), r.phone(), enabled(r), role.name());
         return user(id);
     }
 
     private Map<String, Object> updateUser(long id, EntityCommandRequest r, EntityCommandFields fields) {
+        requireUserManagementPermission();
         requireText(r.displayName(), "姓名不能为空");
         UserRole role = fields.rolePresent() ? requestedRole(r) : existingRole(id);
-        int changed = jdbc.update("UPDATE sys_user SET display_name=?,phone=?,enabled=?,role=?,version=version+1 WHERE id=? AND version=?",
-                r.displayName().trim(), r.phone(), enabled(r), role.name(), id, r.version());
+        boolean updatePassword = fields.passwordPresent() && r.password() != null && !r.password().trim().isEmpty();
+        int changed = jdbc.update("UPDATE sys_user SET display_name=?,phone=?,enabled=?,role=?,password_hash=CASE WHEN ? THEN ? ELSE password_hash END,version=version+1 WHERE id=? AND version=?",
+                r.displayName().trim(), r.phone(), enabled(r), role.name(), updatePassword,
+                updatePassword ? r.password().trim() : null, id, r.version());
         conflictIfUnchanged(changed);
         return user(id);
     }
@@ -140,26 +159,88 @@ public class MasterDataCommandService {
     private Map<String, Object> createProduct(EntityCommandRequest r, EntityCommandFields fields) {
         validateProduct(r);
         requireProductPricePermission(fields);
-        String code = textOr(r.skuCode(), generatedCode("SKU"));
-        long id = insert("INSERT INTO sku(sku_code,model,product_name,color,lock_body,product_version,configuration,unit,current_cost,factory_price,product_remark,enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                code, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), r.configuration(),
-                textOr(r.unit(), "件"), r.currentCost(), r.factoryPrice(), r.remark(), enabled(r));
-        saveSupplierConfig(id, r);
-        return product(id);
+        String productType = requiredProductType(r.productType());
+        String materialType = requiredMaterialType(r.materialType());
+        ProductCodeSelection smart = selection(r);
+        EntryDoorProductCodeSelection door = doorSelection(r);
+        String productCode = generateProductCode(productType, smart, door);
+        String customerCode = r.customerCode() != null ? r.customerCode() : r.skuCode();
+        try {
+            long id = insert("INSERT INTO sku(product_code,product_type,material_type,sku_code,model,product_name,color,lock_body,product_version,configuration,unit,current_cost,factory_price,product_remark,enabled,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    productCode, productType, materialType, customerCode, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), r.configuration(),
+                    textOr(r.unit(), "件"), r.currentCost(), r.factoryPrice(), r.remark(), enabled(r),
+                    r.brandRuleId(), r.seriesRuleId(), r.bodyColorRuleId(), r.lockTypeRuleId(), r.connectivityRuleId(),
+                    r.salesChannelRuleId(), r.operatingEntityRuleId(), r.languageRuleId(), r.doorModelRuleId(), r.securityGradeRuleId(),
+                    r.baseMaterialRuleId(), r.thicknessRuleId(), r.finishColorRuleId());
+            saveSupplierConfig(id, r);
+            return product(id);
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalStateException("产品编号已存在：" + productCode);
+        }
     }
 
     private Map<String, Object> updateProduct(long id, EntityCommandRequest r, EntityCommandFields fields) {
         validateProduct(r);
         requireProductPricePermission(fields);
-        int changed = jdbc.update("UPDATE sku SET model=?,product_name=?,color=?,lock_body=?,product_version=?,configuration=?,unit=?,current_cost=CASE WHEN ? THEN ? ELSE current_cost END,factory_price=CASE WHEN ? THEN ? ELSE factory_price END,product_remark=?,enabled=?,version=version+1 WHERE id=? AND version=?",
-                r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), r.configuration(), textOr(r.unit(), "件"),
-                fields.currentCostPresent(), r.currentCost(), fields.factoryPricePresent(), r.factoryPrice(),
-                r.remark(), enabled(r), id, r.version());
-        conflictIfUnchanged(changed);
-        saveSupplierConfig(id, r);
-        return product(id);
+        Map<String,Object> current = jdbc.queryForMap("SELECT product_code,product_type,material_type,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id FROM sku WHERE id=?", id);
+        String productType = r.productType() == null ? String.valueOf(current.get("product_type")) : requiredProductType(r.productType());
+        String materialType = r.materialType() == null ? String.valueOf(current.get("material_type")) : requiredMaterialType(r.materialType());
+        ProductCodeSelection smart = new ProductCodeSelection(
+                chosen(r.brandRuleId(), current.get("brand_rule_id")), chosen(r.seriesRuleId(), current.get("series_rule_id")),
+                chosen(r.bodyColorRuleId(), current.get("body_color_rule_id")), chosen(r.lockTypeRuleId(), current.get("lock_type_rule_id")),
+                chosen(r.connectivityRuleId(), current.get("connectivity_rule_id")), chosen(r.salesChannelRuleId(), current.get("sales_channel_rule_id")),
+                chosen(r.operatingEntityRuleId(), current.get("operating_entity_rule_id")), chosen(r.languageRuleId(), current.get("language_rule_id")));
+        EntryDoorProductCodeSelection door = new EntryDoorProductCodeSelection(
+                chosen(r.brandRuleId(), current.get("brand_rule_id")), chosen(r.doorModelRuleId(), current.get("door_model_rule_id")),
+                chosen(r.securityGradeRuleId(), current.get("security_grade_rule_id")), chosen(r.baseMaterialRuleId(), current.get("base_material_rule_id")),
+                chosen(r.thicknessRuleId(), current.get("thickness_rule_id")), chosen(r.finishColorRuleId(), current.get("finish_color_rule_id")));
+        String productCode = "UNCLASSIFIED".equals(productType) ? String.valueOf(current.get("product_code")) : generateProductCode(productType, smart, door);
+        String customerCode = r.customerCode() != null ? r.customerCode() : r.skuCode();
+        try {
+            int changed = jdbc.update("UPDATE sku SET product_code=?,product_type=?,material_type=?,sku_code=?,model=?,product_name=?,color=?,lock_body=?,product_version=?,configuration=?,unit=?,current_cost=CASE WHEN ? THEN ? ELSE current_cost END,factory_price=CASE WHEN ? THEN ? ELSE factory_price END,product_remark=?,enabled=?,brand_rule_id=?,series_rule_id=?,body_color_rule_id=?,lock_type_rule_id=?,connectivity_rule_id=?,sales_channel_rule_id=?,operating_entity_rule_id=?,language_rule_id=?,door_model_rule_id=?,security_grade_rule_id=?,base_material_rule_id=?,thickness_rule_id=?,finish_color_rule_id=?,version=version+1 WHERE id=? AND version=?",
+                    productCode, productType, materialType, customerCode, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), r.configuration(), textOr(r.unit(), "件"),
+                    fields.currentCostPresent(), r.currentCost(), fields.factoryPricePresent(), r.factoryPrice(), r.remark(), enabled(r),
+                    smart.brandRuleId(), smart.seriesRuleId(), smart.bodyColorRuleId(), smart.lockTypeRuleId(), smart.connectivityRuleId(),
+                    smart.salesChannelRuleId(), smart.operatingEntityRuleId(), smart.languageRuleId(), door.doorModelRuleId(), door.securityGradeRuleId(),
+                    door.baseMaterialRuleId(), door.thicknessRuleId(), door.finishColorRuleId(), id, r.version());
+            conflictIfUnchanged(changed);
+            saveSupplierConfig(id, r);
+            return product(id);
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalStateException("产品编号已存在：" + productCode);
+        }
     }
 
+    private String requiredProductType(String value) {
+        String type = value == null ? "" : value.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!"SMART_LOCK".equals(type) && !"ENTRY_DOOR".equals(type))
+            throw new IllegalArgumentException("请选择产品分类：智能锁或入户门");
+        return type;
+    }
+
+    private String requiredMaterialType(String value) {
+        String type = value == null ? "" : value.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!"FINISHED_PRODUCT".equals(type) && !"PART".equals(type))
+            throw new IllegalArgumentException("请选择物料类型：成品或零件");
+        return type;
+    }
+
+    private String generateProductCode(String type, ProductCodeSelection smart, EntryDoorProductCodeSelection door) {
+        return "ENTRY_DOOR".equals(type) ? productCodeGenerator.generateEntryDoor(door) : productCodeGenerator.generate(smart);
+    }
+
+    private ProductCodeSelection selection(EntityCommandRequest r) {
+        return new ProductCodeSelection(r.brandRuleId(), r.seriesRuleId(), r.bodyColorRuleId(), r.lockTypeRuleId(),
+                r.connectivityRuleId(), r.salesChannelRuleId(), r.operatingEntityRuleId(), r.languageRuleId());
+    }
+
+    private EntryDoorProductCodeSelection doorSelection(EntityCommandRequest r) {
+        return new EntryDoorProductCodeSelection(r.brandRuleId(), r.doorModelRuleId(), r.securityGradeRuleId(),
+                r.baseMaterialRuleId(), r.thicknessRuleId(), r.finishColorRuleId());
+    }
+    private Long chosen(Long requested, Object existing) {
+        return requested != null ? requested : existing == null ? null : ((Number) existing).longValue();
+    }
     private void saveSupplierConfig(long skuId, EntityCommandRequest r) {
         if (r.supplierId() == null) return;
         if (r.purchasePrice() == null || r.purchasePrice().signum() < 0) throw new IllegalArgumentException("采购单价不能为负数");
@@ -170,10 +251,10 @@ public class MasterDataCommandService {
                 skuId, r.supplierId(), r.purchasePrice(), r.moq(), r.leadTimeDays() == null ? 0 : r.leadTimeDays());
     }
 
-    private Map<String, Object> createInventory(EntityCommandRequest r) {
+    private Map<String, Object> createInventory(EntityCommandRequest r, EntityCommandFields fields) {
         long skuId = inventorySkuId(r);
         Long warehouseId = jdbc.queryForObject("SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1", Long.class);
-        int locked = lockedQuantity(r), transit = quantity(r.inTransitQuantity());
+        int locked = lockedQuantity(r, fields), transit = quantity(r.inTransitQuantity());
         int baseActual = requestedActualQuantity(r, locked, transit);
         List<InventoryMovementCommand> movements = inventoryMovements(r);
         int actual = baseActual + movementDelta(movements);
@@ -182,7 +263,7 @@ public class MasterDataCommandService {
         updateInventorySkuDetails(skuId, r);
         long id = insert("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,source_supplier_name,inventory_remark) VALUES(?,?,?,?,?,?,?)",
                 warehouseId, skuId, actual, locked, transit, r.sourceSupplierName(), r.inventoryRemark());
-        saveLockedAllocations(id, r);
+        saveLockedAllocations(id, r, fields);
         if (baseActual != 0 || locked != 0 || transit != 0) {
             writeTransaction(warehouseId, skuId, 0, baseActual, 0, locked, 0, transit, r.reason());
         }
@@ -190,12 +271,12 @@ public class MasterDataCommandService {
         return inventory(id);
     }
 
-    private Map<String, Object> updateInventory(long id, EntityCommandRequest r) {
+    private Map<String, Object> updateInventory(long id, EntityCommandRequest r, EntityCommandFields fields) {
         Map<String, Object> old = jdbc.queryForMap("SELECT warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version FROM inventory_balance WHERE id=? FOR UPDATE", id);
         if (((Number) old.get("version")).intValue() != r.version()) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
         List<InventoryMovementCommand> movements = inventoryMovements(r);
         int actualBefore = ((Number) old.get("actual_quantity")).intValue();
-        int locked = lockedQuantity(r), transit = quantity(r.inTransitQuantity());
+        int locked = lockedQuantity(r, fields), transit = quantity(r.inTransitQuantity());
         int requestedActual = requestedActualQuantity(r, locked, transit);
         int movementDelta = movementDelta(movements);
         // 用户修改了库存汇总时，以输入值作为保存后的实际库存；仅新增出入库明细而未修改汇总时，才自动累加明细。
@@ -207,7 +288,7 @@ public class MasterDataCommandService {
         int changed = jdbc.update("UPDATE inventory_balance SET actual_quantity=?,locked_quantity=?,in_transit_quantity=?,source_supplier_name=?,inventory_remark=?,version=version+1 WHERE id=? AND version=?",
                 actual, locked, transit, r.sourceSupplierName(), r.inventoryRemark(), id, r.version());
         conflictIfUnchanged(changed);
-        saveLockedAllocations(id, r);
+        saveLockedAllocations(id, r, fields);
         long warehouseId = ((Number) old.get("warehouse_id")).longValue();
         long skuId = ((Number) old.get("sku_id")).longValue();
         updateInventorySkuDetails(skuId, r);
@@ -251,14 +332,40 @@ public class MasterDataCommandService {
                 r.model(), r.configuration(), r.productVersion(), r.color(), r.lockBody(), r.unit(), skuId);
     }
 
-    private int lockedQuantity(EntityCommandRequest r) {
+    private int lockedQuantity(EntityCommandRequest r, EntityCommandFields fields) {
+        if (fields.lockedAllocationsPresent()) {
+            int locked = quantity(r.lockedQuantity());
+            validateLockedAllocations(fields.lockedAllocations(), locked);
+            return locked;
+        }
         List<Integer> allocations = Arrays.asList(r.lockedMingAiJunQiao(), r.lockedBoLeLongMi(), r.lockedLaos(), r.lockedBeiLang(), r.lockedMalaysia());
         boolean hasAllocations = allocations.stream().anyMatch(value -> value != null);
         if (!hasAllocations) return quantity(r.lockedQuantity());
         return allocations.stream().mapToInt(this::quantity).sum();
     }
 
-    private void saveLockedAllocations(long inventoryId, EntityCommandRequest r) {
+    private void validateLockedAllocations(List<InventoryLockedAllocationCommand> allocations, int locked) {
+        Set<String> sources = new HashSet<>();
+        int total = 0;
+        for (InventoryLockedAllocationCommand allocation : allocations) {
+            String source = allocation.lockSource() == null ? "" : allocation.lockSource().trim();
+            if (source.isEmpty()) throw new IllegalArgumentException("地点名称不能为空");
+            if (!sources.add(source)) throw new IllegalArgumentException("地点名称不能重复");
+            if (allocation.quantity() == null || allocation.quantity() < 0) throw new IllegalArgumentException("地点锁定数量必须是非负整数");
+            total += allocation.quantity();
+        }
+        if (total > locked) throw new IllegalArgumentException("地点锁定数量合计不能超过已锁定数量");
+    }
+
+    private void saveLockedAllocations(long inventoryId, EntityCommandRequest r, EntityCommandFields fields) {
+        if (fields.lockedAllocationsPresent()) {
+            jdbc.update("DELETE FROM inventory_locked_allocation WHERE inventory_balance_id=?", inventoryId);
+            for (InventoryLockedAllocationCommand allocation : fields.lockedAllocations()) {
+                if (allocation.quantity() > 0) jdbc.update("INSERT INTO inventory_locked_allocation(inventory_balance_id,lock_source,quantity) VALUES(?,?,?)",
+                        inventoryId, allocation.lockSource().trim(), allocation.quantity());
+            }
+            return;
+        }
         List<LockedAllocation> allocations = List.of(
                 new LockedAllocation("铭爱钧乔", r.lockedMingAiJunQiao()),
                 new LockedAllocation("博乐龙米", r.lockedBoLeLongMi()),
@@ -328,17 +435,46 @@ public class MasterDataCommandService {
     }
 
     private Map<String, Object> customer(long id) {
-        return map(jdbc.queryForMap("SELECT id,customer_code,customer_name,contact_name,phone,address,enabled,version FROM customer WHERE id=?", id),
-                "customer_code","customerCode","customer_name","customerName","contact_name","contactName");
+        return map(jdbc.queryForMap("SELECT id,customer_code,customer_name,contact_name,phone,address,business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,finance_contact_name,finance_contact_phone,invoice_title,taxpayer_id,invoice_address,invoice_phone,bank_name,bank_account,enabled,version FROM customer WHERE id=?", id),
+                "customer_code","customerCode","customer_name","customerName","contact_name","contactName",
+                "business_contact_name","businessContactName","business_contact_phone","businessContactPhone",
+                "order_contact_name","orderContactName","order_contact_phone","orderContactPhone",
+                "finance_contact_name","financeContactName","finance_contact_phone","financeContactPhone",
+                "invoice_title","invoiceTitle","taxpayer_id","taxpayerId","invoice_address","invoiceAddress",
+                "invoice_phone","invoicePhone","bank_name","bankName","bank_account","bankAccount");
     }
+    private String businessName(EntityCommandRequest r) { return r.businessContactName() != null ? r.businessContactName() : r.contactName(); }
+    private String businessPhone(EntityCommandRequest r) { return r.businessContactPhone() != null ? r.businessContactPhone() : r.phone(); }
     private Map<String, Object> user(long id) {
         return map(jdbc.queryForMap("SELECT id,username,display_name,phone,enabled,role,version FROM sys_user WHERE id=?", id), "display_name","displayName");
     }
     private Map<String, Object> product(long id) {
-        return map(jdbc.queryForMap("SELECT id,sku_code,model,product_name,color,lock_body,product_version,configuration,unit,current_cost,factory_price,product_remark,enabled,version FROM sku WHERE id=?", id),
-                "sku_code","skuCode","product_name","productName","lock_body","lockBody","product_version","productVersion","current_cost","currentCost","factory_price","factoryPrice","product_remark","remark");
-    }
-    private Map<String, Object> supplier(long id) {
+        return map(jdbc.queryForMap("""
+                SELECT s.id,s.product_code,s.product_type,s.material_type,s.sku_code,s.model,s.product_name,s.color,s.lock_body,s.product_version,s.configuration,s.unit,
+                       s.current_cost,s.factory_price,s.product_remark,s.enabled,s.version,
+                       s.brand_rule_id,s.series_rule_id,s.body_color_rule_id,s.lock_type_rule_id,s.connectivity_rule_id,
+                       s.sales_channel_rule_id,s.operating_entity_rule_id,s.language_rule_id,
+                       br.display_name AS brand,sr.display_name AS series,bcr.display_name AS body_color,
+                       ltr.display_name AS lock_type,cr.display_name AS connectivity,scr.display_name AS sales_channel,
+                       oer.display_name AS operating_entity,lr.display_name AS language
+                FROM sku s
+                LEFT JOIN product_code_rule br ON br.id=s.brand_rule_id
+                LEFT JOIN product_code_rule sr ON sr.id=s.series_rule_id
+                LEFT JOIN product_code_rule bcr ON bcr.id=s.body_color_rule_id
+                LEFT JOIN product_code_rule ltr ON ltr.id=s.lock_type_rule_id
+                LEFT JOIN product_code_rule cr ON cr.id=s.connectivity_rule_id
+                LEFT JOIN product_code_rule scr ON scr.id=s.sales_channel_rule_id
+                LEFT JOIN product_code_rule oer ON oer.id=s.operating_entity_rule_id
+                LEFT JOIN product_code_rule lr ON lr.id=s.language_rule_id
+                WHERE s.id=?
+                """, id),
+                "product_code","productCode","product_type","productType","material_type","materialType","sku_code","customerCode","product_name","productName","lock_body","lockBody",
+                "product_version","productVersion","current_cost","currentCost","factory_price","factoryPrice","product_remark","remark",
+                "brand_rule_id","brandRuleId","series_rule_id","seriesRuleId","body_color_rule_id","bodyColorRuleId",
+                "lock_type_rule_id","lockTypeRuleId","connectivity_rule_id","connectivityRuleId","sales_channel_rule_id","salesChannelRuleId",
+                "operating_entity_rule_id","operatingEntityRuleId","language_rule_id","languageRuleId","body_color","bodyColor",
+                "lock_type","lockType","sales_channel","salesChannel","operating_entity","operatingEntity");
+    }    private Map<String, Object> supplier(long id) {
         return map(jdbc.queryForMap("""
                         SELECT id,supplier_code,supplier_name,manufacturer_category,manufacturer_type,
                                supplier_location,product_attribute,short_name,contact_name,contact_title,
@@ -404,6 +540,11 @@ public class MasterDataCommandService {
         List<String> roles = jdbc.queryForList("SELECT role FROM sys_user WHERE id=?", String.class, id);
         if (roles.isEmpty()) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
         return UserRole.valueOf(roles.get(0));
+    }
+    private void requireUserManagementPermission() {
+        if (!CurrentUser.required().role().canManageRoles()) {
+            throw new IllegalArgumentException("仅管理员可管理用户账号");
+        }
     }
     private void validateBalance(int actual, int locked, int transit) {
         if (locked > actual + transit) throw new IllegalArgumentException("锁定数量不能超过实际库存与在途库存之和");

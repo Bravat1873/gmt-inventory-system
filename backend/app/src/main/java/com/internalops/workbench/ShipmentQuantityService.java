@@ -1,14 +1,21 @@
 package com.internalops.workbench;
 
+import com.internalops.auth.CurrentUser;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Applies only the delta between the previous and requested cumulative shipment quantity. */
 @Service
@@ -39,17 +46,31 @@ public class ShipmentQuantityService {
                 throw new IllegalArgumentException("订单明细行号重复");
             }
         }
-        long warehouseId = Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1", Long.class));
         List<Map<String, Object>> lines = jdbc.queryForList("SELECT i.id,i.line_no,i.sku_id,s.sku_code,s.product_name,i.quantity,i.shipped_quantity,i.locked_quantity "
                 + "FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no FOR UPDATE", orderId);
         if (lines.isEmpty()) throw new IllegalArgumentException("订单没有可发货明细");
+        List<ShipmentDelta> positiveDeltas = new ArrayList<>();
+        for (Map<String, Object> line : lines) {
+            int lineNo = (int) InventoryAllocationService.num(line, "line_no");
+            int ordered = (int) InventoryAllocationService.num(line, "quantity");
+            int current = (int) InventoryAllocationService.num(line, "shipped_quantity");
+            int target = requested.getOrDefault(lineNo, current);
+            if (target > ordered) throw new IllegalArgumentException("第 " + lineNo + " 行的已发货数量不能超过订单数量");
+            int delta = target - current;
+            if (delta > 0) positiveDeltas.add(new ShipmentDelta(InventoryAllocationService.num(line, "id"), delta));
+        }
+        String deliveryAddress = request.deliveryAddress() == null ? null : request.deliveryAddress().strip();
+        if (!positiveDeltas.isEmpty()) {
+            if (deliveryAddress == null || deliveryAddress.isBlank()) throw new IllegalArgumentException("发货地址不能为空");
+            if (deliveryAddress.length() > 500) throw new IllegalArgumentException("发货地址不能超过500个字符");
+        }
+        long warehouseId = Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1", Long.class));
         for (Map<String, Object> line : lines) {
             long lineId = InventoryAllocationService.num(line, "id");
             int lineNo = (int) InventoryAllocationService.num(line, "line_no");
             int ordered = (int) InventoryAllocationService.num(line, "quantity");
             int current = (int) InventoryAllocationService.num(line, "shipped_quantity");
             int target = requested.getOrDefault(lineNo, current);
-            if (target > ordered) throw new IllegalArgumentException("第 " + lineNo + " 行的已发货数量不能超过订单数量");
             int delta = target - current;
             int locked = (int) InventoryAllocationService.num(line, "locked_quantity");
             int newLocked = locked - delta;
@@ -75,10 +96,48 @@ public class ShipmentQuantityService {
             int uncovered = Math.max(0, ordered - target - newLocked);
             jdbc.update("UPDATE sales_order_item SET shipped_quantity=?, uncovered_quantity=?, version=version+1 WHERE id=?", target, uncovered, lineId);
         }
+        if (!positiveDeltas.isEmpty()) {
+            long shipmentId = insertShipment(orderId, deliveryAddress, currentOperatorName(), trimToNull(request.remark()));
+            for (ShipmentDelta delta : positiveDeltas) {
+                jdbc.update("INSERT INTO sales_shipment_item(sales_shipment_id,sales_order_item_id,quantity) VALUES(?,?,?)",
+                        shipmentId, delta.salesOrderItemId(), delta.quantity());
+            }
+        }
         Integer remaining = jdbc.queryForObject("SELECT COALESCE(SUM(quantity-shipped_quantity),0) FROM sales_order_item WHERE sales_order_id=?", Integer.class, orderId);
         Integer uncovered = jdbc.queryForObject("SELECT COALESCE(SUM(uncovered_quantity),0) FROM sales_order_item WHERE sales_order_id=?", Integer.class, orderId);
         String nextStatus = remaining != null && remaining == 0 ? "SHIPPED" : (uncovered != null && uncovered > 0 ? "WAITING_STOCK" : "READY_TO_SHIP");
         jdbc.update("UPDATE sales_order SET status=?, shipped_at=?, version=version+1 WHERE id=?", nextStatus, "SHIPPED".equals(nextStatus) ? LocalDateTime.now() : null, orderId);
         return Map.of("id", orderId, "status", nextStatus, "remainingQuantity", remaining == null ? 0 : remaining);
     }
+
+    private long insertShipment(long orderId, String deliveryAddress, String operatorName, String remark) {
+        String shipmentNo = "SH" + LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        GeneratedKeyHolder keys = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO sales_shipment(shipment_no,sales_order_id,delivery_address,operator_name,shipped_at,remark) VALUES(?,?,?,?,?,?)",
+                    new String[]{"id"});
+            statement.setString(1, shipmentNo);
+            statement.setLong(2, orderId);
+            statement.setString(3, deliveryAddress);
+            statement.setString(4, operatorName);
+            statement.setObject(5, LocalDateTime.now());
+            statement.setString(6, remark);
+            return statement;
+        }, keys);
+        return Objects.requireNonNull(keys.getKey()).longValue();
+    }
+
+    private String currentOperatorName() {
+        CurrentUser user = CurrentUser.get();
+        return user == null ? "system" : user.displayName();
+    }
+
+    private String trimToNull(String value) {
+        if (value == null || value.isBlank()) return null;
+        return value.trim();
+    }
+
+    private record ShipmentDelta(long salesOrderItemId, int quantity) {}
 }

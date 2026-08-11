@@ -19,7 +19,7 @@ class FinanceWorkflowPartialReceiptTest {
         when(jdbc.queryForObject(contains("FROM customer_receipt"), eq(BigDecimal.class), eq(7L))).thenReturn(BigDecimal.ZERO);
         FinanceWorkflowService service = new FinanceWorkflowService(jdbc, mock(InventoryAllocationService.class));
 
-        Map<String, Object> result = service.receipt(7L, new FinanceActionRequest(new BigDecimal("25"), "银行转账", null, null, null));
+        Map<String, Object> result = service.receipt(7L, new FinanceActionRequest(new BigDecimal("25"), "银行转账", null, null, null, null));
 
         assertEquals(new BigDecimal("75"), result.get("outstandingAmount"));
     }

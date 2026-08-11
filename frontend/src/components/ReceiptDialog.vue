@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { postAction } from '../api/workbench'
+import ChineseDatePicker from './ChineseDatePicker.vue'
 
 interface OrderLine { quantity?: number; shippedQuantity?: number; remainingQuantity?: number; salePrice?: number }
 const props = defineProps<{ order: Record<string, unknown> }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
-const form = reactive({ amount: 0, paymentMethod: '银行转账' })
+const form = reactive({ amount: 0, paymentMethod: '银行转账', receivedAt: new Date().toISOString().slice(0, 10) })
 const saving = ref(false)
 const error = ref('')
 
@@ -25,12 +26,13 @@ watch(outstandingAmount, value => { form.amount = value }, { immediate: true })
 function close() { if (!saving.value) emit('close') }
 async function save() {
   const value = amount(form.amount)
+  if (!form.receivedAt) { error.value = '请选择收款日期'; return }
   if (!form.paymentMethod.trim()) { error.value = '请填写收款方式'; return }
   if (value <= 0) { error.value = '本次收款金额必须大于 0'; return }
   if (value > outstandingAmount.value) { error.value = '本次收款金额不能超过未收金额'; return }
   saving.value = true; error.value = ''
   try {
-    await postAction(`/api/finance/orders/${Number(props.order.id)}/receipt`, { amount: value, paymentMethod: form.paymentMethod.trim() })
+    await postAction(`/api/finance/orders/${Number(props.order.id)}/receipt`, { amount: value, paymentMethod: form.paymentMethod.trim(), receivedAt: form.receivedAt })
     emit('message', '收款登记成功'); emit('saved')
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '收款登记失败' } finally { saving.value = false }
 }
@@ -50,7 +52,7 @@ async function save() {
         <div class="form-grid">
           <label><span>订单编号</span><input :value="String(order.orderNo ?? '')" disabled></label>
           <label><span>本次收款金额</span><input data-test="receipt-amount" v-model.number="form.amount" type="number" min="0.01" :max="outstandingAmount" step="0.01" :disabled="saving || outstandingAmount <= 0"></label>
-          <label><span>收款方式</span><input v-model.trim="form.paymentMethod" :disabled="saving"></label>
+          <label><span>收款方式</span><input v-model.trim="form.paymentMethod" :disabled="saving"></label><label data-test="receipt-date"><span>收款日期</span><ChineseDatePicker v-model="form.receivedAt" :disabled="saving" placeholder="请选择收款日期" /></label>
           <label><span>登记后未收金额</span><input :value="money(afterReceiptAmount)" disabled></label>
         </div>
         <p v-if="outstandingAmount <= 0" class="receipt-complete">该订单目前没有可登记的未收金额。</p>

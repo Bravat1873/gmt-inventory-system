@@ -45,6 +45,21 @@ class SupplierManagementApiTest {
     }
 
     @Test
+    void listsConfiguredSuppliersByProductAndKeyword() throws Exception {
+        Cookie session = login();
+        mvc.perform(get("/api/products/101/suppliers").cookie(session).param("keyword", "贝朗"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].supplierId").value(201))
+                .andExpect(jsonPath("$.data[0].supplierName").value("贝朗供应商"))
+                .andExpect(jsonPath("$.data[0].purchasePrice").value(220))
+                .andExpect(jsonPath("$.data[0].moq").value(5))
+                .andExpect(jsonPath("$.data[0].leadTimeDays").value(7));
+        mvc.perform(get("/api/products/101/suppliers").cookie(session).param("keyword", "不存在"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+    @Test
     void supplierListExcludesDisabledSuppliersButHistoricalDetailRemainsAvailable() throws Exception {
         Cookie session = login();
         mvc.perform(get("/api/workbench/supplier").cookie(session))

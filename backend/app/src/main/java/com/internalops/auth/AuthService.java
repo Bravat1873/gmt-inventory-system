@@ -1,7 +1,6 @@
 package com.internalops.auth;
 
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -16,12 +15,11 @@ import java.util.List;
 @Service
 public class AuthService {
     private final JdbcTemplate jdbc;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
     public AuthService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
     public Session login(String username, String password) {
         List<User> users = jdbc.query("SELECT id,username,password_hash,display_name,role FROM sys_user WHERE username=? AND enabled=TRUE",
                 (rs, i) -> new User(rs.getLong(1),rs.getString(2),rs.getString(3),rs.getString(4), UserRole.valueOf(rs.getString(5))), username.trim());
-        if (users.isEmpty() || !encoder.matches(password, users.get(0).hash())) throw new IllegalArgumentException("用户名或密码错误");
+        if (users.isEmpty() || !samePassword(password, users.get(0).hash())) throw new IllegalArgumentException("用户名或密码错误");
         User user=users.get(0); byte[] bytes=new byte[32]; new SecureRandom().nextBytes(bytes);
         String token=Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         jdbc.update("INSERT INTO user_session(user_id,token_hash,expires_at) VALUES(?,?,?)",user.id(),hash(token), Timestamp.from(Instant.now().plus(8, ChronoUnit.HOURS)));
@@ -33,6 +31,10 @@ public class AuthService {
         return users.isEmpty()?null:users.get(0);
     }
     public void logout(String token) { if(token!=null&&!token.isBlank()) jdbc.update("UPDATE user_session SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=?",hash(token)); }
+    private boolean samePassword(String supplied, String stored) {
+        return supplied != null && stored != null && MessageDigest.isEqual(
+                supplied.getBytes(StandardCharsets.UTF_8), stored.getBytes(StandardCharsets.UTF_8));
+    }
     private String hash(String value) { try { return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); } catch(Exception e) { throw new IllegalStateException(e); } }
     private record User(long id,String username,String hash,String displayName,UserRole role) {}
     public record Session(String token, CurrentUser user) {}
