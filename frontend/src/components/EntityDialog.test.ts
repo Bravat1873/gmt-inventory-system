@@ -5,6 +5,7 @@ import EntityDialog from './EntityDialog.vue'
 const api = vi.hoisted(() => ({
   createEntity: vi.fn(),
   updateEntity: vi.fn(),
+  loadProductCodeRules: vi.fn(),
   loadOrderSkus: vi.fn(),
   uploadProductImages: vi.fn(),
   loadProductImages: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock('../api/workbench', () => api)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  api.loadProductCodeRules.mockResolvedValue([])
   api.loadOrderSkus.mockResolvedValue([])
   api.loadProductImages.mockResolvedValue([])
   api.uploadProductImages.mockResolvedValue([])
@@ -116,6 +118,55 @@ it('产品弹窗只显示产品列表字段并自动计算价格差异', async (
   expect(wrapper.get('[data-test="price-difference"]').attributes('value')).toBe('35')
 })
 
+it('修改产品时客户编号可编辑且不显示重复的旧颜色和锁体字段', async () => {
+  const wrapper = mount(EntityDialog, {
+    props: {
+      module: 'product',
+      currentUserRole: 'FINANCE',
+      row: { id: 7, customerCode: 'OLD-CODE', model: 'D51', color: '11', lockBody: '11', version: 2 }
+    }
+  })
+  await flushPromises()
+
+  const customerCode = wrapper.get('[data-test="customer-code"]')
+  expect(customerCode.attributes('disabled')).toBeUndefined()
+  expect(wrapper.find('[data-test="product-legacy-color"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="product-legacy-lock-body"]').exists()).toBe(false)
+
+  await customerCode.setValue('NEW-CODE')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.updateEntity).toHaveBeenLastCalledWith('product', 7, expect.objectContaining({ customerCode: 'NEW-CODE' }))
+  expect(api.updateEntity.mock.calls.at(-1)?.[2]).not.toHaveProperty('color')
+  expect(api.updateEntity.mock.calls.at(-1)?.[2]).not.toHaveProperty('lockBody')
+})
+it('按品牌型号物料颜色锁体类型语言实时生成只读物料规格并提交产品配置', async () => {
+  api.loadProductCodeRules.mockResolvedValue([
+    { id: 1, category: 'BRAND', code: 'SXSEL', displayName: 'STANLEY', enabled: true },
+    { id: 2, category: 'BODY_COLOR', code: 'YZH', displayName: '宇宙黑', enabled: true },
+    { id: 3, category: 'LOCK_TYPE', code: '70', displayName: '7068', enabled: true },
+    { id: 4, category: 'LANGUAGE', code: 'C', displayName: '中文版', enabled: true }
+  ])
+  api.updateEntity.mockResolvedValue({ id: 7, version: 3 })
+  const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE', row: {
+    id: 7, model: 'D51-GEN2', brandRuleId: 1, bodyColorRuleId: 2, lockTypeRuleId: 3, languageRuleId: 4, version: 2
+  } } })
+  await flushPromises()
+
+  expect(wrapper.text()).toContain('客户料号')
+  expect(wrapper.text()).toContain('物料颜色')
+  const specification = wrapper.findAll('textarea').find(input => input.element.parentElement?.textContent?.includes('物料规格'))!
+  expect(specification.attributes('disabled')).toBeDefined()
+  expect((specification.element as HTMLTextAreaElement).value).toBe('STANLEY / D51-GEN2 / 宇宙黑 / 7068 / 中文版')
+  const productConfiguration = wrapper.findAll('textarea').find(input => input.element.parentElement?.textContent?.includes('产品配置'))!
+  await productConfiguration.setValue('可视对讲 + 指纹')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.updateEntity).toHaveBeenLastCalledWith('product', 7, expect.objectContaining({ productConfiguration: '可视对讲 + 指纹' }))
+  expect(api.updateEntity.mock.calls.at(-1)?.[2]).not.toHaveProperty('configuration')
+})
 it('allows finance users to edit and submit both product prices', async () => {
   api.createEntity.mockResolvedValue({ id: 1 })
   const wrapper = mount(EntityDialog, {
@@ -264,7 +315,7 @@ it('keeps an existing password when reset is blank and submits a nonblank reset'
 it('库存弹窗使用页面库存字段而不暴露内部调整原因', () => {
   const wrapper = mount(EntityDialog, { props: { module: 'inventory' } })
 
-  expect(wrapper.text()).toContain('物料编号 SKU')
+  expect(wrapper.text()).toContain('产品编号')
   expect(wrapper.text()).toContain('实际库存数量')
   expect(wrapper.text()).toContain('可用库存数量')
   expect(wrapper.text()).toContain('已锁定数量')
@@ -300,35 +351,39 @@ it('库存修改弹窗以动态列表编辑任意地点锁定数量', async () =
     lockedAllocations: [{ lockSource: '越南', quantity: 3 }, { lockSource: '香港', quantity: 4 }]
   }))
 })
-it('新增库存允许编辑产品字段与库存汇总字段，并将选择的产品编号提交保存', async () => {
-  api.loadOrderSkus.mockResolvedValue([
-    {
-      id: 18,
-      skuCode: 'SKU-P90',
-      productName: 'P90 智能锁',
-      model: 'P90',
-      configuration: '可视对讲',
-      productVersion: '工程款',
-      color: '宇宙黑',
-      lockBody: '6068',
-      unit: '套'
-    }
-  ])
+it('新增库存从产品管理同步只读产品资料并提交产品关联', async () => {
+  api.loadOrderSkus.mockResolvedValue([{
+    id: 18,
+    productCode: 'SXSEL_P90',
+    skuCode: 'SKU-P90',
+    productName: 'P90 智能锁',
+    model: 'P90',
+    productType: 'SMART_LOCK',
+    productConfiguration: '可视对讲 + 指纹',
+    configuration: 'STANLEY / P90 / 宇宙黑 / 7068 / 中文版',
+    unit: '套'
+  }])
   api.createEntity.mockResolvedValue({ id: 1 })
   const wrapper = mount(EntityDialog, { attachTo: document.body, props: { module: 'inventory' } })
   await flushPromises()
 
   const picker = wrapper.get('[data-test="inventory-product-picker"]')
-  await picker.get('input').setValue('P90')
-  const option = document.body.querySelector<HTMLElement>('[data-test="fuzzy-option-18"]')
-  expect(option?.textContent).toContain('P90')
-  option?.click()
+  await picker.get('input').setValue('SXSEL_P90')
+  document.body.querySelector<HTMLElement>('[data-test="fuzzy-option-18"]')?.click()
   await flushPromises()
 
-  const editable = ['inventory-model', 'inventory-configuration', 'inventory-color', 'inventory-lock-body', 'inventory-unit', 'inventory-actual-quantity', 'inventory-available-quantity', 'inventory-locked-quantity']
-  editable.forEach(testId => expect(wrapper.get(`[data-test="${testId}"]`).attributes('disabled')).toBeUndefined())
-  expect((wrapper.get('[data-test="inventory-model"]').element as HTMLInputElement).value).toBe('P90')
-  expect((wrapper.get('[data-test="inventory-unit"]').element as HTMLInputElement).value).toBe('套')
+  expect(wrapper.text()).toContain('产品编号')
+  expect(wrapper.text()).toContain('产品类型')
+  expect(wrapper.text()).toContain('产品配置')
+  expect(wrapper.text()).toContain('物料规格')
+  expect(wrapper.get('[data-test="inventory-model"]').attributes('disabled')).toBeDefined()
+  const productType = wrapper.get('[data-test="inventory-product-type"]')
+  expect(productType.element.tagName).toBe('SELECT')
+  expect(productType.attributes('disabled')).toBeUndefined()
+  expect((productType.element as HTMLSelectElement).value).toBe('SMART_LOCK')
+  await productType.setValue('ENTRY_DOOR')
+  expect((wrapper.get('[data-test="inventory-product-configuration"]').element as HTMLTextAreaElement).value).toBe('可视对讲 + 指纹')
+  expect((wrapper.get('[data-test="inventory-configuration"]').element as HTMLTextAreaElement).value).toBe('STANLEY / P90 / 宇宙黑 / 7068 / 中文版')
 
   await wrapper.get('[data-test="inventory-available-quantity"]').setValue('12')
   await wrapper.get('form').trigger('submit')
@@ -336,13 +391,14 @@ it('新增库存允许编辑产品字段与库存汇总字段，并将选择的�
 
   expect(api.createEntity).toHaveBeenCalledWith('inventory', expect.objectContaining({
     skuId: 18,
-    skuCode: 'SKU-P90',
-    model: 'P90',
+    skuCode: 'SXSEL_P90',
+    productType: 'ENTRY_DOOR',
     availableQuantity: 12
   }))
+  expect(api.createEntity.mock.calls.at(-1)?.[1]).not.toHaveProperty('model')
+  expect(api.createEntity.mock.calls.at(-1)?.[1]).not.toHaveProperty('configuration')
   wrapper.unmount()
 })
-
 it('defaults and submits the product material type while preserving edit values', async () => {
   api.createEntity.mockResolvedValue({ id: 1 })
   const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE' } })

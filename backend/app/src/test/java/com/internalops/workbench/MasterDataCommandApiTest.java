@@ -82,10 +82,11 @@ class MasterDataCommandApiTest {
     @Test
     void adjustsInventoryAndWritesTransaction() throws Exception {
         mvc.perform(put("/api/workbench/inventory/1").cookie(session).contentType("application/json")
-                        .content("{\"actualQuantity\":12,\"lockedQuantity\":2,\"inTransitQuantity\":3,\"reason\":\"盘点调整\",\"version\":0}"))
+                        .content("{\"actualQuantity\":12,\"lockedQuantity\":2,\"inTransitQuantity\":3,\"productType\":\"ENTRY_DOOR\",\"reason\":\"盘点调整\",\"version\":0}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.actualQuantity").value(12))
                 .andExpect(jsonPath("$.data.version").value(1));
+        assertThat(jdbc.queryForObject("SELECT product_type FROM sku WHERE id=1", String.class)).isEqualTo("ENTRY_DOOR");
     }
 
     @Test
@@ -155,6 +156,19 @@ class MasterDataCommandApiTest {
     }
 
     @Test
+    void generatesReadableMaterialSpecificationAndSavesEditableProductConfiguration() throws Exception {
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("{\"productName\":\"测试产品\",\"model\":\"D51-GEN2\",\"brandRuleId\":101,"
+                                + "\"bodyColorRuleId\":102,\"lockTypeRuleId\":103,\"languageRuleId\":104,"
+                                + "\"productConfiguration\":\"可视对讲 + 指纹\",\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.configuration").value("STANLEY / D51-GEN2 / 宇宙黑 / 7068 / 中文版"))
+                .andExpect(jsonPath("$.data.productConfiguration").value("可视对讲 + 指纹"));
+
+        assertThat(jdbc.queryForMap("SELECT configuration,product_configuration FROM sku WHERE id=1"))
+                .containsEntry("configuration", "STANLEY / D51-GEN2 / 宇宙黑 / 7068 / 中文版")
+                .containsEntry("product_configuration", "可视对讲 + 指纹");
+    }
     void financeCanUpdateBothProductPrices() throws Exception {
         Cookie financeSession = loginAs("finance");
 

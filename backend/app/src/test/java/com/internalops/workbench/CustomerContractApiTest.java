@@ -21,7 +21,7 @@ class CustomerContractApiTest {
 
     @Test void savesContractsAndReturnsTheirProductPrices() throws Exception {
         String response = mvc.perform(post("/api/customers").contentType("application/json").content("""
-                {"customerCode":"C100","customerName":"合同客户","orderContactName":"李经理","orderContactPhone":"13800000000",
+                {"customerType":"DOMESTIC","customerName":"合同客户","taxpayerId":"91350100MABTRQEC91","orderContactName":"李经理","orderContactPhone":"13800000000",
                  "contracts":[{"contractNo":"HT-2026-01","startDate":"2026-08-01","endDate":"2027-07-31","remark":"年度合同",
                  "prices":[{"skuId":1,"salePrice":500.00},{"skuId":2,"salePrice":680.00}]}]}
                 """))
@@ -36,7 +36,7 @@ class CustomerContractApiTest {
 
     @Test void rejectsOverlappingPricesForTheSameSku() throws Exception {
         mvc.perform(post("/api/customers").contentType("application/json").content("""
-                {"customerName":"重叠客户","contracts":[
+                {"customerType":"DOMESTIC","customerName":"重叠客户","taxpayerId":"91350100ABCDEFGHIJ","contracts":[
                  {"contractNo":"A","startDate":"2026-01-01","endDate":"2026-12-31","prices":[{"skuId":1,"salePrice":500}]},
                  {"contractNo":"B","startDate":"2026-06-01","endDate":"2027-05-31","prices":[{"skuId":1,"salePrice":520}]}]}
                 """))

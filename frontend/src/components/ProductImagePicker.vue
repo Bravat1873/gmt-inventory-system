@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OverflowText from './OverflowText.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   deleteProductImage,
@@ -195,7 +196,7 @@ async function removeExisting(imageId: number) {
           <img :src="image.contentUrl" :alt="image.originalFilename" class="product-image-preview">
           <span v-if="image.primary" data-test="primary-badge" class="product-image-primary">主图</span>
         </div>
-        <strong :title="image.originalFilename">{{ image.originalFilename }}</strong>
+        <strong><OverflowText :value="image.originalFilename" /></strong>
         <div class="product-image-controls">
           <button type="button" data-test="set-primary-existing" :disabled="busy || image.primary" @click="setExistingPrimary(image.id)">{{ image.primary ? '当前主图' : '设为主图' }}</button>
           <button type="button" data-test="move-existing-left" :disabled="busy || index === 0" @click="moveExisting(index, -1)">左移</button>

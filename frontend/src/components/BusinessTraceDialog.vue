@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BusinessTrace } from '../api/workbench'
+import OverflowText from './OverflowText.vue'
 
 const props = defineProps<{ trace: BusinessTrace }>()
 const emit = defineEmits<{ close: [] }>()
@@ -20,7 +21,7 @@ function header(key: string) { const raw = props.trace.header[key]; return key =
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="emit('close')">
+  <div class="dialog-mask">
     <section class="dialog-card business-trace-dialog" role="dialog" aria-modal="true" aria-labelledby="business-trace-title">
       <header>
         <div><h2 id="business-trace-title">{{ trace.title }}</h2><p>订单、采购、财务与库存流转的完整记录</p></div>
@@ -45,7 +46,7 @@ function header(key: string) { const raw = props.trace.header[key]; return key =
         </section>
         <section class="trace-section">
           <h3>{{ trace.type === 'order' ? '订单明细' : '采购明细' }}</h3>
-          <div class="trace-table-wrap"><table class="trace-table"><thead><tr><th v-for="key in detailKeys()" :key="key">{{ labels[key] }}</th></tr></thead><tbody><tr v-for="(row, rowIndex) in trace.details" :key="rowIndex"><td v-for="key in detailKeys()" :key="key">{{ value(row[key]) }}</td></tr><tr v-if="!trace.details.length"><td class="trace-empty" :colspan="Math.max(1, detailKeys().length)">暂无明细</td></tr></tbody></table></div>
+          <div class="trace-table-wrap"><table class="trace-table"><thead><tr><th v-for="key in detailKeys()" :key="key">{{ labels[key] }}</th></tr></thead><tbody><tr v-for="(row, rowIndex) in trace.details" :key="rowIndex"><td v-for="key in detailKeys()" :key="key"><OverflowText :value="value(row[key])" /></td></tr><tr v-if="!trace.details.length"><td class="trace-empty" :colspan="Math.max(1, detailKeys().length)">暂无明细</td></tr></tbody></table></div>
         </section>
       </div>
     </section>

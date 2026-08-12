@@ -49,12 +49,12 @@ const definitions: Record<string, Field[]> = {
   ],
   product: [
         { key: 'productCode', label: '产品编号', readOnly: true },
-    { key: 'customerCode', label: '客户编号' },
+    { key: 'customerCode', label: '客户料号' },
     { key: 'productType', label: '产品分类', required: true, optionCategory: 'PRODUCT_TYPE' },
     { key: 'materialType', label: '物料类型', required: true },
     { key: 'brandRuleId', label: '品牌', required: true, optionCategory: 'BRAND' },
     { key: 'seriesRuleId', label: '系列', optionCategory: 'SERIES' },
-    { key: 'bodyColorRuleId', label: '锁体颜色', optionCategory: 'BODY_COLOR' },
+    { key: 'bodyColorRuleId', label: '物料颜色', optionCategory: 'BODY_COLOR' },
     { key: 'lockTypeRuleId', label: '锁体类型', optionCategory: 'LOCK_TYPE' },
     { key: 'connectivityRuleId', label: '联网方式', optionCategory: 'CONNECTIVITY' },
     { key: 'salesChannelRuleId', label: '销售渠道', optionCategory: 'SALES_CHANNEL' },
@@ -66,21 +66,19 @@ const definitions: Record<string, Field[]> = {
     { key: 'thicknessRuleId', label: '成品厚度', optionCategory: 'THICKNESS' },
     { key: 'finishColorRuleId', label: '花色', optionCategory: 'FINISH_COLOR' },
     { key: 'model', label: '型号', required: true },
-    { key: 'color', label: '颜色' },
-    { key: 'lockBody', label: '锁体' },
-    { key: 'configuration', label: '物料规格', multiline: true },
+    { key: 'configuration', label: '物料规格', multiline: true, readOnly: true },
+    { key: 'productConfiguration', label: '产品配置', multiline: true },
     { key: 'currentCost', label: '成本单价（含税）', type: 'number' },
     { key: 'factoryPrice', label: '转厂价格', type: 'number' },
     { key: 'priceDifference', label: '差异：转厂价-原成本', type: 'number', readOnly: true },
     { key: 'remark', label: '备注', multiline: true },
   ],
   inventory: [
-    { key: 'skuCode', label: '物料编号 SKU', required: true },
-    { key: 'model', label: '型号' },
-    { key: 'configuration', label: '产品配置', multiline: true },
-    { key: 'productVersion', label: '版本' },
-    { key: 'color', label: '颜色' },
-    { key: 'lockBody', label: '锁体' },
+    { key: 'skuCode', label: '产品编号', required: true },
+    { key: 'model', label: '型号', readOnly: true },
+    { key: 'productType', label: '产品类型', optionCategory: 'PRODUCT_TYPE' },
+    { key: 'productConfiguration', label: '产品配置', multiline: true, readOnly: true },
+    { key: 'configuration', label: '物料规格', multiline: true, readOnly: true },
     { key: 'unit', label: '单位' },
     { key: 'actualQuantity', label: '实际库存数量', type: 'number', required: true },
     { key: 'availableQuantity', label: '可用库存数量', type: 'number' },
@@ -135,7 +133,7 @@ const inventorySkus = ref<OrderSku[]>([])
 const inventorySkuOptions = computed<FuzzyPickerOption[]>(() => inventorySkus.value.map(sku => ({
   id: sku.id,
   label: sku.productName?.trim() || sku.model?.trim() || '未命名产品',
-  searchText: [sku.skuCode, sku.productName, sku.model, sku.configuration, sku.productVersion, sku.color, sku.lockBody, sku.unit]
+  searchText: [sku.productCode, sku.skuCode, sku.productName, sku.model, sku.configuration, sku.productVersion, sku.color, sku.lockBody, sku.unit]
     .filter(Boolean).join(' ')
 })))
 
@@ -147,6 +145,18 @@ const inventorySkuId = computed<number | null>({
   set: value => selectInventorySku(value)
 })
 
+function selectedRuleName(category: string, value: unknown) {
+  const id = Number(value)
+  return productCodeRules.value.find(rule => rule.category === category && rule.id === id)?.displayName?.trim() ?? ''
+}
+
+const materialSpecification = computed(() => [
+  selectedRuleName('BRAND', form.brandRuleId),
+  String(form.model ?? '').trim(),
+  selectedRuleName('BODY_COLOR', form.bodyColorRuleId),
+  selectedRuleName('LOCK_TYPE', form.lockTypeRuleId),
+  selectedRuleName('LANGUAGE', form.languageRuleId)
+].filter(Boolean).join(' / '))
 const priceDifference = computed(() => {
   const currentCost = Number(form.currentCost)
   const factoryPrice = Number(form.factoryPrice)
@@ -196,8 +206,10 @@ function selectInventorySku(skuId: number | null) {
   form.skuId = skuId
   const sku = inventorySkus.value.find(item => item.id === skuId)
   if (!sku) return
-  form.skuCode = sku.skuCode ?? ''
+  form.skuCode = sku.productCode ?? sku.skuCode ?? ''
   form.model = sku.model ?? ''
+  form.productType = sku.productType ?? ''
+  form.productConfiguration = sku.productConfiguration ?? ''
   form.configuration = sku.configuration ?? ''
   form.productVersion = sku.productVersion ?? ''
   form.color = sku.color ?? ''
@@ -217,7 +229,7 @@ function inventoryFieldTestId(key: string) {
   }
   if (props.module !== 'inventory') return undefined
   const names: Record<string, string> = {
-    model: 'inventory-model', configuration: 'inventory-configuration', color: 'inventory-color',
+    model: 'inventory-model', productType: 'inventory-product-type', productConfiguration: 'inventory-product-configuration', configuration: 'inventory-configuration', color: 'inventory-color',
     lockBody: 'inventory-lock-body', unit: 'inventory-unit', actualQuantity: 'inventory-actual-quantity',
     availableQuantity: 'inventory-available-quantity', lockedQuantity: 'inventory-locked-quantity'
   }
@@ -272,6 +284,8 @@ function removeInventoryMovement(index: number) {
 }
 
 function readOnlyValue(field: Field) {
+  if (props.module === 'product' && field.key === 'configuration') return materialSpecification.value
+  if (field.key === 'productType') return form.productType === 'SMART_LOCK' ? '智能锁' : form.productType === 'ENTRY_DOOR' ? '入户门' : ''
   if (field.key === 'priceDifference') return priceDifference.value
   if (field.key === 'lockedQuantity') return lockedQuantity.value
   if (field.key === 'availableQuantity') return availableQuantity.value
@@ -360,7 +374,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="emit('close')">
+  <div class="dialog-mask">
     <section class="dialog-card" role="dialog" aria-modal="true">
       <header>
         <h2>{{ row?.id ? '修改' : '新增' }}{{ module === 'customer' ? '客户' : module === 'user' ? '用户' : module === 'product' ? '产品' : '库存' }}</h2>
@@ -374,6 +388,7 @@ async function save() {
             <select
               v-if="field.optionCategory"
               v-model="form[field.key]"
+              :data-test="inventoryFieldTestId(field.key)"
               :required="fieldRequired(field)"
             >
               <option value="">请选择</option>
@@ -403,7 +418,7 @@ async function save() {
               v-model="inventorySkuId"
               data-test="inventory-product-picker"
               :options="inventorySkuOptions"
-              placeholder="输入物料编号、型号或产品名称搜索"
+              placeholder="输入产品编号、型号或产品名称搜索"
               :disabled="saving"
             />
             <textarea
@@ -411,16 +426,17 @@ async function save() {
               v-model="form[field.key]"
               :data-test="field.key === 'customerCode' ? 'customer-code' : inventoryFieldTestId(field.key)"
               :required="fieldRequired(field)"
-              :disabled="Boolean(row?.id) && ['customerCode', 'username', 'skuCode', 'skuId'].includes(field.key)"
+              :disabled="Boolean(row?.id) && ((module === 'customer' && field.key === 'customerCode') || ['username', 'skuCode', 'skuId'].includes(field.key))"
             />
             <textarea
               v-else-if="field.multiline"
               :value="readOnlyValue(field)"
+              :data-test="inventoryFieldTestId(field.key)"
               disabled
             />
             <input
               v-else-if="field.readOnly"
-              :data-test="field.key === 'priceDifference' ? 'price-difference' : undefined"
+              :data-test="field.key === 'priceDifference' ? 'price-difference' : inventoryFieldTestId(field.key)"
               :value="readOnlyValue(field)"
               :type="field.type ?? 'text'"
               disabled
@@ -433,7 +449,7 @@ async function save() {
               :type="field.type ?? 'text'"
               :autocomplete="fieldAutocomplete(field)"
               :required="fieldRequired(field)"
-              :disabled="(module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice) || (Boolean(row?.id) && ['customerCode', 'username', 'skuCode', 'skuId'].includes(field.key))"
+              :disabled="(module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice) || (Boolean(row?.id) && ((module === 'customer' && field.key === 'customerCode') || ['username', 'skuCode', 'skuId'].includes(field.key)))"
               step="any"
               @input="field.key === 'actualQuantity' ? onInventoryMetricChange('actual') : field.key === 'availableQuantity' ? onInventoryMetricChange('available') : field.key === 'lockedQuantity' ? onInventoryMetricChange('locked') : field.key === 'inTransitQuantity' ? onInventoryMetricChange('transit') : undefined"
             />

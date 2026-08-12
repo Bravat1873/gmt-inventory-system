@@ -142,7 +142,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="emit('close')">
+  <div class="dialog-mask">
     <section class="dialog-card order-dialog" role="dialog" aria-modal="true">
       <header><h2>{{ isEditing ? '修改订单' : '新增订单' }}</h2><button @click="emit('close')">关闭</button></header>
       <form novalidate @submit.prevent="save">

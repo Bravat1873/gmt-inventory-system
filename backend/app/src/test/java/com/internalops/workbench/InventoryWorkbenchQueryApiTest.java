@@ -49,7 +49,17 @@ class InventoryWorkbenchQueryApiTest {
     }
 
     @Test
-    void excludesInTransitStockFromAvailableQuantity() throws Exception {
+    void returnsProductMasterDataForInventoryRows() throws Exception {
+        mvc.perform(get("/api/workbench/inventory?sort=id&direction=asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].productCode").value("SXSEL_P90"))
+                .andExpect(jsonPath("$.data.items[0].model").value("P90"))
+                .andExpect(jsonPath("$.data.items[0].productType").value("SMART_LOCK"))
+                .andExpect(jsonPath("$.data.items[0].productConfiguration").value("可视对讲 + 指纹"))
+                .andExpect(jsonPath("$.data.items[0].configuration").exists());
+    }
+
+    @Test    void excludesInTransitStockFromAvailableQuantity() throws Exception {
         mvc.perform(get("/api/workbench/inventory?sort=id&direction=asc"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].actualQuantity").value(20))

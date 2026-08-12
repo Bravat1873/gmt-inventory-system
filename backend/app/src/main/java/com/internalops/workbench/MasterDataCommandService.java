@@ -165,9 +165,10 @@ public class MasterDataCommandService {
         EntryDoorProductCodeSelection door = doorSelection(r);
         String productCode = generateProductCode(productType, smart, door);
         String customerCode = r.customerCode() != null ? r.customerCode() : r.skuCode();
+        String materialSpecification = materialSpecification(r.brandRuleId(), r.model(), r.bodyColorRuleId(), r.lockTypeRuleId(), r.languageRuleId());
         try {
-            long id = insert("INSERT INTO sku(product_code,product_type,material_type,sku_code,model,product_name,color,lock_body,product_version,configuration,unit,current_cost,factory_price,product_remark,enabled,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    productCode, productType, materialType, customerCode, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), r.configuration(),
+            long id = insert("INSERT INTO sku(product_code,product_type,material_type,sku_code,model,product_name,color,lock_body,product_version,configuration,product_configuration,unit,current_cost,factory_price,product_remark,enabled,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    productCode, productType, materialType, customerCode, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), materialSpecification, r.productConfiguration(),
                     textOr(r.unit(), "件"), r.currentCost(), r.factoryPrice(), r.remark(), enabled(r),
                     r.brandRuleId(), r.seriesRuleId(), r.bodyColorRuleId(), r.lockTypeRuleId(), r.connectivityRuleId(),
                     r.salesChannelRuleId(), r.operatingEntityRuleId(), r.languageRuleId(), r.doorModelRuleId(), r.securityGradeRuleId(),
@@ -182,7 +183,7 @@ public class MasterDataCommandService {
     private Map<String, Object> updateProduct(long id, EntityCommandRequest r, EntityCommandFields fields) {
         validateProduct(r);
         requireProductPricePermission(fields);
-        Map<String,Object> current = jdbc.queryForMap("SELECT product_code,product_type,material_type,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id FROM sku WHERE id=?", id);
+        Map<String,Object> current = jdbc.queryForMap("SELECT product_code,product_type,material_type,model,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id FROM sku WHERE id=?", id);
         String productType = r.productType() == null ? String.valueOf(current.get("product_type")) : requiredProductType(r.productType());
         String materialType = r.materialType() == null ? String.valueOf(current.get("material_type")) : requiredMaterialType(r.materialType());
         ProductCodeSelection smart = new ProductCodeSelection(
@@ -196,9 +197,11 @@ public class MasterDataCommandService {
                 chosen(r.thicknessRuleId(), current.get("thickness_rule_id")), chosen(r.finishColorRuleId(), current.get("finish_color_rule_id")));
         String productCode = "UNCLASSIFIED".equals(productType) ? String.valueOf(current.get("product_code")) : generateProductCode(productType, smart, door);
         String customerCode = r.customerCode() != null ? r.customerCode() : r.skuCode();
+        String model = r.model() != null ? r.model() : (String) current.get("model");
+        String materialSpecification = materialSpecification(smart.brandRuleId(), model, smart.bodyColorRuleId(), smart.lockTypeRuleId(), smart.languageRuleId());
         try {
-            int changed = jdbc.update("UPDATE sku SET product_code=?,product_type=?,material_type=?,sku_code=?,model=?,product_name=?,color=?,lock_body=?,product_version=?,configuration=?,unit=?,current_cost=CASE WHEN ? THEN ? ELSE current_cost END,factory_price=CASE WHEN ? THEN ? ELSE factory_price END,product_remark=?,enabled=?,brand_rule_id=?,series_rule_id=?,body_color_rule_id=?,lock_type_rule_id=?,connectivity_rule_id=?,sales_channel_rule_id=?,operating_entity_rule_id=?,language_rule_id=?,door_model_rule_id=?,security_grade_rule_id=?,base_material_rule_id=?,thickness_rule_id=?,finish_color_rule_id=?,version=version+1 WHERE id=? AND version=?",
-                    productCode, productType, materialType, customerCode, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), r.configuration(), textOr(r.unit(), "件"),
+            int changed = jdbc.update("UPDATE sku SET product_code=?,product_type=?,material_type=?,sku_code=?,model=?,product_name=?,color=?,lock_body=?,product_version=?,configuration=?,product_configuration=COALESCE(?,product_configuration),unit=?,current_cost=CASE WHEN ? THEN ? ELSE current_cost END,factory_price=CASE WHEN ? THEN ? ELSE factory_price END,product_remark=?,enabled=?,brand_rule_id=?,series_rule_id=?,body_color_rule_id=?,lock_type_rule_id=?,connectivity_rule_id=?,sales_channel_rule_id=?,operating_entity_rule_id=?,language_rule_id=?,door_model_rule_id=?,security_grade_rule_id=?,base_material_rule_id=?,thickness_rule_id=?,finish_color_rule_id=?,version=version+1 WHERE id=? AND version=?",
+                    productCode, productType, materialType, customerCode, model, r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), materialSpecification, r.productConfiguration(), textOr(r.unit(), "件"),
                     fields.currentCostPresent(), r.currentCost(), fields.factoryPricePresent(), r.factoryPrice(), r.remark(), enabled(r),
                     smart.brandRuleId(), smart.seriesRuleId(), smart.bodyColorRuleId(), smart.lockTypeRuleId(), smart.connectivityRuleId(),
                     smart.salesChannelRuleId(), smart.operatingEntityRuleId(), smart.languageRuleId(), door.doorModelRuleId(), door.securityGradeRuleId(),
@@ -225,6 +228,25 @@ public class MasterDataCommandService {
         return type;
     }
 
+    private String materialSpecification(Long brandRuleId, String model, Long bodyColorRuleId, Long lockTypeRuleId, Long languageRuleId) {
+        return String.join(" / ", Arrays.stream(new String[]{
+                        ruleDisplayName(brandRuleId, "BRAND"),
+                        model,
+                        ruleDisplayName(bodyColorRuleId, "BODY_COLOR"),
+                        ruleDisplayName(lockTypeRuleId, "LOCK_TYPE"),
+                        ruleDisplayName(languageRuleId, "LANGUAGE")})
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .toList());
+    }
+
+    private String ruleDisplayName(Long ruleId, String category) {
+        if (ruleId == null) return null;
+        List<String> names = jdbc.queryForList(
+                "SELECT display_name FROM product_code_rule WHERE id=? AND category=?", String.class, ruleId, category);
+        if (names.isEmpty()) throw new IllegalArgumentException("产品编号规则无效：" + category);
+        return names.get(0);
+    }
     private String generateProductCode(String type, ProductCodeSelection smart, EntryDoorProductCodeSelection door) {
         return "ENTRY_DOOR".equals(type) ? productCodeGenerator.generateEntryDoor(door) : productCodeGenerator.generate(smart);
     }
@@ -326,10 +348,11 @@ public class MasterDataCommandService {
     }
 
     private void updateInventorySkuDetails(long skuId, EntityCommandRequest r) {
-        if (r.model() == null && r.configuration() == null && r.productVersion() == null
+        if (r.productType() == null && r.model() == null && r.configuration() == null && r.productVersion() == null
                 && r.color() == null && r.lockBody() == null && r.unit() == null) return;
-        jdbc.update("UPDATE sku SET model=COALESCE(?,model),configuration=COALESCE(?,configuration),product_version=COALESCE(?,product_version),color=COALESCE(?,color),lock_body=COALESCE(?,lock_body),unit=COALESCE(?,unit),version=version+1 WHERE id=?",
-                r.model(), r.configuration(), r.productVersion(), r.color(), r.lockBody(), r.unit(), skuId);
+        String productType = r.productType() == null ? null : requiredProductType(r.productType());
+        jdbc.update("UPDATE sku SET product_type=COALESCE(?,product_type),model=COALESCE(?,model),configuration=COALESCE(?,configuration),product_version=COALESCE(?,product_version),color=COALESCE(?,color),lock_body=COALESCE(?,lock_body),unit=COALESCE(?,unit),version=version+1 WHERE id=?",
+                productType, r.model(), r.configuration(), r.productVersion(), r.color(), r.lockBody(), r.unit(), skuId);
     }
 
     private int lockedQuantity(EntityCommandRequest r, EntityCommandFields fields) {
@@ -450,7 +473,7 @@ public class MasterDataCommandService {
     }
     private Map<String, Object> product(long id) {
         return map(jdbc.queryForMap("""
-                SELECT s.id,s.product_code,s.product_type,s.material_type,s.sku_code,s.model,s.product_name,s.color,s.lock_body,s.product_version,s.configuration,s.unit,
+                SELECT s.id,s.product_code,s.product_type,s.material_type,s.sku_code,s.model,s.product_name,s.color,s.lock_body,s.product_version,s.configuration,s.product_configuration,s.unit,
                        s.current_cost,s.factory_price,s.product_remark,s.enabled,s.version,
                        s.brand_rule_id,s.series_rule_id,s.body_color_rule_id,s.lock_type_rule_id,s.connectivity_rule_id,
                        s.sales_channel_rule_id,s.operating_entity_rule_id,s.language_rule_id,
@@ -469,7 +492,7 @@ public class MasterDataCommandService {
                 WHERE s.id=?
                 """, id),
                 "product_code","productCode","product_type","productType","material_type","materialType","sku_code","customerCode","product_name","productName","lock_body","lockBody",
-                "product_version","productVersion","current_cost","currentCost","factory_price","factoryPrice","product_remark","remark",
+                "product_version","productVersion","product_configuration","productConfiguration","current_cost","currentCost","factory_price","factoryPrice","product_remark","remark",
                 "brand_rule_id","brandRuleId","series_rule_id","seriesRuleId","body_color_rule_id","bodyColorRuleId",
                 "lock_type_rule_id","lockTypeRuleId","connectivity_rule_id","connectivityRuleId","sales_channel_rule_id","salesChannelRuleId",
                 "operating_entity_rule_id","operatingEntityRuleId","language_rule_id","languageRuleId","body_color","bodyColor",

@@ -18,10 +18,9 @@ public class CustomerManagementService {
     @Transactional
     public Map<String,Object> create(CustomerCommandRequest request) {
         validate(request);
-        String code = emptyToNull(request.customerCode());
-        if (code == null) code = "C" + UUID.randomUUID().toString().replace("-", "").substring(0,10).toUpperCase();
-        long id = insert("INSERT INTO customer(customer_code,customer_name,contact_name,phone,address,business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,finance_contact_name,finance_contact_phone,invoice_title,taxpayer_id,invoice_address,invoice_phone,bank_name,bank_account,enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)",
-                code, trim(request.customerName()), emptyToNull(request.businessContactName()), emptyToNull(request.businessContactPhone()), emptyToNull(request.address()),
+        String code = generatedCustomerCode(request);
+        long id = insert("INSERT INTO customer(customer_code,customer_type,customer_name,contact_name,phone,address,business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,finance_contact_name,finance_contact_phone,invoice_title,taxpayer_id,invoice_address,invoice_phone,bank_name,bank_account,enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)",
+                code, normalizedCustomerType(request.customerType()), trim(request.customerName()), emptyToNull(request.businessContactName()), emptyToNull(request.businessContactPhone()), emptyToNull(request.address()),
                 emptyToNull(request.businessContactName()), emptyToNull(request.businessContactPhone()), emptyToNull(request.orderContactName()), emptyToNull(request.orderContactPhone()),
                 emptyToNull(request.financeContactName()), emptyToNull(request.financeContactPhone()), emptyToNull(request.invoiceTitle()), emptyToNull(request.taxpayerId()),
                 emptyToNull(request.invoiceAddress()), emptyToNull(request.invoicePhone()), emptyToNull(request.bankName()), emptyToNull(request.bankAccount()));
@@ -33,8 +32,8 @@ public class CustomerManagementService {
     public Map<String,Object> update(long id, CustomerCommandRequest request) {
         validate(request);
         if (request.version() == null) throw new IllegalArgumentException("缺少数据版本，请重新打开后再试");
-        int changed = jdbc.update("UPDATE customer SET customer_name=?,contact_name=?,phone=?,address=?,business_contact_name=?,business_contact_phone=?,order_contact_name=?,order_contact_phone=?,finance_contact_name=?,finance_contact_phone=?,invoice_title=?,taxpayer_id=?,invoice_address=?,invoice_phone=?,bank_name=?,bank_account=?,version=version+1 WHERE id=? AND version=?",
-                trim(request.customerName()), emptyToNull(request.businessContactName()), emptyToNull(request.businessContactPhone()), emptyToNull(request.address()),
+        int changed = jdbc.update("UPDATE customer SET customer_code=?,customer_type=?,customer_name=?,contact_name=?,phone=?,address=?,business_contact_name=?,business_contact_phone=?,order_contact_name=?,order_contact_phone=?,finance_contact_name=?,finance_contact_phone=?,invoice_title=?,taxpayer_id=?,invoice_address=?,invoice_phone=?,bank_name=?,bank_account=?,version=version+1 WHERE id=? AND version=?",
+                generatedCustomerCode(request), normalizedCustomerType(request.customerType()), trim(request.customerName()), emptyToNull(request.businessContactName()), emptyToNull(request.businessContactPhone()), emptyToNull(request.address()),
                 emptyToNull(request.businessContactName()), emptyToNull(request.businessContactPhone()), emptyToNull(request.orderContactName()), emptyToNull(request.orderContactPhone()),
                 emptyToNull(request.financeContactName()), emptyToNull(request.financeContactPhone()), emptyToNull(request.invoiceTitle()), emptyToNull(request.taxpayerId()),
                 emptyToNull(request.invoiceAddress()), emptyToNull(request.invoicePhone()), emptyToNull(request.bankName()), emptyToNull(request.bankAccount()), id, request.version());
@@ -44,9 +43,11 @@ public class CustomerManagementService {
     }
 
     public Map<String,Object> detail(long id) {
-        List<Map<String,Object>> rows = jdbc.queryForList("SELECT id,customer_code AS customerCode,customer_name AS customerName,address,business_contact_name AS businessContactName,business_contact_phone AS businessContactPhone,order_contact_name AS orderContactName,order_contact_phone AS orderContactPhone,finance_contact_name AS financeContactName,finance_contact_phone AS financeContactPhone,invoice_title AS invoiceTitle,taxpayer_id AS taxpayerId,invoice_address AS invoiceAddress,invoice_phone AS invoicePhone,bank_name AS bankName,bank_account AS bankAccount,version FROM customer WHERE id=?", id);
+        List<Map<String,Object>> rows = jdbc.queryForList("SELECT id,customer_code AS customerCode,customer_type AS customerType,customer_name AS customerName,address,business_contact_name AS businessContactName,business_contact_phone AS businessContactPhone,order_contact_name AS orderContactName,order_contact_phone AS orderContactPhone,finance_contact_name AS financeContactName,finance_contact_phone AS financeContactPhone,invoice_title AS invoiceTitle,taxpayer_id AS taxpayerId,invoice_address AS invoiceAddress,invoice_phone AS invoicePhone,bank_name AS bankName,bank_account AS bankAccount,version FROM customer WHERE id=?", id);
         if (rows.isEmpty()) throw new IllegalArgumentException("客户不存在");
         Map<String,Object> result = camel(rows.get(0));
+        Object customerType = result.remove("CUSTOMERTYPE");
+        if (customerType != null) result.put("customerType", customerType);
         List<Map<String,Object>> contracts = jdbc.queryForList("SELECT id,contract_no AS contractNo,start_date AS startDate,end_date AS endDate,remark FROM customer_contract WHERE customer_id=? AND enabled=TRUE ORDER BY start_date DESC,id DESC", id).stream().map(this::camel).map(LinkedHashMap::new).map(row -> {
             row.put("prices", jdbc.queryForList("SELECT p.sku_id AS skuId,p.sale_price AS salePrice,s.sku_code AS skuCode,s.product_name AS productName FROM customer_contract_price p JOIN sku s ON s.id=p.sku_id WHERE p.contract_id=? ORDER BY s.sku_code,s.id", row.get("id")).stream().map(this::camel).toList());
             return (Map<String,Object>) row;
@@ -68,6 +69,9 @@ public class CustomerManagementService {
 
     private void validate(CustomerCommandRequest request) {
         if (request == null || request.customerName() == null || request.customerName().isBlank()) throw new IllegalArgumentException("客户名称不能为空");
+        normalizedCustomerType(request.customerType());
+        String taxpayerId = emptyToNull(request.taxpayerId());
+        if (taxpayerId == null || taxpayerId.length() < 10) throw new IllegalArgumentException("纳税人识别号至少需要10位");
         List<CustomerContractRequest> contracts = request.contracts() == null ? List.of() : request.contracts();
         Set<String> contractNos = new HashSet<>();
         Map<Long,List<DateRange>> ranges = new HashMap<>();
@@ -91,5 +95,15 @@ public class CustomerManagementService {
     private long insert(String sql,Object... args) { var keys=new GeneratedKeyHolder(); jdbc.update(c->{PreparedStatement s=c.prepareStatement(sql,new String[]{"id"});for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);return s;},keys);return Objects.requireNonNull(keys.getKey()).longValue(); }
     private String trim(String value) { return value.trim(); }
     private String emptyToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+    private String normalizedCustomerType(String value) {
+        String type = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!"DOMESTIC".equals(type) && !"EXPORT".equals(type)) throw new IllegalArgumentException("请选择客户类型：内销客户或外销客户");
+        return type;
+    }
+    private String generatedCustomerCode(CustomerCommandRequest request) {
+        String taxpayerId = trim(request.taxpayerId()).toUpperCase(Locale.ROOT);
+        return ("DOMESTIC".equals(normalizedCustomerType(request.customerType())) ? "A." : "B.")
+                + taxpayerId.substring(taxpayerId.length() - 10);
+    }
     private Map<String,Object> camel(Map<String,Object> source) { Map<String,Object> result=new LinkedHashMap<>(); source.forEach((key,value)->result.put(switch(key.toLowerCase(Locale.ROOT)){case "customercode"->"customerCode";case "customername"->"customerName";case "businesscontactname"->"businessContactName";case "businesscontactphone"->"businessContactPhone";case "ordercontactname"->"orderContactName";case "ordercontactphone"->"orderContactPhone";case "financecontactname"->"financeContactName";case "financecontactphone"->"financeContactPhone";case "invoicetitle"->"invoiceTitle";case "taxpayerid"->"taxpayerId";case "invoiceaddress"->"invoiceAddress";case "invoicephone"->"invoicePhone";case "bankname"->"bankName";case "bankaccount"->"bankAccount";case "contractno"->"contractNo";case "startdate"->"startDate";case "enddate"->"endDate";case "skuid"->"skuId";case "saleprice"->"salePrice";case "skucode"->"skuCode";case "productname"->"productName";default->key;},value)); return result; }
 }

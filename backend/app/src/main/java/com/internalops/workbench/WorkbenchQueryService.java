@@ -32,7 +32,8 @@ public class WorkbenchQueryService {
             Map.entry("invoicetitle", "invoiceTitle"), Map.entry("taxpayerid", "taxpayerId"),
             Map.entry("invoiceaddress", "invoiceAddress"), Map.entry("invoicephone", "invoicePhone"), Map.entry("bankname", "bankName"),
             Map.entry("contractstatus", "contractStatus"), Map.entry("contractenddate", "contractEndDate"),
-            Map.entry("updatedat", "updatedAt"), Map.entry("skucode", "skuCode"),
+            Map.entry("updatedat", "updatedAt"), Map.entry("skucode", "skuCode"), Map.entry("productcode", "productCode"),
+            Map.entry("producttype", "productType"), Map.entry("productconfiguration", "productConfiguration"),
             Map.entry("productname", "productName"), Map.entry("lockbody", "lockBody"),
             Map.entry("productversion", "productVersion"), Map.entry("currentcost", "currentCost"),
             Map.entry("imagecount", "imageCount"), Map.entry("primaryimageid", "primaryImageId"),
@@ -65,7 +66,10 @@ public class WorkbenchQueryService {
             Map.entry("paidamount", "paidAmount"), Map.entry("paymentstatus", "paymentStatus"),
             Map.entry("orderedquantity", "orderedQuantity"), Map.entry("receivedquantity", "receivedQuantity"),
             Map.entry("remainingquantity", "remainingQuantity"), Map.entry("receiptstatus", "receiptStatus"),
-            Map.entry("productids", "productIds"), Map.entry("productsummary", "productSummary")
+            Map.entry("productids", "productIds"), Map.entry("productsummary", "productSummary"),
+            Map.entry("aftersalesno", "afterSalesNo"), Map.entry("aftersalestype", "afterSalesType"),
+            Map.entry("returnquantity", "returnQuantity"), Map.entry("replacementquantity", "replacementQuantity"),
+            Map.entry("applicationdate", "applicationDate")
     );
     private final JdbcTemplate jdbc;
     private final InventoryAgeCalculator inventoryAgeCalculator = new InventoryAgeCalculator();
@@ -358,7 +362,7 @@ public class WorkbenchQueryService {
                 "u.updated_at", "u.id DESC"));
         modules.put("product", new ModuleSpec(
                 "SELECT s.id, s.product_code AS `productCode`, s.sku_code AS `customerCode`, s.sku_code AS `skuCode`, s.model, s.product_name AS `productName`, s.color, "
-                        + "s.lock_body AS `lockBody`, s.product_version AS `productVersion`, s.configuration, s.unit, "
+                        + "s.lock_body AS `lockBody`, s.product_version AS `productVersion`, s.configuration, s.product_configuration AS `productConfiguration`, s.unit, "
                         + "s.brand_rule_id AS `brandRuleId`,s.series_rule_id AS `seriesRuleId`,s.body_color_rule_id AS `bodyColorRuleId`,s.lock_type_rule_id AS `lockTypeRuleId`,"
                         + "s.connectivity_rule_id AS `connectivityRuleId`,s.sales_channel_rule_id AS `salesChannelRuleId`,s.operating_entity_rule_id AS `operatingEntityRuleId`,s.language_rule_id AS `languageRuleId`,"
                         + "s.product_type AS `productType`,s.material_type AS `materialType`,s.door_model_rule_id AS `doorModelRuleId`,s.security_grade_rule_id AS `securityGradeRuleId`,s.base_material_rule_id AS `baseMaterialRuleId`,s.thickness_rule_id AS `thicknessRuleId`,s.finish_color_rule_id AS `finishColorRuleId`,"
@@ -397,8 +401,19 @@ public class WorkbenchQueryService {
                 "LOCATE(?, COALESCE(o.order_no,''))>0 OR LOCATE(?, COALESCE(o.external_order_no,''))>0 OR LOCATE(?, COALESCE(c.customer_name,''))>0 OR LOCATE(?, COALESCE(o.status,''))>0", 4,
                 sorts("id", "o.id", "orderNo", "o.order_no", "customerName", "c.customer_name", "totalAmount", "o.total_amount", "status", "o.status", "createdAt", "o.created_at", "updatedAt", "o.updated_at"),
                 "o.updated_at", "o.id DESC"));
-        modules.put("inventory", new ModuleSpec(
-                "SELECT b.id, b.sku_id AS `skuId`, s.sku_code AS `skuCode`, s.model, s.configuration, s.product_version AS `productVersion`, s.color, s.lock_body AS `lockBody`, s.unit, "
+        modules.put("afterSales", new ModuleSpec(
+                "SELECT a.id,a.after_sales_no AS `afterSalesNo`,o.order_no AS `orderNo`,c.customer_name AS `customerName`,"
+                        + "a.after_sales_type AS `afterSalesType`,"
+                        + "(SELECT COALESCE(SUM(r.requested_quantity),0) FROM after_sales_return_line r WHERE r.after_sales_order_id=a.id) AS `returnQuantity`,"
+                        + "(SELECT COALESCE(SUM(x.planned_quantity),0) FROM after_sales_replacement_line x WHERE x.after_sales_order_id=a.id) AS `replacementQuantity`,"
+                        + "a.status,a.application_date AS `applicationDate`,a.updated_at AS `updatedAt`,a.version",
+                "FROM after_sales_order a JOIN sales_order o ON o.id=a.sales_order_id JOIN customer c ON c.id=a.customer_id",
+                "LOCATE(?,COALESCE(a.after_sales_no,''))>0 OR LOCATE(?,COALESCE(o.order_no,''))>0 OR LOCATE(?,COALESCE(c.customer_name,''))>0 "
+                        + "OR EXISTS(SELECT 1 FROM after_sales_return_line r WHERE r.after_sales_order_id=a.id AND (LOCATE(?,COALESCE(r.sku_code,''))>0 OR LOCATE(?,COALESCE(r.product_name,''))>0)) "
+                        + "OR EXISTS(SELECT 1 FROM after_sales_replacement_line x WHERE x.after_sales_order_id=a.id AND (LOCATE(?,COALESCE(x.sku_code,''))>0 OR LOCATE(?,COALESCE(x.product_name,''))>0))", 7,
+                sorts("id","a.id","afterSalesNo","a.after_sales_no","orderNo","o.order_no","customerName","c.customer_name","status","a.status","applicationDate","a.application_date","updatedAt","a.updated_at"),
+                "a.updated_at", "a.id DESC"));        modules.put("inventory", new ModuleSpec(
+                "SELECT b.id, b.sku_id AS `skuId`, s.product_code AS `productCode`, s.sku_code AS `skuCode`, s.model, s.product_type AS `productType`, s.product_configuration AS `productConfiguration`, s.configuration, s.unit, "
                         + "b.actual_quantity AS `actualQuantity`, b.locked_quantity AS `lockedQuantity`, "
 
                         + "(b.actual_quantity-b.locked_quantity) AS `availableQuantity`, b.in_transit_quantity AS `inTransitQuantity`, "
@@ -406,7 +421,7 @@ public class WorkbenchQueryService {
                         + "b.source_supplier_name AS `sourceSupplierName`, b.inventory_remark AS `inventoryRemark`, b.updated_at AS `updatedAt`, b.version",
                 "FROM inventory_balance b JOIN sku s ON s.id=b.sku_id",
                 "LOCATE(?, COALESCE(s.sku_code,''))>0 OR LOCATE(?, COALESCE(s.model,''))>0 OR LOCATE(?, COALESCE(s.configuration,''))>0 OR LOCATE(?, COALESCE(b.source_supplier_name,''))>0", 4,
-                sorts("id", "b.id", "skuCode", "s.sku_code", "model", "s.model", "actualQuantity", "b.actual_quantity", "availableQuantity", "(b.actual_quantity-b.locked_quantity)", "updatedAt", "b.updated_at"),
+                sorts("id", "b.id", "productCode", "s.product_code", "skuCode", "s.sku_code", "model", "s.model", "actualQuantity", "b.actual_quantity", "availableQuantity", "(b.actual_quantity-b.locked_quantity)", "updatedAt", "b.updated_at"),
                 "b.updated_at", "b.id DESC"));
         String purchaseView = "FROM ("
                 + "SELECT po.id, 'PURCHASE' AS record_type, po.purchase_no, po.supplier_id, sp.supplier_name, "

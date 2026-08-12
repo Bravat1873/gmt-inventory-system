@@ -9,3 +9,10 @@ it('does not render linked-order navigation in the business timeline', () => {
 
   expect(wrapper.find('[data-test="trace-link"]').exists()).toBe(false)
 })
+
+it('uses the shared overflow text treatment for every detail cell', () => {
+  const wrapper = mount(BusinessTraceDialog, {
+    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ skuCode: 'BR_C51YZH60W', configuration: '一段很长的完整规格型号' }], timeline: [] } }
+  })
+  expect(wrapper.findAll('[data-test="overflow-text"]')).toHaveLength(2)
+})

@@ -39,7 +39,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="close">
+  <div class="dialog-mask">
     <section class="dialog-card receipt-dialog" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
       <header><h2 id="receipt-title">登记收款</h2><button type="button" :disabled="saving" @click="close">关闭</button></header>
       <form novalidate @submit.prevent="save">

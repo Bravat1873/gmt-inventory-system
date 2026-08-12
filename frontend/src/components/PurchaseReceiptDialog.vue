@@ -38,7 +38,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="emit('close')">
+  <div class="dialog-mask">
     <section class="dialog-card purchase-receipt-dialog" role="dialog" aria-labelledby="purchase-receipt-title">
       <header><div><h2 id="purchase-receipt-title">登记采购收货</h2><p>{{ purchase.purchaseNo }} · {{ purchase.supplierName }}</p></div><button type="button" :disabled="saving" @click="emit('close')">关闭</button></header>
       <form @submit.prevent="save">

@@ -44,6 +44,22 @@ class ProductCodeSchemaTest {
     }
 
     @Test
+    void correctsTheThreeApprovedBrandMappingsWithoutReplacingReferencedRules() throws Exception {
+        String sql = new ClassPathResource("db/migration/V33__correct_product_brand_rules.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+        for (String mapping : new String[]{"'SXSEL', 'STANLEY'", "'BR', 'BRAVAT'", "'G', 'GMT'"}) {
+            assertTrue(sql.contains(mapping), "missing brand mapping " + mapping);
+        }
+        assertTrue(sql.contains("UPDATE product_code_rule"));
+        assertTrue(sql.contains("WHERE category = 'BRAND' AND display_name = 'STANLEY'"));
+    }
+
+    @Test
+    void productConfigurationMigrationAddsAnIndependentEditableColumn() throws Exception {
+        String sql = new ClassPathResource("db/migration/V34__product_configuration.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertTrue(sql.contains("ADD COLUMN product_configuration VARCHAR(500) NULL"));
+    }
     void entryDoorMigrationAddsProductTypeFiveReferencesAndSeeds() throws Exception {
         String sql = new ClassPathResource("db/migration/V29__entry_door_product_codes.sql")
                 .getContentAsString(StandardCharsets.UTF_8);

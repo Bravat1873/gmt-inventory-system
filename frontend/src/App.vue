@@ -18,8 +18,13 @@ import BusinessTraceDialog from './components/BusinessTraceDialog.vue'
 import ProductGalleryDialog from './components/ProductGalleryDialog.vue'
 import ProductCodeRulesDialog from './components/ProductCodeRulesDialog.vue'
 import ActionInputDialog from './components/ActionInputDialog.vue'
+import AfterSalesDialog from './components/AfterSalesDialog.vue'
+import AfterSalesReceiptDialog from './components/AfterSalesReceiptDialog.vue'
+import AfterSalesShipmentDialog from './components/AfterSalesShipmentDialog.vue'
+import { cancelAfterSales, loadAfterSales, type AfterSalesDetail } from './api/after-sales'
 import { getOrder, loadBusinessTrace, loadOrderAllocations, loadPurchase, postAction, type BusinessTrace, type OrderAllocation, type PurchaseDetail } from './api/workbench'
 import { moduleDefinitions, type ModuleKey } from './modules/module-config'
+import { useGlobalDialogCloseGuard } from './composables/useUnsavedChangesGuard'
 
 const fromAddress = new URLSearchParams(location.search).get('module') as ModuleKey | null
 const activeModule = ref<ModuleKey>(moduleDefinitions.some(item => item.key === fromAddress) ? fromAddress! : 'order')
@@ -48,9 +53,14 @@ const shipmentOpen = ref(false)
 const shipmentOrder = ref<any>()
 const allocationOpen = ref(false)
 const orderAllocation = ref<OrderAllocation>()
+const afterSalesOpen = ref(false)
+const afterSalesReceiptOpen = ref(false)
+const afterSalesShipmentOpen = ref(false)
+const afterSalesDetail = ref<AfterSalesDetail>()
 const user = ref<CurrentUser | null>(null)
 const authReady = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
+useGlobalDialogCloseGuard()
 
 const currentModule = computed(() => moduleDefinitions.find(item => item.key === activeModule.value) ?? moduleDefinitions[0])
 const canUseCurrentModulePrimary = computed(() => {
@@ -112,6 +122,7 @@ function primary() {
   if (activeModule.value === 'user') { editRow.value = undefined; entityOpen.value = true; return }
   if (activeModule.value === 'supplier') { editRow.value = undefined; supplierOpen.value = true; return }
   if (activeModule.value === 'order') { editRow.value = undefined; orderOpen.value = true; return }
+  if (activeModule.value === 'afterSales') { afterSalesDetail.value = undefined; afterSalesOpen.value = true; return }
   if (activeModule.value === 'purchase') manualPurchaseOpen.value = true
 }
 
@@ -127,6 +138,7 @@ function openProductGallery(row: Record<string, unknown>) {
 }
 
 async function edit(row: Record<string, unknown>) {
+  if (activeModule.value === 'afterSales') { try { afterSalesDetail.value=await loadAfterSales(Number(row.id)); afterSalesOpen.value=true } catch(cause){ showMessage(cause instanceof Error?cause.message:'读取售后单失败','error') }; return }
   if (activeModule.value === 'user' && user.value?.role !== 'ADMIN') return
   if (activeModule.value === 'order') {
     try { editRow.value = await getOrder(Number(row.id)); orderOpen.value = true }
@@ -185,6 +197,10 @@ async function shipment(row: Record<string, unknown>) {
   catch (cause) { showMessage(cause instanceof Error ? cause.message : '璇诲彇璁㈠崟鍙戣揣淇℃伅澶辫触', 'error') }
 }
 
+async function openAfterSalesReceipt(row: Record<string, unknown>) { try { afterSalesDetail.value=await loadAfterSales(Number(row.id)); afterSalesReceiptOpen.value=true } catch(cause){ showMessage(cause instanceof Error?cause.message:'读取售后单失败','error') } }
+async function openAfterSalesShipment(row: Record<string, unknown>) { try { afterSalesDetail.value=await loadAfterSales(Number(row.id)); afterSalesShipmentOpen.value=true } catch(cause){ showMessage(cause instanceof Error?cause.message:'读取售后单失败','error') } }
+async function cancelAfterSalesRow(row: Record<string, unknown>) { if(!window.confirm('确认取消该售后单吗？'))return;try{await cancelAfterSales(Number(row.id),Number(row.version));showMessage('售后单已取消');list.value?.reload()}catch(cause){showMessage(cause instanceof Error?cause.message:'取消失败','error')} }
+async function afterSalesSaved(){ afterSalesOpen.value=false;afterSalesReceiptOpen.value=false;afterSalesShipmentOpen.value=false;afterSalesDetail.value=undefined;await nextTick();list.value?.reload() }
 async function workflow(row: Record<string, unknown>) {
   const status = String(row.status)
   const id = Number(row.id)
@@ -238,8 +254,8 @@ async function saved(closeDialog = true) {
     </aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><ProductCodeRulesDialog v-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @gallery="openProductGallery" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @shipment="shipment" @allocation="allocation" @workflow="workflow" @message="showMessage" /></div></main>
-    <div v-if="importOpen && currentModule.importType && canUseCurrentModulePrimary" class="dialog-mask import-dialog-mask" @click.self="importOpen=false"><ImportPanel :type="currentModule.importType" :title="currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
+    <main><div class="content"><ProductCodeRulesDialog v-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @gallery="openProductGallery" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-cancel="cancelAfterSalesRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @message="showMessage" /></div></main>
+    <div v-if="importOpen && currentModule.importType && canUseCurrentModulePrimary" class="dialog-mask import-dialog-mask"><ImportPanel :type="currentModule.importType" :title="currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <CustomerDialog v-if="entityOpen && activeModule === 'customer'" :row="editRow" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <SupplierDialog v-if="supplierOpen" :row="editRow" @close="supplierOpen=false" @saved="saved" @message="showMessage" />
@@ -253,6 +269,9 @@ async function saved(closeDialog = true) {
     <BusinessTraceDialog v-if="traceOpen && businessTrace" :trace="businessTrace" @close="traceOpen=false" />
 
     <ProductGalleryDialog v-if="productGalleryRow" :product-id="Number(productGalleryRow.id)" :initial-image-id="productGalleryRow.primaryImageId ? Number(productGalleryRow.primaryImageId) : undefined" @close="productGalleryRow=undefined" />
+    <AfterSalesDialog v-if="afterSalesOpen" :detail="afterSalesDetail" @close="afterSalesOpen=false" @saved="afterSalesSaved" @message="showMessage" />
+    <AfterSalesReceiptDialog v-if="afterSalesReceiptOpen && afterSalesDetail" :detail="afterSalesDetail" @close="afterSalesReceiptOpen=false" @saved="afterSalesSaved" @message="showMessage" />
+    <AfterSalesShipmentDialog v-if="afterSalesShipmentOpen && afterSalesDetail" :detail="afterSalesDetail" @close="afterSalesShipmentOpen=false" @saved="afterSalesSaved" @message="showMessage" />
     <ActionInputDialog v-if="actionInput" :title="actionInput.title" :label="actionInput.label" :placeholder="actionInput.placeholder" @close="actionInput=null" @confirm="submitActionInput" />
   </div>
 </template>

@@ -27,7 +27,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="!saving && emit('close')">
+  <div class="dialog-mask">
     <section class="dialog-card allocation-dialog" role="dialog" aria-modal="true">
       <header><h2>手动分配库存</h2><button type="button" :disabled="saving" @click="emit('close')">关闭</button></header>
       <p>可在自动锁定后调整每个产品为客户保留的数量；减少的数量会立即释放回可用库存。</p>

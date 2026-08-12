@@ -6,7 +6,7 @@ const emit = defineEmits<{ close: [] }>()
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="emit('close')">
+  <div class="dialog-mask">
     <section class="dialog-card inventory-movement-dialog" role="dialog" aria-modal="true" aria-labelledby="inventory-movement-title">
       <header>
         <div>

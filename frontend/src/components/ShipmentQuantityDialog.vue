@@ -77,7 +77,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="emit('close')">
+  <div class="dialog-mask">
     <section class="dialog-card shipment-dialog" role="dialog" aria-modal="true" aria-labelledby="shipment-title">
       <header class="shipment-dialog-header">
         <div><h2 id="shipment-title">确认发货</h2><span>订单 {{ order.orderNo }}</span></div>

@@ -3,7 +3,7 @@ package com.internalops.workbench;
 import java.util.List;
 
 public record CustomerCommandRequest(
-        String customerCode, String customerName, String address,
+        String customerCode, String customerType, String customerName, String address,
         String businessContactName, String businessContactPhone,
         String orderContactName, String orderContactPhone,
         String financeContactName, String financeContactPhone,

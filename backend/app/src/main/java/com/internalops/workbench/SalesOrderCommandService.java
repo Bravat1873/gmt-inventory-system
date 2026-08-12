@@ -135,7 +135,7 @@ public class SalesOrderCommandService {
 
     public List<Map<String, Object>> skuOptions() {
         return jdbc.query("""
-                SELECT s.id,s.sku_code,s.product_name,s.model,s.configuration,s.product_version,s.color,s.lock_body,s.unit,
+                SELECT s.id,s.product_code,s.sku_code,s.product_name,s.model,s.product_type,s.product_configuration,s.configuration,s.product_version,s.color,s.lock_body,s.unit,
                        COALESCE(inv.actual_quantity,0) AS actual_quantity,
                        COALESCE(inv.available_quantity,0) AS available_quantity,
                        (SELECT pi.id FROM product_image pi
@@ -148,11 +148,11 @@ public class SalesOrderCommandService {
                     FROM inventory_balance GROUP BY sku_id
                 ) inv ON inv.sku_id=s.id
                 WHERE s.enabled=TRUE
-                ORDER BY s.sku_code
+                ORDER BY s.product_code
                 """, (rs, n) -> {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", rs.getLong("id")); item.put("skuCode", rs.getString("sku_code")); item.put("productName", rs.getString("product_name"));
-            item.put("model", rs.getString("model")); item.put("configuration", rs.getString("configuration"));
+            item.put("id", rs.getLong("id")); item.put("productCode", rs.getString("product_code")); item.put("skuCode", rs.getString("sku_code")); item.put("productName", rs.getString("product_name"));
+            item.put("model", rs.getString("model")); item.put("productType", rs.getString("product_type")); item.put("productConfiguration", rs.getString("product_configuration")); item.put("configuration", rs.getString("configuration"));
             item.put("productVersion", rs.getString("product_version")); item.put("color", rs.getString("color"));
             item.put("lockBody", rs.getString("lock_body")); item.put("unit", rs.getString("unit"));
             item.put("primaryImageId", rs.getObject("primary_image_id", Long.class));

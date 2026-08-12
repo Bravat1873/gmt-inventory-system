@@ -72,6 +72,7 @@ CREATE TABLE sku (
     lock_body VARCHAR(80),
     product_version VARCHAR(80),
     configuration VARCHAR(1000),
+    product_configuration VARCHAR(500),
     unit VARCHAR(20) NOT NULL DEFAULT 'PCS',
     current_cost DECIMAL(18,4),
     factory_price DECIMAL(18,4),

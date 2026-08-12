@@ -162,7 +162,7 @@ onMounted(loadProducts)
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="requestClose">
+  <div class="dialog-mask">
     <section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="manual-purchase-title">
       <header><h2 id="manual-purchase-title">手工采购</h2><button type="button" :disabled="saving" @click="requestClose">关闭</button></header>
       <form novalidate @submit.prevent="save">

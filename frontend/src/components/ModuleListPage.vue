@@ -3,9 +3,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import type { UserRole } from '../api/auth'
 import { loadModule, type PageResult } from '../api/workbench'
 import type { ModuleDefinition } from '../modules/module-config'
+import OverflowText from './OverflowText.vue'
 
 const props = defineProps<{ module: ModuleDefinition; currentUserRole?: UserRole }>()
-const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
+const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
 const keyword = ref('')
 const loading = ref(false)
 const data = ref<PageResult>({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
@@ -20,11 +21,13 @@ function orderBy(field: string) { if (!field) return; direction.value = sort.val
 function text(value: unknown, field?: string) {
   if (value === true) return '启用'; if (value === false) return '停用'; if (value == null || value === '') return '—'
   if (field === 'inventoryAgeDays') return `${Number(value)} 天`
+  if (field === 'productType') return ({ SMART_LOCK: '智能锁', ENTRY_DOOR: '入户门' } as Record<string, string>)[String(value)] ?? String(value)
   if (field === 'materialType') return ({ FINISHED_PRODUCT: '成品', PART: '零件' } as Record<string, string>)[String(value)] ?? String(value)
   if (field === 'role') return ({ ADMIN: '管理员', FINANCE: '财务', USER: '普通用户' } as Record<string, string>)[String(value)] ?? String(value)
   if (field === 'createdAt' || field === 'updatedAt' || field === 'oldestStockDate') { const matched = String(value).match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2})/); if (matched) return `${matched[1]} ${matched[2]}` }
   const statuses: Record<string, string> = { DRAFT: '草稿', PENDING_CUSTOMER_PAYMENT: '确认订单并分配库存', WAITING_STOCK: '等待齐货', READY_TO_SHIP: '等待发货', SHIPPED: '已发货', PENDING_SUPPLIER_PAYMENT: '待登记付款', EXECUTING: '采购执行中', RECEIVED: '已入库', COMPLETED: '已完成', UNPAID: '未付款', PARTIALLY_PAID: '部分付款', PAID: '已付清', UNRECEIVED: '未收货', PARTIALLY_RECEIVED: '部分收货', RECEIVABLE: '收', PAYABLE: '付' }
-  return statuses[String(value)] ?? String(value)
+  const afterSales: Record<string,string> = { RETURN:'退货', EXCHANGE:'换货', WAITING_RETURN:'待收退货', RETURN_RECEIVED:'已收退货', WAITING_REPLACEMENT:'待发换货', COMPLETED:'已完成', CANCELLED:'已取消' }
+  return afterSales[String(value)] ?? statuses[String(value)] ?? String(value)
 }
 function shipmentCompleted(row: Record<string, unknown>) {
   return props.module.key === 'purchase'
@@ -73,7 +76,7 @@ defineExpose({ reload: () => load(data.value.page) })
             <tr v-if="loading"><td :colspan="module.columns.length + 1" class="empty-state">正在读取</td></tr>
             <tr v-else-if="!data.items.length"><td :colspan="module.columns.length + 1" class="empty-state">暂无数据</td></tr>
             <tr v-for="row in data.items" v-else :key="`${String(row.recordType ?? module.key)}-${String(row.id)}`">
-              <td v-for="field in module.fields" :key="field" :title="field === 'productImage' ? undefined : text(row[field], field)">
+              <td v-for="field in module.fields" :key="field">
                 <button
                   v-if="module.key === 'product' && field === 'productImage'"
                   type="button"
@@ -86,9 +89,9 @@ defineExpose({ reload: () => load(data.value.page) })
                   <span v-else class="product-thumbnail-empty">暂无图片</span>
                   <span v-if="Number(row.imageCount ?? 0) > 1" class="product-image-count" data-test="product-image-count">{{ Number(row.imageCount) }}</span>
                 </button>
-                <span v-else-if="['order', 'purchase'].includes(module.key) && field === 'status'" class="order-shipment-status"><i class="shipment-status-dot" :class="shipmentCompleted(row) ? 'complete' : 'incomplete'"></i><span class="cell-content">{{ text(row[field], field) }}</span></span>
-                <span v-else-if="module.key === 'finance' && field === 'businessType'" data-test="finance-direction" class="finance-direction" :class="isReceivable(row) ? 'receivable' : 'payable'" :aria-label="isReceivable(row) ? '收款' : '付款'"><i aria-hidden="true"></i><span class="cell-content">{{ text(row[field], field) }}</span></span>
-                <span v-else class="cell-content">{{ text(row[field], field) }}</span>
+                <span v-else-if="['order', 'purchase'].includes(module.key) && field === 'status'" class="order-shipment-status"><i class="shipment-status-dot" :class="shipmentCompleted(row) ? 'complete' : 'incomplete'"></i><OverflowText :value="text(row[field], field)" /></span>
+                <span v-else-if="module.key === 'finance' && field === 'businessType'" data-test="finance-direction" class="finance-direction" :class="isReceivable(row) ? 'receivable' : 'payable'" :aria-label="isReceivable(row) ? '收款' : '付款'"><i aria-hidden="true"></i><OverflowText :value="text(row[field], field)" /></span>
+                <OverflowText v-else :value="text(row[field], field)" />
               </td>
               <td class="row-actions">
                 <button v-if="['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')" data-test="view-details" @click="emit('details', row)">查看</button>
@@ -101,6 +104,10 @@ defineExpose({ reload: () => load(data.value.page) })
                 <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && hasOutstandingAmount(row)" data-test="purchase-payment" @click="emit('payment', row)">登记付款</button>
                 <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && Number(row.remainingQuantity ?? 0) > 0" data-test="purchase-receipt" @click="emit('purchaseReceipt', row)">登记收货</button>
                 <button v-if="module.key === 'purchase' && row.recordType === 'SUGGESTION'" @click="emit('workflow', row)">确认建议</button>
+                <button v-if="module.key === 'afterSales'" @click="emit('edit', row)">修改</button>
+                <button v-if="module.key === 'afterSales' && ['WAITING_RETURN','RETURN_RECEIVED'].includes(String(row.status))" @click="emit('afterSalesReceipt', row)">确认收货</button>
+                <button v-if="module.key === 'afterSales' && row.status === 'WAITING_REPLACEMENT'" @click="emit('afterSalesShipment', row)">换货发出</button>
+                <button v-if="module.key === 'afterSales' && row.status === 'WAITING_RETURN'" @click="emit('afterSalesCancel', row)">取消</button>
               </td>
             </tr>
           </tbody>

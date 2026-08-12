@@ -11,6 +11,8 @@ it('maintains contract dates and per-product prices', async () => {
   const wrapper = mount(CustomerDialog, { attachTo: document.body })
   await flushPromises()
 
+  await wrapper.get('[data-test="customer-type"]').setValue('DOMESTIC')
+  await wrapper.get('[data-test="taxpayer-id"]').setValue('91350100MABTRQEC91')
   await wrapper.get('[data-test="customer-name"]').setValue('合同客户')
   await wrapper.get('[data-test="add-contract"]').trigger('click')
   await wrapper.get('[data-test="contract-no-0"]').setValue('HT-2026')

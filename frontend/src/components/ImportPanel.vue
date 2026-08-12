@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OverflowText from './OverflowText.vue'
 import { ref } from 'vue'
 import {
   commitImport,
@@ -116,7 +117,7 @@ async function confirmSupplierImport() {
         <span>{{ busy ? '正在处理…' : '选择 Excel 文件' }}</span>
         <input type="file" :accept="type === 'SUPPLIER' ? '.xls,.xlsx' : '.xlsx'" :disabled="busy" @change="onFileChange" />
       </label>
-      <p v-if="selectedFilename" class="filename">{{ selectedFilename }}</p>
+      <OverflowText v-if="selectedFilename" class="filename" :value="selectedFilename" />
       <p v-else class="simple-import-hint">{{ type === 'SUPPLIER' ? '支持 .xls 和 .xlsx 文件' : '支持 .xlsx 文件' }}</p>
       <p v-if="busy" class="simple-import-status">{{ previewBatch ? '正在提交数据，请稍候…' : '正在解析文件，请稍候…' }}</p>
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OverflowText from './OverflowText.vue'
 import { computed, onMounted, ref } from 'vue'
 import { loadProductImages, type ProductImage } from '../api/workbench'
 
@@ -43,7 +44,7 @@ function next() {
 </script>
 
 <template>
-  <div class="dialog-mask product-gallery-mask" @click.self="emit('close')">
+  <div class="dialog-mask product-gallery-mask">
     <section
       class="dialog-card product-gallery-dialog"
       role="dialog"
@@ -91,7 +92,7 @@ function next() {
           </div>
 
           <div class="product-gallery-caption">
-            <strong>{{ selectedImage.originalFilename }}</strong>
+            <strong><OverflowText :value="selectedImage.originalFilename" /></strong>
             <span v-if="selectedImage.primary" class="product-gallery-primary">主图</span>
             <span>{{ selectedIndex + 1 }} / {{ images.length }}</span>
           </div>

@@ -27,10 +27,12 @@ describe('连续导航和浏览器地址状态', () => {
     auth.currentUser.mockReset().mockResolvedValue({ id: 1, username: 'admin', displayName: '管理员', role: 'ADMIN' })
   })
 
-  it('八个菜单连续显示且没有常用操作和刷新按钮', async () => {
+  it('九个菜单连续显示且售后管理紧跟订单管理', async () => {
     const wrapper = mount(App)
     await flushPromises()
-    expect(wrapper.findAll('.nav-list>.nav-item')).toHaveLength(8)
+    const menuLabels = wrapper.findAll('.nav-list>.nav-item').map(item => item.text())
+    expect(menuLabels).toHaveLength(9)
+    expect(menuLabels.indexOf('售后管理')).toBe(menuLabels.indexOf('订单管理') + 1)
     expect(wrapper.get('h1').text()).toBe('订单管理')
     expect(wrapper.text()).toContain('供应商管理')
     expect(wrapper.text()).not.toContain('常用操作')

@@ -102,6 +102,9 @@ export function getOrder(id: number) { return request<Record<string, unknown>>(`
 export interface OrderSku {
   id: number
   skuCode?: string | null
+  productCode?: string | null
+  productType?: string | null
+  productConfiguration?: string | null
   productName?: string | null
   model?: string | null
   configuration?: string | null
@@ -136,7 +139,7 @@ export async function loadContractPrice(customerId: number, skuId: number) {
 export interface CustomerContractPrice { skuId:number; salePrice:number; skuCode?:string; productName?:string }
 export interface CustomerContract { id?:number; contractNo:string; startDate:string; endDate:string; remark?:string; prices:CustomerContractPrice[] }
 export interface CustomerCommand {
-  customerCode?:string; customerName:string; address?:string
+  customerCode?:string; customerType:'DOMESTIC'|'EXPORT'; customerName:string; address?:string
   businessContactName?:string; businessContactPhone?:string; orderContactName?:string; orderContactPhone?:string
   financeContactName?:string; financeContactPhone?:string; invoiceTitle?:string; taxpayerId?:string
   invoiceAddress?:string; invoicePhone?:string; bankName?:string; bankAccount?:string

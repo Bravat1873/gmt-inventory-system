@@ -165,7 +165,7 @@ onMounted(initialise)
 </script>
 
 <template>
-  <div class="dialog-mask" @click.self="requestClose">
+  <div class="dialog-mask">
     <section class="dialog-card supplier-dialog" role="dialog" aria-modal="true" aria-labelledby="supplier-dialog-title">
       <header><h2 id="supplier-dialog-title">{{ row?.id ? '修改供应商' : '新增供应商' }}</h2><button type="button" :disabled="saving" @click="requestClose">关闭</button></header>
       <form novalidate @submit.prevent="save">
