@@ -48,7 +48,9 @@ const definitions: Record<string, Field[]> = {
     { key: 'role', label: '角色' }
   ],
   product: [
-        { key: 'productCode', label: '产品编号', readOnly: true },
+    { key: 'productCode', label: '产品编号', readOnly: true },
+    { key: 'codeSuffix', label: '编码后缀' },
+    { key: 'eanCode', label: 'EAN码' },
     { key: 'customerCode', label: '客户料号' },
     { key: 'productType', label: '产品分类', required: true, optionCategory: 'PRODUCT_TYPE' },
     { key: 'materialType', label: '物料类型', required: true },
@@ -445,14 +447,20 @@ async function save() {
             <input
               v-else
               v-model="form[field.key]"
-              :data-test="field.key === 'customerCode' ? 'customer-code' : inventoryFieldTestId(field.key)"
+              :data-test="field.key === 'eanCode' ? 'product-ean-code' : field.key === 'codeSuffix' ? 'product-code-suffix' : field.key === 'customerCode' ? 'customer-code' : inventoryFieldTestId(field.key)"
+              :list="field.key === 'codeSuffix' ? 'product-code-suffix-options' : undefined"
               :type="field.type ?? 'text'"
               :autocomplete="fieldAutocomplete(field)"
+              :maxlength="field.key === 'eanCode' ? 12 : undefined"
+              :pattern="field.key === 'eanCode' ? '69[0-9]{10}' : undefined"
               :required="fieldRequired(field)"
               :disabled="(module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice) || (Boolean(row?.id) && ((module === 'customer' && field.key === 'customerCode') || ['username', 'skuCode', 'skuId'].includes(field.key)))"
               step="any"
               @input="field.key === 'actualQuantity' ? onInventoryMetricChange('actual') : field.key === 'availableQuantity' ? onInventoryMetricChange('available') : field.key === 'lockedQuantity' ? onInventoryMetricChange('locked') : field.key === 'inTransitQuantity' ? onInventoryMetricChange('transit') : undefined"
             />
+            <datalist v-if="module === 'product' && field.key === 'codeSuffix'" id="product-code-suffix-options">
+              <option v-for="rule in productCodeRules.filter(item => item.category === 'SUFFIX' && item.enabled)" :key="rule.id" :value="rule.code">{{ rule.displayName }}</option>
+            </datalist>
           </label>
           </template>
         </div>

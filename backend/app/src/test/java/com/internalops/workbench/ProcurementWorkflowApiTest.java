@@ -83,7 +83,7 @@ class ProcurementWorkflowApiTest {
         mvc.perform(post("/api/procurement/manual").cookie(login())
                         .contentType("application/json")
                         .content("""
-                                {"supplierId":201,"skuId":102,"quantity":1,"purchasePrice":10.00,
+                                {"supplierId":201,"skuId":102,"quantity":1,"purchasePrice":10.00,"priceSource":"FACTORY_PRICE",
                                  "expectedArrivalDate":"2026-08-20","remark":"关系校验"}
                                 """))
                 .andExpect(status().isBadRequest())
@@ -249,7 +249,7 @@ class ProcurementWorkflowApiTest {
     private long createManualPurchase(Cookie session, int quantity) throws Exception {
         String body = mvc.perform(post("/api/procurement/manual").cookie(session)
                         .contentType("application/json")
-                        .content("{\"supplierId\":201,\"skuId\":101,\"quantity\":" + quantity + ",\"purchasePrice\":10.00,\"expectedArrivalDate\":\"2026-08-20\"}"))
+                        .content("{\"supplierId\":201,\"skuId\":101,\"quantity\":" + quantity + ",\"purchasePrice\":10.00,\"priceSource\":\"FACTORY_PRICE\",\"expectedArrivalDate\":\"2026-08-20\"}"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return mapper.readTree(body).path("data").path("purchaseId").asLong();

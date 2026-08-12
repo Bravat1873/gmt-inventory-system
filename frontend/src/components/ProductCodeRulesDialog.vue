@@ -9,7 +9,8 @@ const form = reactive({ id: 0, code: '', displayName: '', sortOrder: 10, version
 const categories = [
   ['BRAND','品牌'],['SERIES','系列'],['BODY_COLOR','锁体颜色'],['LOCK_TYPE','锁体类型'],
   ['CONNECTIVITY','联网方式'],['SALES_CHANNEL','销售渠道'],['OPERATING_ENTITY','运营主体'],['LANGUAGE','语言'],
-  ['DOOR_MODEL','成品型号'],['SECURITY_GRADE','安全等级'],['BASE_MATERIAL','主基材料'],['THICKNESS','成品厚度'],['FINISH_COLOR','花色']
+  ['DOOR_MODEL','成品型号'],['SECURITY_GRADE','安全等级'],['BASE_MATERIAL','主基材料'],['THICKNESS','成品厚度'],['FINISH_COLOR','花色'],
+  ['SUFFIX','后缀']
 ] as const
 const current = computed(() => rules.value.filter(rule => rule.category === category.value))
 

@@ -7,6 +7,7 @@ public record ManualPurchaseRequest(
         long supplierId,
         long skuId,
         int quantity,
+        String priceSource,
         BigDecimal purchasePrice,
         LocalDate expectedArrivalDate,
         String remark) {

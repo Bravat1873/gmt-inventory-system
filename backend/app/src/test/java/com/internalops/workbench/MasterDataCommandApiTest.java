@@ -590,4 +590,32 @@ class MasterDataCommandApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("请选择物料类型：成品或零件"));
     }
+    @Test
+    void appendsTrimmedCustomSuffixToProductCode() throws Exception {
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("{\"productName\":\"????\",\"codeSuffix\":\" A \",\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.productCode").value("OLD_000001-A"))
+                .andExpect(jsonPath("$.data.codeSuffix").value("A"));
+    }
+
+    @Test
+    void savesAValidTwelveDigitEanStartingWith69() throws Exception {
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("{\"productName\":\"????\",\"eanCode\":\"690123456789\",\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.eanCode").value("690123456789"));
+    }
+
+    @Test
+    void rejectsInvalidOrDuplicateEan() throws Exception {
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("{\"productName\":\"????\",\"eanCode\":\"680123456789\",\"version\":0}"))
+                .andExpect(status().isBadRequest());
+        jdbc.update("UPDATE sku SET ean_code='690123456789' WHERE id=2");
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("{\"productName\":\"????\",\"eanCode\":\"690123456789\",\"version\":0}"))
+                .andExpect(status().isConflict());
+    }
+
 }

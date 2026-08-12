@@ -361,7 +361,7 @@ public class WorkbenchQueryService {
                 sorts("id", "u.id", "username", "u.username", "displayName", "u.display_name", "updatedAt", "u.updated_at"),
                 "u.updated_at", "u.id DESC"));
         modules.put("product", new ModuleSpec(
-                "SELECT s.id, s.product_code AS `productCode`, s.sku_code AS `customerCode`, s.sku_code AS `skuCode`, s.model, s.product_name AS `productName`, s.color, "
+                "SELECT s.id, s.product_code AS `productCode`, s.code_suffix AS `codeSuffix`, s.ean_code AS `eanCode`, s.sku_code AS `customerCode`, s.sku_code AS `skuCode`, s.model, s.product_name AS `productName`, s.color, "
                         + "s.lock_body AS `lockBody`, s.product_version AS `productVersion`, s.configuration, s.product_configuration AS `productConfiguration`, s.unit, "
                         + "s.brand_rule_id AS `brandRuleId`,s.series_rule_id AS `seriesRuleId`,s.body_color_rule_id AS `bodyColorRuleId`,s.lock_type_rule_id AS `lockTypeRuleId`,"
                         + "s.connectivity_rule_id AS `connectivityRuleId`,s.sales_channel_rule_id AS `salesChannelRuleId`,s.operating_entity_rule_id AS `operatingEntityRuleId`,s.language_rule_id AS `languageRuleId`,"

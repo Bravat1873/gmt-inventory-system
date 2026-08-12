@@ -5,8 +5,8 @@ import ManualPurchaseDialog from './ManualPurchaseDialog.vue'
 const api = vi.hoisted(() => ({
   createManualPurchase: vi.fn().mockResolvedValue({ purchaseNo: 'PO-001' }),
   loadOrderSkus: vi.fn().mockResolvedValue([
-    { id: 101, skuCode: 'P90-001', productName: 'P90 智能锁', model: 'P90', unit: '件' },
-    { id: 102, skuCode: 'P50-001', productName: 'P50 智能锁', model: 'P50', unit: '件' }
+    { id: 101, currentCost: 100, factoryPrice: 120, skuCode: 'P90-001', productName: 'P90 智能锁', model: 'P90', unit: '件' },
+    { id: 102, currentCost: 80, factoryPrice: 95, skuCode: 'P50-001', productName: 'P50 智能锁', model: 'P50', unit: '件' }
   ]),
   loadProductSuppliers: vi.fn().mockResolvedValue([
     { supplierId: 201, supplierName: '贝朗供应商', purchasePrice: 220, moq: 5, leadTimeDays: 7 }
@@ -32,7 +32,10 @@ it('selects a product first and then its configured supplier', async () => {
 
   await supplierSearch.trigger('focus')
   await wrapper.get('[data-test="supplier-option-201"]').trigger('click')
-  expect((wrapper.get('[data-test="purchase-price"]').element as HTMLInputElement).value).toBe('220')
+  const priceSelect = wrapper.get('[data-test="purchase-price"]')
+  expect((priceSelect.element as HTMLSelectElement).value).toBe('')
+  await priceSelect.setValue('CURRENT_COST')
+  expect((priceSelect.element as HTMLSelectElement).value).toBe('CURRENT_COST')
   expect(wrapper.text()).toContain('最小起订量：5')
 
   await productSearch.trigger('focus')

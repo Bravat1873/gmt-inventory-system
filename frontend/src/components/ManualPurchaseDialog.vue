@@ -9,7 +9,7 @@ import {
 } from '../api/workbench'
 
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
-const form = reactive({ quantity: 1, purchasePrice: '', expectedArrivalDate: '', remark: '' })
+const form = reactive({ quantity: 1, purchasePrice: '', priceSource: '', expectedArrivalDate: '', remark: '' })
 const products = ref<OrderSku[]>([])
 const suppliers = ref<ProductSupplierOption[]>([])
 const selectedProduct = ref<OrderSku | null>(null)
@@ -106,6 +106,7 @@ async function selectProduct(product: OrderSku) {
   supplierQuery.value = ''
   suppliers.value = []
   form.purchasePrice = ''
+  form.priceSource = ''
   form.expectedArrivalDate = ''
   errors.product = ''
   errors.supplier = ''
@@ -117,7 +118,6 @@ function selectSupplier(supplier: ProductSupplierOption) {
   selectedSupplier.value = supplier
   supplierQuery.value = supplier.supplierName
   supplierOpen.value = false
-  form.purchasePrice = String(supplier.purchasePrice)
   setExpectedArrival(supplier.leadTimeDays)
   errors.supplier = ''
   errors.purchasePrice = ''
@@ -130,8 +130,9 @@ function validate() {
   const quantity = Number(form.quantity)
   if (!Number.isInteger(quantity) || quantity <= 0) errors.quantity = '采购数量必须是大于 0 的整数'
   if (selectedSupplier.value && quantity < selectedSupplier.value.moq) errors.quantity = `采购数量不能低于最小起订量 ${selectedSupplier.value.moq}`
+  if (!form.priceSource) errors.purchasePrice = '请选择采购价格来源'
   const price = Number(form.purchasePrice)
-  if (!Number.isFinite(price) || price <= 0) errors.purchasePrice = '采购单价必须是大于 0 的有效数字'
+  if (form.priceSource && (!Number.isFinite(price) || price <= 0)) errors.purchasePrice = '所选采购价格必须是大于 0 的有效数字'
   return Object.keys(errors).length === 0
 }
 
@@ -146,6 +147,7 @@ async function save() {
       skuId: selectedProduct.value.id,
       quantity: Number(form.quantity),
       purchasePrice: Number(form.purchasePrice),
+      priceSource: form.priceSource as 'CURRENT_COST' | 'FACTORY_PRICE',
       expectedArrivalDate: form.expectedArrivalDate || undefined,
       remark: form.remark.trim() || undefined
     })
@@ -193,7 +195,7 @@ onMounted(loadProducts)
             <small v-if="errors.supplier" class="field-error">{{ errors.supplier }}</small>
           </label>
           <label><span>采购数量</span><input v-model.number="form.quantity" type="number" min="1" step="1" :aria-invalid="Boolean(errors.quantity)" :disabled="saving"><small v-if="errors.quantity" class="field-error">{{ errors.quantity }}</small></label>
-          <label><span>采购单价</span><input data-test="purchase-price" v-model="form.purchasePrice" type="number" min="0.0001" step="0.0001" :aria-invalid="Boolean(errors.purchasePrice)" :disabled="saving"><small v-if="errors.purchasePrice" class="field-error">{{ errors.purchasePrice }}</small></label>
+          <label><span>采购单价</span><select data-test="purchase-price" v-model="form.priceSource" :disabled="saving || !selectedProduct" @change="form.purchasePrice = form.priceSource === 'CURRENT_COST' ? String(selectedProduct?.currentCost ?? '') : form.priceSource === 'FACTORY_PRICE' ? String(selectedProduct?.factoryPrice ?? '') : ''"><option value="">请选择价格来源</option><option value="CURRENT_COST" :disabled="selectedProduct?.currentCost == null">成本单价（含税）：{{ selectedProduct?.currentCost ?? '未设置' }}</option><option value="FACTORY_PRICE" :disabled="selectedProduct?.factoryPrice == null">转厂价格：{{ selectedProduct?.factoryPrice ?? '未设置' }}</option></select><small v-if="errors.purchasePrice" class="field-error">{{ errors.purchasePrice }}</small></label>
           <label class="date-field"><span>预计到货日期</span><div class="date-picker"><button type="button" class="date-display" :class="{ empty: !form.expectedArrivalDate }" data-test="expected-arrival-display" :disabled="saving" @click="openDatePicker"><span>{{ formattedArrivalDate() }}</span><span class="date-display-icon" aria-hidden="true"></span></button><input ref="dateInput" v-model="form.expectedArrivalDate" class="native-date-input" type="date" :disabled="saving"></div></label>
           <label><span>备注</span><textarea v-model="form.remark" maxlength="500" :disabled="saving"></textarea></label>
         </div>

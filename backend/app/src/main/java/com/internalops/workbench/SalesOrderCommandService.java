@@ -135,7 +135,7 @@ public class SalesOrderCommandService {
 
     public List<Map<String, Object>> skuOptions() {
         return jdbc.query("""
-                SELECT s.id,s.product_code,s.sku_code,s.product_name,s.model,s.product_type,s.product_configuration,s.configuration,s.product_version,s.color,s.lock_body,s.unit,
+                SELECT s.id,s.product_code,s.sku_code,s.product_name,s.model,s.product_type,s.product_configuration,s.configuration,s.product_version,s.color,s.lock_body,s.unit,s.current_cost,s.factory_price,
                        COALESCE(inv.actual_quantity,0) AS actual_quantity,
                        COALESCE(inv.available_quantity,0) AS available_quantity,
                        (SELECT pi.id FROM product_image pi
@@ -155,6 +155,8 @@ public class SalesOrderCommandService {
             item.put("model", rs.getString("model")); item.put("productType", rs.getString("product_type")); item.put("productConfiguration", rs.getString("product_configuration")); item.put("configuration", rs.getString("configuration"));
             item.put("productVersion", rs.getString("product_version")); item.put("color", rs.getString("color"));
             item.put("lockBody", rs.getString("lock_body")); item.put("unit", rs.getString("unit"));
+            item.put("currentCost", rs.getBigDecimal("current_cost"));
+            item.put("factoryPrice", rs.getBigDecimal("factory_price"));
             item.put("primaryImageId", rs.getObject("primary_image_id", Long.class));
             item.put("actualQuantity", rs.getInt("actual_quantity")); item.put("availableQuantity", rs.getInt("available_quantity"));
             return item;

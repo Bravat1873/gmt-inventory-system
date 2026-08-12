@@ -103,6 +103,8 @@ export interface OrderSku {
   id: number
   skuCode?: string | null
   productCode?: string | null
+  currentCost?: number | null
+  factoryPrice?: number | null
   productType?: string | null
   productConfiguration?: string | null
   productName?: string | null
@@ -167,6 +169,7 @@ export interface ManualPurchaseData {
   quantity: number
   purchasePrice: number
   expectedArrivalDate?: string
+  priceSource: 'CURRENT_COST' | 'FACTORY_PRICE'
   remark?: string
 }
 
@@ -308,7 +311,7 @@ export interface ProductCodeRule {
 export type ProductCodeRuleCommand = Omit<ProductCodeRule, 'id'>
 export async function loadProductCodeRules(category?: string) {
   if (category) return request<ProductCodeRule[]>(`/api/product-code-rules?category=${encodeURIComponent(category)}&includeDisabled=true`)
-  const categories = ['BRAND','SERIES','BODY_COLOR','LOCK_TYPE','CONNECTIVITY','SALES_CHANNEL','OPERATING_ENTITY','LANGUAGE','DOOR_MODEL','SECURITY_GRADE','BASE_MATERIAL','THICKNESS','FINISH_COLOR']
+  const categories = ['BRAND','SERIES','BODY_COLOR','LOCK_TYPE','CONNECTIVITY','SALES_CHANNEL','OPERATING_ENTITY','LANGUAGE','DOOR_MODEL','SECURITY_GRADE','BASE_MATERIAL','THICKNESS','FINISH_COLOR','SUFFIX']
   const groups = await Promise.all(categories.map(item => request<ProductCodeRule[]>(`/api/product-code-rules?category=${item}&includeDisabled=true`)))
   return groups.flat()
 }export function createProductCodeRule(data: ProductCodeRuleCommand) {

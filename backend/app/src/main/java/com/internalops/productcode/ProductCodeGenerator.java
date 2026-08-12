@@ -35,6 +35,12 @@ public class ProductCodeGenerator {
         String finish = code(selection.finishColorRuleId(), ProductCodeCategory.FINISH_COLOR);
         return brand + "_" + model + security + material + thickness + finish;
     }
+
+    public String appendSuffix(String baseCode, String suffix) {
+        String normalized = suffix == null ? "" : suffix.trim();
+        return normalized.isEmpty() ? baseCode : baseCode + "-" + normalized;
+    }
+
     private String code(long id, ProductCodeCategory expected) {
         List<Map<String,Object>> rows = jdbc.queryForList("SELECT category,code,enabled FROM product_code_rule WHERE id=?", id);
         if (rows.isEmpty()) throw new IllegalArgumentException("产品编码映射不存在");

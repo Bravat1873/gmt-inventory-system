@@ -1,5 +1,6 @@
 package com.internalops.workbench;
 
+import com.internalops.productcode.ProductCodeCategory;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
@@ -60,6 +61,15 @@ class ProductCodeSchemaTest {
                 .getContentAsString(StandardCharsets.UTF_8);
         assertTrue(sql.contains("ADD COLUMN product_configuration VARCHAR(500) NULL"));
     }
+
+    @Test
+    void productCodeSuffixMigrationAddsTextColumnAndRuleCategory() throws Exception {
+        String sql = new ClassPathResource("db/migration/V36__product_code_suffix.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertTrue(sql.contains("ADD COLUMN code_suffix TEXT NULL"));
+        assertTrue(ProductCodeCategory.valueOf("SUFFIX") == ProductCodeCategory.valueOf("SUFFIX"));
+    }
+
     void entryDoorMigrationAddsProductTypeFiveReferencesAndSeeds() throws Exception {
         String sql = new ClassPathResource("db/migration/V29__entry_door_product_codes.sql")
                 .getContentAsString(StandardCharsets.UTF_8);

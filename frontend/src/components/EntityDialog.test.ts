@@ -416,3 +416,31 @@ it('defaults and submits the product material type while preserving edit values'
   })
   expect((editing.get('[data-test="product-material-type"]').element as HTMLSelectElement).value).toBe('PART')
 })
+it('submits a custom product code suffix suggested by suffix rules', async () => {
+  api.loadProductCodeRules.mockResolvedValue([
+    { id: 90, category: 'SUFFIX', code: 'A', displayName: 'A', enabled: true }
+  ])
+  api.createEntity.mockResolvedValue({ id: 1 })
+  const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE' } })
+  await flushPromises()
+  const input = wrapper.get('[data-test="product-code-suffix"]')
+  expect(input.attributes('list')).toBe('product-code-suffix-options')
+  await input.setValue('???-X')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.createEntity).toHaveBeenCalledWith('product', expect.objectContaining({ codeSuffix: '???-X' }))
+  expect(wrapper.get('#product-code-suffix-options').text()).toContain('A')
+})
+
+it('limits and submits a twelve digit EAN starting with 69', async () => {
+  api.createEntity.mockResolvedValue({ id: 1 })
+  const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE' } })
+  await flushPromises()
+  const input = wrapper.get('[data-test="product-ean-code"]')
+  expect(input.attributes('maxlength')).toBe('12')
+  expect(input.attributes('pattern')).toBe('69[0-9]{10}')
+  await input.setValue('690123456789')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.createEntity).toHaveBeenCalledWith('product', expect.objectContaining({ eanCode: '690123456789' }))
+})

@@ -178,9 +178,15 @@ public class ProcurementWorkflowService {
         if (request.quantity() <= 0) {
             throw new IllegalArgumentException("采购数量必须大于零");
         }
-        BigDecimal purchasePrice = manualPurchasePrice(request.purchasePrice());
         requireExists("supplier", request.supplierId(), "供应商不存在");
         requireExists("sku", request.skuId(), "产品不存在");
+        String priceSource = request.priceSource() == null ? "" : request.priceSource().trim().toUpperCase();
+        if (!"CURRENT_COST".equals(priceSource) && !"FACTORY_PRICE".equals(priceSource)) throw new IllegalArgumentException("请选择采购价格来源");
+        Map<String,Object> skuPrice = jdbc.queryForMap("SELECT current_cost,factory_price FROM sku WHERE id=?", request.skuId());
+        BigDecimal purchasePrice = (BigDecimal) val(skuPrice, "current_cost");
+        if ("FACTORY_PRICE".equals(priceSource)) purchasePrice = (BigDecimal) val(skuPrice, "factory_price");
+        if (purchasePrice == null) throw new IllegalArgumentException("所选采购价格尚未设置");
+        if (request.purchasePrice() == null || purchasePrice.compareTo(request.purchasePrice()) != 0) throw new IllegalArgumentException("采购价格与产品当前价格不一致");
         Integer relationCount = jdbc.queryForObject("""
                         SELECT COUNT(*) FROM sku_supplier_config
                         WHERE supplier_id=? AND sku_id=? AND enabled=TRUE
@@ -205,10 +211,10 @@ public class ProcurementWorkflowService {
                 purchaseNo, request.supplierId(), total, request.expectedArrivalDate(), request.remark());
         jdbc.update("""
                         INSERT INTO purchase_order_item(
-                            purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price)
-                        VALUES(?,1,?,?,0,?)
+                            purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price,price_source)
+                        VALUES(?,1,?,?,0,?,?)
                         """,
-                purchaseId, request.skuId(), request.quantity(), purchasePrice);
+                purchaseId, request.skuId(), request.quantity(), purchasePrice, priceSource);
         increaseTransit(request.skuId(), request.quantity(), purchaseNo);
         return Map.of(
                 "purchaseId", purchaseId,
