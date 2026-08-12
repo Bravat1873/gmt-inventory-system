@@ -401,12 +401,12 @@ public class WorkbenchQueryService {
                 "SELECT b.id, b.sku_id AS `skuId`, s.sku_code AS `skuCode`, s.model, s.configuration, s.product_version AS `productVersion`, s.color, s.lock_body AS `lockBody`, s.unit, "
                         + "b.actual_quantity AS `actualQuantity`, b.locked_quantity AS `lockedQuantity`, "
 
-                        + "(b.actual_quantity+b.in_transit_quantity-b.locked_quantity) AS `availableQuantity`, b.in_transit_quantity AS `inTransitQuantity`, "
+                        + "(b.actual_quantity-b.locked_quantity) AS `availableQuantity`, b.in_transit_quantity AS `inTransitQuantity`, "
                         + "(SELECT COUNT(*) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.business_type='EXCEL_IMPORT_HISTORY') AS `movementCount`, "
                         + "b.source_supplier_name AS `sourceSupplierName`, b.inventory_remark AS `inventoryRemark`, b.updated_at AS `updatedAt`, b.version",
                 "FROM inventory_balance b JOIN sku s ON s.id=b.sku_id",
                 "LOCATE(?, COALESCE(s.sku_code,''))>0 OR LOCATE(?, COALESCE(s.model,''))>0 OR LOCATE(?, COALESCE(s.configuration,''))>0 OR LOCATE(?, COALESCE(b.source_supplier_name,''))>0", 4,
-                sorts("id", "b.id", "skuCode", "s.sku_code", "model", "s.model", "actualQuantity", "b.actual_quantity", "availableQuantity", "(b.actual_quantity+b.in_transit_quantity-b.locked_quantity)", "updatedAt", "b.updated_at"),
+                sorts("id", "b.id", "skuCode", "s.sku_code", "model", "s.model", "actualQuantity", "b.actual_quantity", "availableQuantity", "(b.actual_quantity-b.locked_quantity)", "updatedAt", "b.updated_at"),
                 "b.updated_at", "b.id DESC"));
         String purchaseView = "FROM ("
                 + "SELECT po.id, 'PURCHASE' AS record_type, po.purchase_no, po.supplier_id, sp.supplier_name, "

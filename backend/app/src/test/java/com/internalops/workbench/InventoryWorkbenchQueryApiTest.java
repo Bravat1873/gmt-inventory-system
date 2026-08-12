@@ -49,6 +49,15 @@ class InventoryWorkbenchQueryApiTest {
     }
 
     @Test
+    void excludesInTransitStockFromAvailableQuantity() throws Exception {
+        mvc.perform(get("/api/workbench/inventory?sort=id&direction=asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].actualQuantity").value(20))
+                .andExpect(jsonPath("$.data.items[0].lockedQuantity").value(15))
+                .andExpect(jsonPath("$.data.items[0].inTransitQuantity").value(5))
+                .andExpect(jsonPath("$.data.items[0].availableQuantity").value(5));
+    }
+    @Test
     void normalizesRealExcelOutboundAndIgnoresInitialImportSnapshotForFifoAge() throws Exception {
         mvc.perform(get("/api/workbench/inventory"))
                 .andExpect(status().isOk())

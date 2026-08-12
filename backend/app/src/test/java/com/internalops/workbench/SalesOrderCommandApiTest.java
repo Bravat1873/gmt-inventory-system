@@ -28,7 +28,7 @@ class SalesOrderCommandApiTest {
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].primaryImageId").value(91))
                 .andExpect(jsonPath("$.data[0].actualQuantity").value(15))
-                .andExpect(jsonPath("$.data[0].availableQuantity").value(17))
+                .andExpect(jsonPath("$.data[0].availableQuantity").value(11))
                 .andExpect(jsonPath("$.data[1].primaryImageId").doesNotExist())
                 .andExpect(jsonPath("$.data[1].actualQuantity").value(0))
                 .andExpect(jsonPath("$.data[1].availableQuantity").value(0));

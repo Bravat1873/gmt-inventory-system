@@ -144,7 +144,7 @@ public class SalesOrderCommandService {
                 FROM sku s
                 LEFT JOIN (
                     SELECT sku_id,SUM(actual_quantity) AS actual_quantity,
-                           SUM(actual_quantity+in_transit_quantity-locked_quantity) AS available_quantity
+                           SUM(actual_quantity-locked_quantity) AS available_quantity
                     FROM inventory_balance GROUP BY sku_id
                 ) inv ON inv.sku_id=s.id
                 WHERE s.enabled=TRUE
