@@ -317,7 +317,7 @@ it('库存弹窗使用页面库存字段而不暴露内部调整原因', () => {
 
   expect(wrapper.text()).toContain('产品编号')
   expect(wrapper.text()).toContain('实际库存数量')
-  expect(wrapper.text()).toContain('可用库存数量')
+  expect(wrapper.text()).toContain('未锁定库存数量')
   expect(wrapper.text()).toContain('已锁定数量')
   expect(wrapper.text()).not.toContain('入/出库摘要')
   expect(wrapper.get('[data-test="add-inventory-movement"]').text()).toContain('新增明细')
@@ -443,4 +443,16 @@ it('limits and submits a twelve digit EAN starting with 69', async () => {
   await wrapper.get('form').trigger('submit')
   await flushPromises()
   expect(api.createEntity).toHaveBeenCalledWith('product', expect.objectContaining({ eanCode: '690123456789' }))
+})
+it('shows unlocked stock and read-only supply-demand values in inventory editor', async () => {
+  const wrapper = mount(EntityDialog, { props: { module: 'inventory', row: {
+    id: 7, skuId: 1, skuCode: 'P50', actualQuantity: 20, availableQuantity: 10,
+    lockedQuantity: 10, inTransitQuantity: 4, pendingDeliveryQuantity: 25,
+    supplyDemandBalance: -1, version: 2
+  } } })
+  await flushPromises()
+  expect(wrapper.text()).toContain('未锁定库存数量')
+  expect(wrapper.text()).not.toContain('可用库存数量')
+  expect(wrapper.get('[data-test="inventory-pending-delivery-quantity"]').attributes('disabled')).toBeDefined()
+  expect(wrapper.get('[data-test="inventory-supply-demand-balance"]').attributes('disabled')).toBeDefined()
 })

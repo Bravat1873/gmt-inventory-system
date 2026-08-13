@@ -78,3 +78,11 @@ it('keeps location allocations out of the extensible inventory table', () => {
   ]))
   expect(inventory.columns).not.toEqual(expect.arrayContaining(['铭爱钧乔', '博乐龙米', '老挝', '贝朗', '马来西亚']))
 })
+it('labels unlocked stock and places demand metrics after in-transit stock', () => {
+  const inventory = moduleDefinitions.find(item => item.key === 'inventory')!
+  const availableIndex = inventory.fields.indexOf('availableQuantity')
+  const transitIndex = inventory.fields.indexOf('inTransitQuantity')
+  expect(inventory.columns[availableIndex]).toBe('未锁定库存数量')
+  expect(inventory.fields.slice(transitIndex, transitIndex + 3)).toEqual(['inTransitQuantity', 'pendingDeliveryQuantity', 'supplyDemandBalance'])
+  expect(inventory.columns.slice(transitIndex, transitIndex + 3)).toEqual(['在途数量', '待交订单数量', '供需余量'])
+})

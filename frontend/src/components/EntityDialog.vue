@@ -83,9 +83,11 @@ const definitions: Record<string, Field[]> = {
     { key: 'configuration', label: '物料规格', multiline: true, readOnly: true },
     { key: 'unit', label: '单位' },
     { key: 'actualQuantity', label: '实际库存数量', type: 'number', required: true },
-    { key: 'availableQuantity', label: '可用库存数量', type: 'number' },
+    { key: 'availableQuantity', label: '未锁定库存数量', type: 'number' },
     { key: 'lockedQuantity', label: '已锁定数量', type: 'number' },
     { key: 'inTransitQuantity', label: '在途数量', type: 'number', required: true },
+    { key: 'pendingDeliveryQuantity', label: '待交订单数量', type: 'number', readOnly: true },
+    { key: 'supplyDemandBalance', label: '供需余量', type: 'number', readOnly: true },
     { key: 'sourceSupplierName', label: '供应商' },
     { key: 'inventoryRemark', label: '备注', multiline: true }
   ]
@@ -233,7 +235,8 @@ function inventoryFieldTestId(key: string) {
   const names: Record<string, string> = {
     model: 'inventory-model', productType: 'inventory-product-type', productConfiguration: 'inventory-product-configuration', configuration: 'inventory-configuration', color: 'inventory-color',
     lockBody: 'inventory-lock-body', unit: 'inventory-unit', actualQuantity: 'inventory-actual-quantity',
-    availableQuantity: 'inventory-available-quantity', lockedQuantity: 'inventory-locked-quantity'
+    availableQuantity: 'inventory-available-quantity', lockedQuantity: 'inventory-locked-quantity',
+    pendingDeliveryQuantity: 'inventory-pending-delivery-quantity', supplyDemandBalance: 'inventory-supply-demand-balance'
   }
   return names[key]
 }

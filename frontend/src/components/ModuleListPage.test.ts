@@ -149,3 +149,12 @@ it('shows only the edit action for inventory rows', async () => {
   expect(actions.text()).toBe('修改')
   expect(actions.find('[data-test="inventory-details"]').exists()).toBe(false)
 })
+it('highlights negative inventory supply-demand balance as a purchase shortage', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, supplyDemandBalance: -6, purchaseShortageQuantity: 6 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'inventory')! } })
+  await flushPromises()
+  const balance = wrapper.get('[data-test="supply-demand-balance"]')
+  expect(balance.classes()).toContain('negative')
+  expect(balance.text()).toContain('-6')
+  expect(balance.text()).toContain('采购缺口 6')
+})
