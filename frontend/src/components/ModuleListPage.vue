@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import type { UserRole } from '../api/auth'
-import { loadModule, type PageResult } from '../api/workbench'
+import { loadModule, type PageResult, type SupplierQuote } from '../api/workbench'
 import type { ModuleDefinition } from '../modules/module-config'
 import OverflowText from './OverflowText.vue'
 
@@ -29,6 +29,8 @@ function text(value: unknown, field?: string) {
   const afterSales: Record<string,string> = { RETURN:'退货', EXCHANGE:'换货', WAITING_RETURN:'待收退货', RETURN_RECEIVED:'已收退货', WAITING_REPLACEMENT:'待发换货', COMPLETED:'已完成', CANCELLED:'已取消' }
   return afterSales[String(value)] ?? statuses[String(value)] ?? String(value)
 }
+function supplierQuotes(row: Record<string, unknown>) { return Array.isArray(row.supplierQuotes) ? row.supplierQuotes as SupplierQuote[] : [] }
+function quotePrice(value: number) { return Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 }) }
 function shipmentCompleted(row: Record<string, unknown>) {
   return props.module.key === 'purchase'
     ? Number(row.remainingQuantity ?? 1) <= 0 || ['RECEIVED', 'COMPLETED'].includes(String(row.status))
@@ -48,6 +50,7 @@ function productImageUrl(row: Record<string, unknown>) {
 }
 function columnWidth(field: string) {
   if (field === 'productImage') return 84
+  if (field === 'supplierQuotes') return 260
   const widths: Record<string, number> = { skuCode: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 160, purchaseNo: 160, businessNo: 160, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, oldestStockDate: 170, inventoryAgeDays: 90, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 140, lockedQuantity: 130, inTransitQuantity: 130, pendingDeliveryQuantity: 130, supplyDemandBalance: 170, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
   return widths[field] ?? 150
 }
@@ -89,6 +92,7 @@ defineExpose({ reload: () => load(data.value.page) })
                   <span v-else class="product-thumbnail-empty">暂无图片</span>
                   <span v-if="Number(row.imageCount ?? 0) > 1" class="product-image-count" data-test="product-image-count">{{ Number(row.imageCount) }}</span>
                 </button>
+                <span v-else-if="module.key === 'product' && field === 'supplierQuotes'" data-test="supplier-quotes" class="supplier-quotes"><span v-for="quote in supplierQuotes(row)" :key="quote.supplierId">{{ quote.supplierName }}：¥{{ quotePrice(quote.purchasePrice) }}</span><span v-if="!supplierQuotes(row).length">—</span></span>
                 <span v-else-if="['order', 'purchase'].includes(module.key) && field === 'status'" class="order-shipment-status"><i class="shipment-status-dot" :class="shipmentCompleted(row) ? 'complete' : 'incomplete'"></i><OverflowText :value="text(row[field], field)" /></span>
                 <span v-else-if="module.key === 'finance' && field === 'businessType'" data-test="finance-direction" class="finance-direction" :class="isReceivable(row) ? 'receivable' : 'payable'" :aria-label="isReceivable(row) ? '收款' : '付款'"><i aria-hidden="true"></i><OverflowText :value="text(row[field], field)" /></span>
                 <span v-else-if="module.key === 'inventory' && field === 'supplyDemandBalance'" data-test="supply-demand-balance" class="supply-demand-balance" :class="{ negative: Number(row[field]) < 0 }"><OverflowText :value="text(row[field], field)" /><small v-if="Number(row[field]) < 0">采购缺口 {{ Number(row.purchaseShortageQuantity ?? Math.abs(Number(row[field]))) }}</small></span>

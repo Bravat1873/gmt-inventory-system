@@ -91,6 +91,26 @@ class SupplierManagementApiTest {
     }
 
     @Test
+    void allowsTheSameProductToBeQuotedByMultipleSuppliers() throws Exception {
+        Cookie session = login();
+        mvc.perform(post("/api/suppliers").cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"supplierName":"第二供应商","products":[{"skuId":101,"purchasePrice":230.0000,"moq":8,"leadTimeDays":12}]}
+                                """))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/products/101/suppliers").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].supplierName").value("第二供应商"))
+                .andExpect(jsonPath("$.data[1].supplierName").value("贝朗供应商"));
+
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM sku_supplier_config WHERE sku_id=101 AND enabled=TRUE", Integer.class))
+                .isEqualTo(2);
+    }
+    @Test
     void createsSupplierWithTheCompleteProfileAndPreservesPhoneTaxAndAccountText() throws Exception {
         Cookie session = login();
         String response = mvc.perform(post("/api/suppliers").cookie(session)

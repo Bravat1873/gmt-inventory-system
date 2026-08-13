@@ -82,9 +82,9 @@ public class SupplierManagementService {
             int changed = jdbc.update("""
                             UPDATE sku_supplier_config
                             SET supplier_id=?,purchase_price=?,moq=?,lead_time_days=?,enabled=TRUE,version=version+1
-                            WHERE sku_id=?
+                            WHERE sku_id=? AND supplier_id=?
                             """,
-                    supplierId, price(config), config.moq(), config.leadTimeDays(), config.skuId());
+                    supplierId, price(config), config.moq(), config.leadTimeDays(), config.skuId(), supplierId);
             if (changed == 0) {
                 jdbc.update("""
                                 INSERT INTO sku_supplier_config(sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled)

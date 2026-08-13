@@ -146,17 +146,49 @@ public class WorkbenchQueryService {
             }).toList();
         }
         if ("product".equals(module)) {
+            Map<Long, List<Map<String, Object>>> quotesBySku = supplierQuotes(items);
             items = items.stream().map(row -> {
                 Map<String, Object> item = new LinkedHashMap<>(row);
                 Object primaryImageId = item.get("primaryImageId");
                 item.put("primaryImageUrl", primaryImageId == null
                         ? null : "/api/product-images/" + primaryImageId + "/content");
+                List<Map<String, Object>> quotes = quotesBySku.getOrDefault(((Number) item.get("id")).longValue(), List.of());
+                item.put("supplierQuotes", quotes);
+                if (!quotes.isEmpty()) {
+                    Map<String, Object> first = quotes.get(0);
+                    item.put("supplierId", first.get("supplierId"));
+                    item.put("supplierName", first.get("supplierName"));
+                    item.put("purchasePrice", first.get("purchasePrice"));
+                    item.put("moq", first.get("moq"));
+                    item.put("leadTimeDays", first.get("leadTimeDays"));
+                }
                 return item;
             }).toList();
         }
         return PageResult.of(items, total == null ? 0 : total, query.page());
     }
 
+    private Map<Long, List<Map<String, Object>>> supplierQuotes(List<Map<String, Object>> products) {
+        Map<Long, List<Map<String, Object>>> result = new LinkedHashMap<>();
+        List<Long> skuIds = products.stream().map(item -> ((Number) item.get("id")).longValue()).toList();
+        if (skuIds.isEmpty()) return result;
+        String placeholders = String.join(",", skuIds.stream().map(id -> "?").toList());
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT cfg.sku_id AS `skuId`,sp.id AS `supplierId`,sp.supplier_name AS `supplierName`,
+                       cfg.purchase_price AS `purchasePrice`,cfg.moq,cfg.lead_time_days AS `leadTimeDays`
+                FROM sku_supplier_config cfg
+                JOIN supplier sp ON sp.id=cfg.supplier_id
+                JOIN sku s ON s.id=cfg.sku_id
+                WHERE cfg.enabled=TRUE AND sp.enabled=TRUE AND s.enabled=TRUE
+                  AND cfg.sku_id IN (%s)
+                ORDER BY sp.supplier_name,sp.id
+                """.formatted(placeholders), skuIds.toArray()).stream().map(this::normalizeKeys).toList();
+        for (Map<String, Object> row : rows) {
+            long skuId = ((Number) row.remove("skuId")).longValue();
+            result.computeIfAbsent(skuId, ignored -> new ArrayList<>()).add(row);
+        }
+        return result;
+    }
     private Map<String, Object> normalizeKeys(Map<String, Object> row) {
         Map<String, Object> normalized = new LinkedHashMap<>();
         row.forEach((key, value) -> normalized.put(CAMEL_KEYS.getOrDefault(key.toLowerCase(), key), value));
@@ -381,10 +413,8 @@ public class WorkbenchQueryService {
                         + "s.current_cost AS `currentCost`, s.factory_price AS `factoryPrice`, s.sales_minimum_order_quantity AS `salesMinimumOrderQuantity`, (s.factory_price-s.current_cost) AS `priceDifference`, s.product_remark AS remark, s.enabled, s.updated_at AS `updatedAt`, s.version, "
                         + "(SELECT COUNT(*) FROM product_image pi WHERE pi.product_id=s.id) AS `imageCount`, "
                         + "(SELECT pi.id FROM product_image pi WHERE pi.product_id=s.id AND pi.is_primary=TRUE LIMIT 1) AS `primaryImageId`, "
-                        + "ssc.supplier_id AS `supplierId`, sp.supplier_name AS `supplierName`, ssc.purchase_price AS `purchasePrice`, "
-                        + "ssc.moq, ssc.lead_time_days AS `leadTimeDays`",
-                "FROM sku s LEFT JOIN sku_supplier_config ssc ON ssc.sku_id=s.id AND ssc.enabled=TRUE "
-                        + "LEFT JOIN supplier sp ON sp.id=ssc.supplier_id "
+                        + "NULL AS `supplierId`, NULL AS `supplierName`, NULL AS `purchasePrice`, NULL AS moq, NULL AS `leadTimeDays`",
+                "FROM sku s "
                         + "LEFT JOIN product_code_rule br ON br.id=s.brand_rule_id LEFT JOIN product_code_rule sr ON sr.id=s.series_rule_id "
                         + "LEFT JOIN product_code_rule bcr ON bcr.id=s.body_color_rule_id LEFT JOIN product_code_rule ltr ON ltr.id=s.lock_type_rule_id "
                         + "LEFT JOIN product_code_rule cr ON cr.id=s.connectivity_rule_id LEFT JOIN product_code_rule scr ON scr.id=s.sales_channel_rule_id "

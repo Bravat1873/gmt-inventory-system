@@ -67,12 +67,27 @@ class WorkbenchQueryApiTest {
     }
 
     @Test
-    void supplierListAndTotalExcludeDisabledSuppliers() throws Exception {
-        mvc.perform(get("/api/workbench/supplier"))
+    void productRowsExposeAllActiveSupplierQuotesWithoutDuplication() throws Exception {
+        mvc.perform(get("/api/workbench/product").param("keyword", "GALLERY-WITH-IMAGES"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
-                .andExpect(jsonPath("$.data.items[0].supplierCode").value("SUP-ACTIVE"));
+                .andExpect(jsonPath("$.data.items[0].supplierQuotes.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].supplierQuotes[0].supplierId").value(201))
+                .andExpect(jsonPath("$.data.items[0].supplierQuotes[0].supplierName").value("Active supplier"))
+                .andExpect(jsonPath("$.data.items[0].supplierQuotes[0].purchasePrice").value(100))
+                .andExpect(jsonPath("$.data.items[0].supplierQuotes[1].supplierId").value(203))
+                .andExpect(jsonPath("$.data.items[0].supplierQuotes[1].supplierName").value("Second supplier"))
+                .andExpect(jsonPath("$.data.items[0].supplierQuotes[1].purchasePrice").value(105));
+    }
+    @Test
+    void supplierListAndTotalExcludeDisabledSuppliers() throws Exception {
+        mvc.perform(get("/api/workbench/supplier"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].supplierCode").value("SUP-SECOND"))
+                .andExpect(jsonPath("$.data.items[1].supplierCode").value("SUP-ACTIVE"));
     }
     @Test
     void rejectsUnknownSortFieldWithChineseMessage() throws Exception {

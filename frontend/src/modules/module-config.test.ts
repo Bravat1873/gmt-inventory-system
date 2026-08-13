@@ -86,3 +86,10 @@ it('labels unlocked stock and places demand metrics after in-transit stock', () 
   expect(inventory.fields.slice(transitIndex, transitIndex + 3)).toEqual(['inTransitQuantity', 'pendingDeliveryQuantity', 'supplyDemandBalance'])
   expect(inventory.columns.slice(transitIndex, transitIndex + 3)).toEqual(['在途数量', '未发货数量', '供需余量'])
 })
+it('replaces fixed product price columns with supplier quotes while keeping sales minimum', () => {
+  const product = moduleDefinitions.find(item => item.key === 'product')!
+  expect(product.fields).toContain('supplierQuotes')
+  expect(product.columns[product.fields.indexOf('supplierQuotes')]).toBe('供应商报价')
+  expect(product.fields).toContain('salesMinimumOrderQuantity')
+  expect(product.fields).not.toEqual(expect.arrayContaining(['currentCost', 'factoryPrice', 'priceDifference']))
+})

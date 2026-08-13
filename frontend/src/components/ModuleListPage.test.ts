@@ -158,3 +158,17 @@ it('highlights negative inventory supply-demand balance as a purchase shortage',
   expect(balance.text()).toContain('-6')
   expect(balance.text()).toContain('采购缺口 6')
 })
+it('renders every supplier quote on its own line in the product list', async () => {
+  loadModule.mockResolvedValue({
+    items: [{ id: 7, supplierQuotes: [
+      { supplierId: 1, supplierName: '供应商甲', purchasePrice: 100 },
+      { supplierId: 2, supplierName: '供应商乙', purchasePrice: 105.5 }
+    ] }],
+    total: 1, page: 1, pageSize: 10, totalPages: 1
+  })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')! } })
+  await flushPromises()
+
+  const quotes = wrapper.get('[data-test="supplier-quotes"]')
+  expect(quotes.findAll('span').map(item => item.text())).toEqual(['供应商甲：¥100', '供应商乙：¥105.5'])
+})

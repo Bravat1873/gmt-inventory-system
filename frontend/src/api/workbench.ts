@@ -1,3 +1,9 @@
+export interface SupplierQuote {
+  supplierId: number
+  supplierName: string
+  purchasePrice: number
+}
+
 export interface PageResult {
   items: Record<string, unknown>[]
   total: number
