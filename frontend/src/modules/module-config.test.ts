@@ -40,14 +40,6 @@ it('places oldest stock date and inventory age after the available inventory qua
   expect(inventory.columns.slice(availableIndex + 1, availableIndex + 3)).toEqual(['最早在库日期', '库龄'])
 })
 
-it('does not offer sorting for inventory age fields without backend sort support', () => {
-  const inventory = moduleDefinitions.find(item => item.key === 'inventory')!
-  const oldestStockDateIndex = inventory.fields.indexOf('oldestStockDate')
-  const inventoryAgeDaysIndex = inventory.fields.indexOf('inventoryAgeDays')
-
-  expect(inventory.sortable[oldestStockDateIndex]).toBe('')
-  expect(inventory.sortable[inventoryAgeDaysIndex]).toBe('')
-})
 
 it('prepends the non-sortable product image gallery column', () => {
   const product = moduleDefinitions.find(item => item.key === 'product')!
@@ -92,4 +84,26 @@ it('replaces fixed product price columns with supplier quotes while keeping sale
   expect(product.columns[product.fields.indexOf('supplierQuotes')]).toBe('供应商报价')
   expect(product.fields).toContain('salesMinimumOrderQuantity')
   expect(product.fields).not.toEqual(expect.arrayContaining(['currentCost', 'factoryPrice', 'priceDifference']))
+})
+it('enables sorting for short management fields and excludes long display fields', () => {
+  const expected: Record<string, string[]> = {
+    customer: ['customerCode', 'customerName', 'orderContactName', 'orderContactPhone', 'contractStatus', 'contractEndDate', 'updatedAt'],
+    user: ['username', 'displayName', 'role', 'updatedAt'],
+    product: ['productCode', 'customerCode', 'brand', 'model', 'productType', 'materialType', 'salesMinimumOrderQuantity', 'updatedAt'],
+    supplier: ['manufacturerCategory', 'manufacturerType', 'supplierLocation', 'productAttribute', 'shortName', 'supplierName', 'contactName', 'contactTitle', 'phone', 'currency', 'taxRegistrationNo', 'bankAddress', 'bankAccount', 'productCount', 'updatedAt'],
+    order: ['orderNo', 'customerName', 'totalAmount', 'status', 'orderDate', 'salesperson', 'createdAt', 'updatedAt'],
+    afterSales: ['afterSalesNo', 'orderNo', 'customerName', 'afterSalesType', 'returnQuantity', 'replacementQuantity', 'status', 'applicationDate', 'updatedAt'],
+    inventory: ['productCode', 'model', 'productType', 'unit', 'actualQuantity', 'availableQuantity', 'oldestStockDate', 'inventoryAgeDays', 'lockedQuantity', 'inTransitQuantity', 'pendingDeliveryQuantity', 'supplyDemandBalance', 'sourceSupplierName', 'updatedAt'],
+    purchase: ['purchaseNo', 'supplierName', 'totalAmount', 'paymentStatus', 'receiptStatus', 'status', 'expectedArrivalDate', 'updatedAt'],
+    finance: ['businessNo', 'businessType', 'counterparty', 'amount', 'settledAmount', 'outstandingAmount', 'status', 'updatedAt']
+  }
+  for (const [key, fields] of Object.entries(expected)) {
+    const module = moduleDefinitions.find(item => item.key === key)!
+    for (const field of fields) expect(module.sortable[module.fields.indexOf(field)], `${key}.${field}`).toBe(field)
+  }
+  const excluded = ['productImage', 'remark', 'address', 'configuration', 'productConfiguration', 'supplierQuotes', 'productSummary']
+  for (const module of moduleDefinitions) for (const field of excluded) {
+    const index = module.fields.indexOf(field)
+    if (index >= 0) expect(module.sortable[index], `${module.key}.${field}`).toBe('')
+  }
 })

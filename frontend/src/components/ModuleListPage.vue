@@ -67,6 +67,7 @@ function columnWidth(field: string) {
 const actionColumnWidth = computed(() => {
   if (props.module.key === 'order') return 390
   if (props.module.key === 'purchase') return 240
+  if (props.module.key === 'afterSales') return 300
   if (props.module.key === 'finance') return 210
   return 110
 })

@@ -34,11 +34,6 @@ export function useGlobalDialogCloseGuard() {
       if (!button.classList.contains('primary-action')) dirtyDialogs.add(dialog)
       return
     }
-    if (dialog.querySelector('.primary-action:disabled')) {
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      return
-    }
     if (dirtyDialogs.has(dialog) && !window.confirm('当前修改尚未保存，确定放弃吗？')) {
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -46,14 +41,24 @@ export function useGlobalDialogCloseGuard() {
     }
     dirtyDialogs.delete(dialog)
   }
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape') return
+    const dialogs = Array.from(document.querySelectorAll<HTMLElement>('.dialog-card'))
+    const closeButton = dialogs.at(-1)?.querySelector<HTMLButtonElement>('[data-dialog-close], header button')
+    if (!closeButton || closeButton.disabled) return
+    event.preventDefault()
+    closeButton.click()
+  }
   onMounted(() => {
     document.addEventListener('input', markDirty, true)
     document.addEventListener('change', markDirty, true)
     document.addEventListener('click', handleClick, true)
+    document.addEventListener('keydown', handleKeydown, true)
   })
   onUnmounted(() => {
     document.removeEventListener('input', markDirty, true)
     document.removeEventListener('change', markDirty, true)
     document.removeEventListener('click', handleClick, true)
+    document.removeEventListener('keydown', handleKeydown, true)
   })
 }

@@ -396,12 +396,12 @@ public class WorkbenchQueryService {
                         + "(SELECT MAX(cc2.end_date) FROM customer_contract cc2 WHERE cc2.customer_id=c.id AND cc2.enabled=TRUE) AS `contractEndDate`, "
                         + "c.enabled, c.updated_at AS `updatedAt`, c.version",
                 "FROM customer c", "LOCATE(?, COALESCE(c.customer_code,''))>0 OR LOCATE(?, COALESCE(c.customer_name,''))>0 OR LOCATE(?, COALESCE(c.order_contact_name,''))>0 OR LOCATE(?, COALESCE(c.order_contact_phone,''))>0", 4,
-                sorts("id", "c.id", "customerCode", "c.customer_code", "customerName", "c.customer_name", "updatedAt", "c.updated_at"),
+                sorts("id", "c.id", "customerCode", "c.customer_code", "customerName", "c.customer_name", "orderContactName", "c.order_contact_name", "orderContactPhone", "c.order_contact_phone", "contractStatus", "CASE WHEN NOT EXISTS(SELECT 1 FROM customer_contract cc0 WHERE cc0.customer_id=c.id AND cc0.enabled=TRUE) THEN 10 WHEN EXISTS(SELECT 1 FROM customer_contract cc1 WHERE cc1.customer_id=c.id AND cc1.enabled=TRUE AND CURRENT_DATE BETWEEN cc1.start_date AND cc1.end_date) THEN 20 ELSE 30 END", "contractEndDate", "(SELECT MAX(cc2.end_date) FROM customer_contract cc2 WHERE cc2.customer_id=c.id AND cc2.enabled=TRUE)", "updatedAt", "c.updated_at"),
                 "c.updated_at", "c.id DESC"));
         modules.put("user", new ModuleSpec(
                 "SELECT u.id, u.username, u.display_name AS `displayName`, u.phone, u.enabled, u.role, u.updated_at AS `updatedAt`, u.version",
                 "FROM sys_user u", "LOCATE(?, COALESCE(u.username,''))>0 OR LOCATE(?, COALESCE(u.display_name,''))>0 OR LOCATE(?, COALESCE(u.phone,''))>0", 3,
-                sorts("id", "u.id", "username", "u.username", "displayName", "u.display_name", "updatedAt", "u.updated_at"),
+                sorts("id", "u.id", "username", "u.username", "displayName", "u.display_name", "role", "CASE u.role WHEN 'ADMIN' THEN 10 WHEN 'FINANCE' THEN 20 WHEN 'USER' THEN 30 ELSE 999 END", "updatedAt", "u.updated_at"),
                 "u.updated_at", "u.id DESC"));
         modules.put("product", new ModuleSpec(
                 "SELECT s.id, s.product_code AS `productCode`, s.code_suffix AS `codeSuffix`, s.ean_code AS `eanCode`, s.sku_code AS `customerCode`, s.sku_code AS `skuCode`, s.model, s.product_name AS `productName`, s.color, "
@@ -420,7 +420,7 @@ public class WorkbenchQueryService {
                         + "LEFT JOIN product_code_rule cr ON cr.id=s.connectivity_rule_id LEFT JOIN product_code_rule scr ON scr.id=s.sales_channel_rule_id "
                         + "LEFT JOIN product_code_rule oer ON oer.id=s.operating_entity_rule_id LEFT JOIN product_code_rule lr ON lr.id=s.language_rule_id LEFT JOIN product_code_rule dmr ON dmr.id=s.door_model_rule_id",
                 "LOCATE(?, COALESCE(s.product_code,''))>0 OR LOCATE(?, COALESCE(s.sku_code,''))>0 OR LOCATE(?, COALESCE(br.display_name,''))>0 OR LOCATE(?, COALESCE(br.code,''))>0 OR LOCATE(?, COALESCE(sr.display_name,''))>0 OR LOCATE(?, COALESCE(sr.code,''))>0 OR LOCATE(?, COALESCE(s.product_name,''))>0 OR LOCATE(?, COALESCE(s.configuration,''))>0", 8,
-                sorts("id", "s.id", "productCode", "s.product_code", "customerCode", "s.sku_code", "skuCode", "s.sku_code", "model", "s.model", "productName", "s.product_name", "currentCost", "s.current_cost", "factoryPrice", "s.factory_price", "priceDifference", "(s.factory_price-s.current_cost)", "updatedAt", "s.updated_at"),
+                sorts("id", "s.id", "productCode", "s.product_code", "customerCode", "s.sku_code", "skuCode", "s.sku_code", "brand", "br.display_name", "model", "s.model", "productName", "s.product_name", "productType", "CASE s.product_type WHEN 'SMART_LOCK' THEN 10 WHEN 'ENTRY_DOOR' THEN 20 ELSE 999 END", "materialType", "CASE s.material_type WHEN 'FINISHED_PRODUCT' THEN 10 WHEN 'PART' THEN 20 ELSE 999 END", "salesMinimumOrderQuantity", "s.sales_minimum_order_quantity", "updatedAt", "s.updated_at"),
                 "s.updated_at", "s.id DESC"));        modules.put("supplier", new ModuleSpec(
                 "SELECT sp.id,sp.supplier_code AS `supplierCode`,sp.supplier_name AS `supplierName`,"
                         + "sp.manufacturer_category AS `manufacturerCategory`,sp.manufacturer_type AS `manufacturerType`,"
@@ -432,7 +432,7 @@ public class WorkbenchQueryService {
                         + "sp.updated_at AS `updatedAt`,sp.version",
                 "FROM supplier sp",
                 "LOCATE(?,COALESCE(sp.supplier_code,''))>0 OR LOCATE(?,COALESCE(sp.supplier_name,''))>0 OR LOCATE(?,COALESCE(sp.contact_name,''))>0 OR LOCATE(?,COALESCE(sp.phone,''))>0", 4,
-                sorts("id", "sp.id", "supplierName", "sp.supplier_name", "contactName", "sp.contact_name", "phone", "sp.phone", "updatedAt", "sp.updated_at"),
+                sorts("id", "sp.id", "manufacturerCategory", "sp.manufacturer_category", "manufacturerType", "sp.manufacturer_type", "supplierLocation", "sp.supplier_location", "productAttribute", "sp.product_attribute", "shortName", "sp.short_name", "supplierName", "sp.supplier_name", "contactName", "sp.contact_name", "contactTitle", "sp.contact_title", "phone", "sp.phone", "currency", "sp.currency", "taxRegistrationNo", "sp.tax_registration_no", "bankAddress", "sp.bank_address", "bankAccount", "sp.bank_account", "productCount", "(SELECT COUNT(*) FROM sku_supplier_config cfg WHERE cfg.supplier_id=sp.id AND cfg.enabled=TRUE)", "updatedAt", "sp.updated_at"),
                 "sp.updated_at", "sp.id DESC"));
         modules.put("order", new ModuleSpec(
                 "SELECT o.id, o.order_no AS `orderNo`, o.external_order_no AS `externalOrderNo`, c.customer_name AS `customerName`, "
@@ -440,7 +440,7 @@ public class WorkbenchQueryService {
                         + "o.shipped_at AS `shippedAt`, o.carrier, o.tracking_no AS `trackingNo`, o.created_at AS `createdAt`, o.updated_at AS `updatedAt`, o.version",
                 "FROM sales_order o JOIN customer c ON c.id=o.customer_id",
                 "LOCATE(?, COALESCE(o.order_no,''))>0 OR LOCATE(?, COALESCE(o.external_order_no,''))>0 OR LOCATE(?, COALESCE(c.customer_name,''))>0 OR LOCATE(?, COALESCE(o.status,''))>0", 4,
-                sorts("id", "o.id", "orderNo", "o.order_no", "customerName", "c.customer_name", "totalAmount", "o.total_amount", "status", "o.status", "createdAt", "o.created_at", "updatedAt", "o.updated_at"),
+                sorts("id", "o.id", "orderNo", "o.order_no", "customerName", "c.customer_name", "totalAmount", "o.total_amount", "status", "CASE o.status WHEN 'DRAFT' THEN 10 WHEN 'PENDING_CUSTOMER_PAYMENT' THEN 20 WHEN 'WAITING_STOCK' THEN 30 WHEN 'READY_TO_SHIP' THEN 40 WHEN 'SHIPPED' THEN 50 ELSE 999 END", "orderDate", "o.order_date", "salesperson", "o.salesperson", "createdAt", "o.created_at", "updatedAt", "o.updated_at"),
                 "o.updated_at", "o.id DESC"));
         modules.put("afterSales", new ModuleSpec(
                 "SELECT a.id,a.after_sales_no AS `afterSalesNo`,o.order_no AS `orderNo`,c.customer_name AS `customerName`,"
@@ -452,7 +452,7 @@ public class WorkbenchQueryService {
                 "LOCATE(?,COALESCE(a.after_sales_no,''))>0 OR LOCATE(?,COALESCE(o.order_no,''))>0 OR LOCATE(?,COALESCE(c.customer_name,''))>0 "
                         + "OR EXISTS(SELECT 1 FROM after_sales_return_line r WHERE r.after_sales_order_id=a.id AND (LOCATE(?,COALESCE(r.sku_code,''))>0 OR LOCATE(?,COALESCE(r.product_name,''))>0)) "
                         + "OR EXISTS(SELECT 1 FROM after_sales_replacement_line x WHERE x.after_sales_order_id=a.id AND (LOCATE(?,COALESCE(x.sku_code,''))>0 OR LOCATE(?,COALESCE(x.product_name,''))>0))", 7,
-                sorts("id","a.id","afterSalesNo","a.after_sales_no","orderNo","o.order_no","customerName","c.customer_name","status","a.status","applicationDate","a.application_date","updatedAt","a.updated_at"),
+                sorts("id","a.id","afterSalesNo","a.after_sales_no","orderNo","o.order_no","customerName","c.customer_name","afterSalesType","a.after_sales_type","returnQuantity","(SELECT COALESCE(SUM(r.requested_quantity),0) FROM after_sales_return_line r WHERE r.after_sales_order_id=a.id)","replacementQuantity","(SELECT COALESCE(SUM(x.planned_quantity),0) FROM after_sales_replacement_line x WHERE x.after_sales_order_id=a.id)","status","CASE a.status WHEN 'WAITING_RETURN' THEN 10 WHEN 'RETURN_RECEIVED' THEN 20 WHEN 'WAITING_REPLACEMENT' THEN 30 WHEN 'COMPLETED' THEN 40 WHEN 'CANCELLED' THEN 50 ELSE 999 END","applicationDate","a.application_date","updatedAt","a.updated_at"),
                 "a.updated_at", "a.id DESC"));        modules.put("inventory", new ModuleSpec(
                 "SELECT b.id, b.sku_id AS `skuId`, s.product_code AS `productCode`, s.sku_code AS `skuCode`, s.model, s.product_type AS `productType`, s.product_configuration AS `productConfiguration`, s.configuration, s.unit, "
                         + "b.actual_quantity AS `actualQuantity`, b.locked_quantity AS `lockedQuantity`, "
@@ -462,7 +462,7 @@ public class WorkbenchQueryService {
                         + "b.source_supplier_name AS `sourceSupplierName`, b.inventory_remark AS `inventoryRemark`, b.updated_at AS `updatedAt`, b.version",
                 "FROM inventory_balance b JOIN sku s ON s.id=b.sku_id",
                 "LOCATE(?, COALESCE(s.sku_code,''))>0 OR LOCATE(?, COALESCE(s.model,''))>0 OR LOCATE(?, COALESCE(s.configuration,''))>0 OR LOCATE(?, COALESCE(b.source_supplier_name,''))>0", 4,
-                sorts("id", "b.id", "productCode", "s.product_code", "skuCode", "s.sku_code", "model", "s.model", "actualQuantity", "b.actual_quantity", "availableQuantity", "(b.actual_quantity-b.locked_quantity)", "updatedAt", "b.updated_at"),
+                sorts("id", "b.id", "productCode", "s.product_code", "skuCode", "s.sku_code", "model", "s.model", "productType", "s.product_type", "unit", "s.unit", "actualQuantity", "b.actual_quantity", "availableQuantity", "(b.actual_quantity-b.locked_quantity)", "oldestStockDate", "(SELECT MIN(tx.operated_at) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.actual_delta>0)", "inventoryAgeDays", "DATEDIFF(CURRENT_DATE,(SELECT MIN(tx.operated_at) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.actual_delta>0))", "lockedQuantity", "b.locked_quantity", "inTransitQuantity", "b.in_transit_quantity", "pendingDeliveryQuantity", "(SELECT COALESCE(SUM(GREATEST(i.quantity-i.shipped_quantity,0)),0) FROM sales_order_item i JOIN sales_order o2 ON o2.id=i.sales_order_id WHERE o2.status<>'CANCELLED' AND i.sku_id=b.sku_id)", "supplyDemandBalance", "b.actual_quantity+b.in_transit_quantity-(SELECT COALESCE(SUM(GREATEST(i.quantity-i.shipped_quantity,0)),0) FROM sales_order_item i JOIN sales_order o2 ON o2.id=i.sales_order_id WHERE o2.status<>'CANCELLED' AND i.sku_id=b.sku_id)", "sourceSupplierName", "b.source_supplier_name", "updatedAt", "b.updated_at"),
                 "b.updated_at", "b.id DESC"));
         String purchaseView = "FROM ("
                 + "SELECT po.id, 'PURCHASE' AS record_type, po.purchase_no, po.supplier_id, sp.supplier_name, "
@@ -494,7 +494,7 @@ public class WorkbenchQueryService {
                         + "p.expected_arrival_date AS `expectedArrivalDate`, p.created_at AS `createdAt`, p.updated_at AS `updatedAt`, p.version",
                 purchaseView,
                 "LOCATE(?, COALESCE(p.purchase_no,''))>0 OR LOCATE(?, COALESCE(p.supplier_name,''))>0 OR LOCATE(?, COALESCE(p.product_summary,''))>0 OR LOCATE(?, COALESCE(p.status,''))>0", 4,
-                sorts("id", "p.id", "purchaseNo", "p.purchase_no", "supplierName", "p.supplier_name", "totalAmount", "p.total_amount", "status", "p.status", "createdAt", "p.created_at", "updatedAt", "p.updated_at"),
+                sorts("id", "p.id", "purchaseNo", "p.purchase_no", "supplierName", "p.supplier_name", "totalAmount", "p.total_amount", "paymentStatus", "CASE WHEN p.paid_amount<=0 THEN 10 WHEN p.paid_amount<p.total_amount THEN 20 ELSE 30 END", "receiptStatus", "CASE WHEN p.received_quantity<=0 THEN 10 WHEN p.received_quantity<p.ordered_quantity THEN 20 ELSE 30 END", "status", "CASE p.status WHEN 'DRAFT' THEN 10 WHEN 'PENDING_SUPPLIER_PAYMENT' THEN 20 WHEN 'EXECUTING' THEN 30 WHEN 'RECEIVED' THEN 40 WHEN 'COMPLETED' THEN 50 ELSE 999 END", "expectedArrivalDate", "p.expected_arrival_date", "createdAt", "p.created_at", "updatedAt", "p.updated_at"),
                 "p.updated_at", "p.record_type, p.id DESC"));
         String financeView = "FROM ("
                 + "SELECT o.id, 'RECEIVABLE' AS cash_direction, '销售订单' AS business_type, o.order_no AS business_no, c.customer_name AS counterparty, "
@@ -512,7 +512,7 @@ public class WorkbenchQueryService {
                         + "WHEN f.cash_direction='RECEIVABLE' THEN '待收款' ELSE '待付款' END AS status, "
                         + "CASE WHEN f.cash_direction='RECEIVABLE' THEN '登记收款' ELSE '登记付款' END AS `actionType`, f.created_at AS `createdAt`, f.updated_at AS `updatedAt`",
                 financeView, "LOCATE(?, COALESCE(f.business_no,''))>0 OR LOCATE(?, COALESCE(f.counterparty,''))>0 OR LOCATE(?, COALESCE(f.cash_direction,''))>0", 3,
-                sorts("id", "f.id", "businessNo", "f.business_no", "counterparty", "f.counterparty", "amount", "f.amount", "settledAmount", "f.settled_amount", "outstandingAmount", "(f.amount-f.settled_amount)", "updatedAt", "f.updated_at"),
+                sorts("id", "f.id", "businessNo", "f.business_no", "businessType", "f.business_type", "counterparty", "f.counterparty", "amount", "f.amount", "settledAmount", "f.settled_amount", "outstandingAmount", "(f.amount-f.settled_amount)", "status", "CASE WHEN f.settled_amount<f.amount THEN 10 ELSE 30 END", "updatedAt", "f.updated_at"),
                 "f.updated_at", "f.cash_direction, f.id DESC"));
     }
 

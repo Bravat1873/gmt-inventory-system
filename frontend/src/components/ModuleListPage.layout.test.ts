@@ -16,6 +16,13 @@ it('reserves enough width for all order action buttons', async () => {
   expect(wrapper.get('colgroup col:last-child').attributes('style')).toContain('390px')
 })
 
+it('reserves enough width for all after-sales action buttons', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, status: 'WAITING_RETURN' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'afterSales')! } })
+  await flushPromises()
+
+  expect(wrapper.get('colgroup col:last-child').attributes('style')).toContain('300px')
+})
 it('keeps ten equal rows within the viewport and leaves the horizontal scrollbar visible', () => {
   const styles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8')
 

@@ -1,6 +1,7 @@
-import { ref } from 'vue'
+import { defineComponent, ref } from 'vue'
+import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
-import { useUnsavedChangesGuard } from './useUnsavedChangesGuard'
+import { useGlobalDialogCloseGuard, useUnsavedChangesGuard } from './useUnsavedChangesGuard'
 
 describe('useUnsavedChangesGuard', () => {
   it('closes immediately when clean', () => {
@@ -30,5 +31,29 @@ describe('useUnsavedChangesGuard', () => {
     guard.markDirty()
     guard.requestClose()
     expect(close).not.toHaveBeenCalled()
+  })
+  it('allows close when a business primary action is disabled', async () => {
+    const close = vi.fn()
+    const Host = defineComponent({
+      setup() { useGlobalDialogCloseGuard(); return { close } },
+      template: '<div class="dialog-card"><button class="primary-action" disabled>确认登记</button><button data-test="close" @click="close">关闭</button></div>'
+    })
+    const wrapper = mount(Host, { attachTo: document.body })
+    await wrapper.get('[data-test="close"]').trigger('click')
+    expect(close).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('closes the top dialog with Escape through its normal close button', async () => {
+    const close = vi.fn()
+    const Host = defineComponent({
+      setup() { useGlobalDialogCloseGuard(); return { close } },
+      template: '<div class="dialog-card"><button data-dialog-close @click="close">关闭</button></div>'
+    })
+    const wrapper = mount(Host, { attachTo: document.body })
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await Promise.resolve()
+    expect(close).toHaveBeenCalledOnce()
+    wrapper.unmount()
   })
 })
