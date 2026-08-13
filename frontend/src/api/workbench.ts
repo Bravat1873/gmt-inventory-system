@@ -117,6 +117,10 @@ export interface OrderSku {
   primaryImageId?: number | null
   actualQuantity: number
   availableQuantity: number
+  inTransitQuantity: number
+  pendingDeliveryQuantity: number
+  supplyDemandBalance: number
+  purchaseShortageQuantity: number
 }
 export function loadOrderSkus() { return request<OrderSku[]>('/api/orders/skus') }
 export interface OrderCustomer {

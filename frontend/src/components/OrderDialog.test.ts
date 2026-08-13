@@ -9,7 +9,7 @@ const { createOrder, updateOrder, loadOrderCustomers, loadOrderSkus, loadContrac
 vi.mock('../api/workbench', () => ({ createOrder, updateOrder, loadOrderCustomers, loadOrderSkus, loadContractPrice }))
 
 const validOrder = () => ({ customerId: 1, orderDate: '2026-08-07', orderType: 'Sales', salesperson: 'Admin', items: [{ skuId: 1, quantity: 1, salePrice: 1 }] })
-const sku = (id: number) => ({ id, skuCode: `SKU-${id}`, productName: `Product ${id}`, model: 'M1', configuration: 'Standard', unit: 'PCS', primaryImageId: null as number | null, actualQuantity: 0, availableQuantity: 0 })
+const sku = (id: number) => ({ id, skuCode: `SKU-${id}`, productName: `Product ${id}`, model: 'M1', configuration: 'Standard', unit: 'PCS', primaryImageId: null as number | null, actualQuantity: 0, availableQuantity: 0, inTransitQuantity: 0, pendingDeliveryQuantity: 0, supplyDemandBalance: 0, purchaseShortageQuantity: 0 })
 const priceInput = (wrapper: VueWrapper) => wrapper.findAll('input[type="number"]')[1]
 function deferred<T>() { let resolve!: (value: T) => void; return { promise: new Promise<T>(done => { resolve = done }), resolve } }
 async function choose(wrapper: VueWrapper, picker: string, text: string, optionId: number) {
@@ -118,14 +118,14 @@ it('renders inline errors for every basic and line validation field', async () =
 })
 
 it('shows the selected product image and current inventory in the order line', async () => {
-  loadOrderSkus.mockResolvedValue([{ ...sku(1), primaryImageId: 91, actualQuantity: 12, availableQuantity: 9 }])
+  loadOrderSkus.mockResolvedValue([{ ...sku(1), primaryImageId: 91, actualQuantity: 12, availableQuantity: 9, supplyDemandBalance: 12 }])
   loadOrderCustomers.mockResolvedValue([])
   const wrapper = mount(OrderDialog, { attachTo: document.body, props: { defaultSalesperson: 'Admin' } })
   await flushPromises()
   await choose(wrapper, '[data-test="order-sku-picker-0"]', 'SKU-1', 1)
   expect(wrapper.get('[data-test="order-product-image-0"]').attributes('src')).toBe('/api/product-images/91/content')
   expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('实际 12')
-  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('可用 9')
+  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('供需余量 12')
   wrapper.unmount()
 })
 
@@ -206,5 +206,31 @@ it('does not apply a stale price to the row shifted after deleting the request r
   await wrapper.get('[data-test="remove-order-line-0"]').trigger('click')
   stale.resolve(100); await flushPromises()
   expect((priceInput(wrapper).element as HTMLInputElement).value).toBe('0')
+  wrapper.unmount()
+})
+it('shows the post-order supply-demand shortage while creating an order', async () => {
+  loadOrderSkus.mockResolvedValue([{ ...sku(1), actualQuantity: 5, inTransitQuantity: 4, pendingDeliveryQuantity: 2, supplyDemandBalance: 7 }])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { attachTo: document.body, props: { defaultSalesperson: 'Admin' } })
+  await flushPromises()
+  await choose(wrapper, '[data-test="order-sku-picker-0"]', 'SKU-1', 1)
+  await wrapper.findAll('input[type="number"]')[0].setValue('10')
+  const inventory = wrapper.get('[data-test="order-inventory-0"]')
+  expect(inventory.text()).toContain('实际 5')
+  expect(inventory.text()).toContain('在途 4')
+  expect(inventory.text()).toContain('待交订单 2')
+  expect(inventory.text()).toContain('供需余量 7')
+  expect(inventory.text()).toContain('下单后供需余量 -3')
+  expect(inventory.text()).toContain('下单后采购缺口 3')
+  wrapper.unmount()
+})
+
+it('restores the original remainder before previewing an edited order', async () => {
+  loadOrderSkus.mockResolvedValue([{ ...sku(1), supplyDemandBalance: 7 }])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { props: { row: { id: 9, version: 1, ...validOrder(), items: [{ id: 51, skuId: 1, quantity: 4, shippedQuantity: 0, remainingQuantity: 4, salePrice: 1 }] } } })
+  await flushPromises()
+  await wrapper.findAll('input[type="number"]')[0].setValue('6')
+  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('下单后供需余量 5')
   wrapper.unmount()
 })

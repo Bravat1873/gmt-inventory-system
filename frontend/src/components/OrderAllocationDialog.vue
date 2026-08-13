@@ -30,10 +30,10 @@ async function save() {
   <div class="dialog-mask">
     <section class="dialog-card allocation-dialog" role="dialog" aria-modal="true">
       <header><h2>手动分配库存</h2><button type="button" :disabled="saving" @click="emit('close')">关闭</button></header>
-      <p>可在自动锁定后调整每个产品为客户保留的数量；减少的数量会立即释放回可用库存。</p>
+      <p>可在自动锁定后调整每个产品为客户保留的数量；减少的数量会立即释放回未锁定库存。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>产品</th><th>订单数</th><th>已发货</th><th>实际库存</th><th>当前锁定</th><th>可用库存</th><th>分配给客户</th></tr></thead>
+          <thead><tr><th>产品</th><th>订单数</th><th>已发货</th><th>实际库存</th><th>当前锁定</th><th>未锁定库存</th><th>分配给客户</th></tr></thead>
           <tbody><tr v-for="item in allocation.items" :key="item.lineNo">
             <td>{{ item.skuCode }} · {{ item.productName }}</td><td>{{ item.quantity }}</td><td>{{ item.shippedQuantity }}</td>
             <td>{{ item.actualQuantity }}</td><td>{{ item.lockedQuantity }}</td><td>{{ item.availableQuantity }}</td>
