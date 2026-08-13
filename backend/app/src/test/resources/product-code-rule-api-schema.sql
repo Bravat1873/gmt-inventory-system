@@ -26,3 +26,5 @@ UPDATE product_code_rule SET updated_at=TIMESTAMP '2026-08-11 16:00:00' WHERE id
 INSERT INTO product_code_rule(id,category,code,display_name,enabled,sort_order,version,updated_at) VALUES (4,'BRAND','OLD','旧品牌',TRUE,5,0,TIMESTAMP '2026-08-10 16:00:00');
 INSERT INTO sku(product_code,product_name,brand_rule_id) VALUES('BR_P90HGT60WPZE','测试产品',1);
 INSERT INTO sys_user(username,password_hash,display_name,enabled,role) VALUES('writer','123','普通用户',TRUE,'USER');
+
+ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;

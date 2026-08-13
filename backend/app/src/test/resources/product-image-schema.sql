@@ -46,3 +46,5 @@ INSERT INTO sys_user(id,username,password_hash,display_name,enabled,role) VALUES
   (2,'finance','123','Finance',TRUE,'FINANCE'),
   (3,'regular-user','123','User',TRUE,'USER');
 INSERT INTO sku(id,sku_code,product_name) VALUES (1,'SKU-IMAGE','Product image test');
+
+ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;

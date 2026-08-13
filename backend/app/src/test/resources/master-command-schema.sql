@@ -35,3 +35,5 @@ INSERT INTO product_code_rule(id,category,code,display_name,enabled,sort_order,v
 INSERT INTO sku(id,product_code,sku_code,product_name,current_cost,factory_price) VALUES(1,'OLD_000001','SKU001','测试产品',10.00,20.00);
 INSERT INTO sku(id,product_code,sku_code,product_name) VALUES(2,'OLD_000002','SKU002','测试产品二');
 INSERT INTO inventory_balance(id,warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,1,5,1,0,0);
+
+ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;

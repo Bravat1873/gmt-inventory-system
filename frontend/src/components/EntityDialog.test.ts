@@ -108,7 +108,7 @@ it('产品弹窗只显示产品列表字段并自动计算价格差异', async (
   const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE' } })
   expect(wrapper.text()).not.toContain('供应商编号')
   expect(wrapper.text()).not.toContain('采购单价')
-  expect(wrapper.text()).not.toContain('最小起订量')
+  expect(wrapper.text()).toContain('销售最小起订量')
   expect(wrapper.text()).not.toContain('交货天数')
   expect(wrapper.text()).toContain('差异：转厂价-原成本')
 

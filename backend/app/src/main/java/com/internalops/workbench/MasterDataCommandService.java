@@ -175,6 +175,7 @@ public class MasterDataCommandService {
                     r.brandRuleId(), r.seriesRuleId(), r.bodyColorRuleId(), r.lockTypeRuleId(), r.connectivityRuleId(),
                     r.salesChannelRuleId(), r.operatingEntityRuleId(), r.languageRuleId(), r.doorModelRuleId(), r.securityGradeRuleId(),
                     r.baseMaterialRuleId(), r.thicknessRuleId(), r.finishColorRuleId());
+            jdbc.update("UPDATE sku SET sales_minimum_order_quantity=? WHERE id=?", salesMinimumOrderQuantity(r), id);
             saveSupplierConfig(id, r);
             return product(id);
         } catch (DataIntegrityViolationException e) {
@@ -212,6 +213,7 @@ public class MasterDataCommandService {
                     smart.salesChannelRuleId(), smart.operatingEntityRuleId(), smart.languageRuleId(), door.doorModelRuleId(), door.securityGradeRuleId(),
                     door.baseMaterialRuleId(), door.thicknessRuleId(), door.finishColorRuleId(), codeSuffix, eanCode, id, r.version());
             conflictIfUnchanged(changed);
+            if (r.salesMinimumOrderQuantity() != null) jdbc.update("UPDATE sku SET sales_minimum_order_quantity=? WHERE id=?", r.salesMinimumOrderQuantity(), id);
             saveSupplierConfig(id, r);
             return product(id);
         } catch (DataIntegrityViolationException e) {
@@ -500,7 +502,7 @@ public class MasterDataCommandService {
     private Map<String, Object> product(long id) {
         return map(jdbc.queryForMap("""
                 SELECT s.id,s.product_code,s.code_suffix,s.ean_code,s.product_type,s.material_type,s.sku_code,s.model,s.product_name,s.color,s.lock_body,s.product_version,s.configuration,s.product_configuration,s.unit,
-                       s.current_cost,s.factory_price,s.product_remark,s.enabled,s.version,
+                       s.current_cost,s.factory_price,s.sales_minimum_order_quantity,s.product_remark,s.enabled,s.version,
                        s.brand_rule_id,s.series_rule_id,s.body_color_rule_id,s.lock_type_rule_id,s.connectivity_rule_id,
                        s.sales_channel_rule_id,s.operating_entity_rule_id,s.language_rule_id,
                        br.display_name AS brand,sr.display_name AS series,bcr.display_name AS body_color,
@@ -517,7 +519,7 @@ public class MasterDataCommandService {
                 LEFT JOIN product_code_rule lr ON lr.id=s.language_rule_id
                 WHERE s.id=?
                 """, id),
-                "product_code","productCode","code_suffix","codeSuffix","ean_code","eanCode","product_type","productType","material_type","materialType","sku_code","customerCode","product_name","productName","lock_body","lockBody",
+                "product_code","productCode","code_suffix","codeSuffix","ean_code","eanCode","product_type","productType","material_type","materialType","sku_code","customerCode","product_name","productName","lock_body","lockBody","sales_minimum_order_quantity","salesMinimumOrderQuantity",
                 "product_version","productVersion","product_configuration","productConfiguration","current_cost","currentCost","factory_price","factoryPrice","product_remark","remark",
                 "brand_rule_id","brandRuleId","series_rule_id","seriesRuleId","body_color_rule_id","bodyColorRuleId",
                 "lock_type_rule_id","lockTypeRuleId","connectivity_rule_id","connectivityRuleId","sales_channel_rule_id","salesChannelRuleId",
@@ -564,7 +566,12 @@ public class MasterDataCommandService {
         requireText(r.productName(), "产品名称不能为空");
         if (r.currentCost() != null && r.currentCost().signum() < 0) throw new IllegalArgumentException("成本不能为负数");
         if (r.factoryPrice() != null && r.factoryPrice().signum() < 0) throw new IllegalArgumentException("转厂价格不能为负数");
+        if (r.salesMinimumOrderQuantity() != null && r.salesMinimumOrderQuantity() <= 0) throw new IllegalArgumentException("销售最小起订量必须为正数");
     }
+    private int salesMinimumOrderQuantity(EntityCommandRequest request) {
+        return request.salesMinimumOrderQuantity() == null ? 1 : request.salesMinimumOrderQuantity();
+    }
+
     private void requireProductPricePermission(EntityCommandFields fields) {
         if ((fields.currentCostPresent() || fields.factoryPricePresent())
                 && !CurrentUser.required().role().canEditProductPrice()) {

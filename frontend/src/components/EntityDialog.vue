@@ -72,6 +72,7 @@ const definitions: Record<string, Field[]> = {
     { key: 'productConfiguration', label: '产品配置', multiline: true },
     { key: 'currentCost', label: '成本单价（含税）', type: 'number' },
     { key: 'factoryPrice', label: '转厂价格', type: 'number' },
+    { key: 'salesMinimumOrderQuantity', label: '销售最小起订量', type: 'number', required: true },
     { key: 'priceDifference', label: '差异：转厂价-原成本', type: 'number', readOnly: true },
     { key: 'remark', label: '备注', multiline: true },
   ],
@@ -107,6 +108,9 @@ if (props.module === 'inventory' && !props.row?.id) {
     lockedQuantity: 0,
     inTransitQuantity: 0,
   })
+}
+if (props.module === 'product' && !props.row?.id) {
+  initialForm.salesMinimumOrderQuantity = 1
 }
 if (props.module === 'user' && !props.row?.id) {
   initialForm.role = 'USER'
@@ -225,6 +229,7 @@ function inventoryFieldTestId(key: string) {
   if (props.module === 'product') {
     if (key === 'currentCost') return 'product-current-cost'
     if (key === 'factoryPrice') return 'product-factory-price'
+    if (key === 'salesMinimumOrderQuantity') return 'sales-minimum-order-quantity'
   }
   if (props.module === 'user') {
     if (key === 'username') return 'user-username'
@@ -456,6 +461,7 @@ async function save() {
               :autocomplete="fieldAutocomplete(field)"
               :maxlength="field.key === 'eanCode' ? 12 : undefined"
               :pattern="field.key === 'eanCode' ? '69[0-9]{10}' : undefined"
+              :min="field.key === 'salesMinimumOrderQuantity' ? 1 : undefined"
               :required="fieldRequired(field)"
               :disabled="(module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice) || (Boolean(row?.id) && ((module === 'customer' && field.key === 'customerCode') || ['username', 'skuCode', 'skuId'].includes(field.key)))"
               step="any"

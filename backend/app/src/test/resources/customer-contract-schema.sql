@@ -10,3 +10,5 @@ INSERT INTO sku VALUES(1,'SKU-1','产品一','M1','规格一',NULL,NULL,NULL,'�
 INSERT INTO customer(id,customer_code,customer_name,order_contact_name,order_contact_phone,address,enabled) VALUES(1,'ACTIVE','有效客户','订单联系人','13800138000','珠海',TRUE),(2,'EXPIRED','过期客户','旧联系人','13800138001','深圳',TRUE),(3,'NO-CONTRACT','未签合同客户',NULL,NULL,NULL,TRUE);
 INSERT INTO customer_contract(id,customer_id,contract_no,start_date,end_date,enabled) VALUES(1,1,'ACTIVE-2026','2026-01-01','2027-12-31',TRUE),(2,2,'OLD-2020','2020-01-01','2020-12-31',TRUE);
 INSERT INTO customer_contract_price(contract_id,sku_id,sale_price) VALUES(1,1,456.7800),(2,1,300.0000);
+
+ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;

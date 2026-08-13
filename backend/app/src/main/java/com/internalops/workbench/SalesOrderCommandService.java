@@ -141,7 +141,7 @@ public class SalesOrderCommandService {
 
     public List<Map<String, Object>> skuOptions() {
         List<Map<String, Object>> items = jdbc.query("""
-                SELECT s.id,s.product_code,s.sku_code,s.product_name,s.model,s.product_type,s.product_configuration,s.configuration,s.product_version,s.color,s.lock_body,s.unit,s.current_cost,s.factory_price,
+                SELECT s.id,s.product_code,s.sku_code,s.product_name,s.model,s.product_type,s.product_configuration,s.configuration,s.product_version,s.color,s.lock_body,s.unit,s.sales_minimum_order_quantity,s.current_cost,s.factory_price,
                        (SELECT pi.id FROM product_image pi
                         WHERE pi.product_id=s.id AND pi.is_primary=TRUE
                         ORDER BY pi.sort_order,pi.id LIMIT 1) AS primary_image_id
@@ -154,6 +154,7 @@ public class SalesOrderCommandService {
             item.put("model", rs.getString("model")); item.put("productType", rs.getString("product_type")); item.put("productConfiguration", rs.getString("product_configuration")); item.put("configuration", rs.getString("configuration"));
             item.put("productVersion", rs.getString("product_version")); item.put("color", rs.getString("color"));
             item.put("lockBody", rs.getString("lock_body")); item.put("unit", rs.getString("unit"));
+            item.put("salesMinimumOrderQuantity", rs.getInt("sales_minimum_order_quantity"));
             item.put("currentCost", rs.getBigDecimal("current_cost"));
             item.put("factoryPrice", rs.getBigDecimal("factory_price"));
             item.put("primaryImageId", rs.getObject("primary_image_id", Long.class));
@@ -241,6 +242,9 @@ public class SalesOrderCommandService {
         for (SalesOrderRequest.Item item : request.items()) {
             if (item.skuId() == null || jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE id=? AND enabled=TRUE", Integer.class, item.skuId()) == 0) throw new IllegalArgumentException("订单中存在无效产品");
             if (item.quantity() == null || item.quantity() <= 0) throw new IllegalArgumentException("产品数量必须为正数");
+            Map<String, Object> sku = jdbc.queryForMap("SELECT sku_code,sales_minimum_order_quantity FROM sku WHERE id=?", item.skuId());
+            int minimum = ((Number) sku.get("sales_minimum_order_quantity")).intValue();
+            if (item.quantity() < minimum) throw new IllegalArgumentException("产品 " + sku.get("sku_code") + " 的订单数量不能小于销售最小起订量 " + minimum);
             if (item.salePrice() == null || item.salePrice().signum() < 0) throw new IllegalArgumentException("销售单价不能为负数");
         }
     }

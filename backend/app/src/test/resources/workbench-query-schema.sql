@@ -115,3 +115,5 @@ INSERT INTO product_image(id,product_id,storage_key,original_filename,content_ty
 (501,101,'101/501-a.jpg','a.jpg','image/jpeg',100,FALSE,0,'tester'),
 (502,101,'101/502-main.jpg','main.jpg','image/jpeg',100,TRUE,1,'tester'),
 (503,101,'101/503-c.jpg','c.jpg','image/jpeg',100,FALSE,2,'tester');
+
+ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;

@@ -184,3 +184,5 @@ INSERT INTO sales_order(id,status,receipt_confirmed_at) VALUES(1,'WAITING_STOCK'
 INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity)
 VALUES(1,1,1,101,3,0,3);
 INSERT INTO sku_supplier_config VALUES(101,201,10.0000,10,7,TRUE);
+
+ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;

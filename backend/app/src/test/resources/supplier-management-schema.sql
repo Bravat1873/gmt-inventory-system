@@ -54,3 +54,5 @@ INSERT INTO sku(id,sku_code,model,product_name,configuration,unit,updated_at)
 VALUES(101,'P90-001','P90','P90 智能锁','可视对讲','件',TIMESTAMP '2026-08-06 09:00:00');
 INSERT INTO sku_supplier_config(id,sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled,version)
 VALUES(1,101,201,220.0000,5,7,TRUE,0);
+
+ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;

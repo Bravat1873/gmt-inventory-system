@@ -10,3 +10,5 @@ INSERT INTO product_code_rule VALUES
 (11,'DOOR_MODEL','M','单开门',TRUE,10,0),(12,'SECURITY_GRADE','J','甲',TRUE,10,0),(13,'BASE_MATERIAL','3','304不锈钢',TRUE,10,0),(14,'THICKNESS','080','80mm',TRUE,10,0),(15,'FINISH_COLOR','A','花色A',TRUE,10,0),
 (6,'SALES_CHANNEL','P','平面',TRUE,10,0),(7,'OPERATING_ENTITY','Z','珠海',TRUE,10,0),(8,'LANGUAGE','E','英文版',TRUE,10,0);
 INSERT INTO sku(id,product_code,sku_code,product_name,unit,enabled,version) VALUES(100,'OLD_000100','客户-A','历史产品','件',TRUE,0);
+
+ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;

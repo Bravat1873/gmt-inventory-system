@@ -44,6 +44,10 @@ function updatePopupPosition() {
   const element = picker.value
   if (!element || !open.value) return
   const rect = element.getBoundingClientRect()
+  if ((rect.width > 0 || rect.height > 0) && (rect.right <= 0 || rect.left >= window.innerWidth || rect.bottom <= 0 || rect.top >= window.innerHeight)) {
+    open.value = false
+    return
+  }
   const gap = 4
   const edge = 8
   const spaceBelow = window.innerHeight - rect.bottom - edge - gap

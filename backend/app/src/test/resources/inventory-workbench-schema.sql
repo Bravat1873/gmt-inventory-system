@@ -93,3 +93,5 @@ INSERT INTO inventory_transaction(warehouse_id,sku_id,transaction_type,business_
 INSERT INTO inventory_transaction(warehouse_id,sku_id,transaction_type,business_type,business_no,actual_delta,locked_delta,transit_delta,actual_before,actual_after,locked_before,locked_after,transit_before,transit_after,operated_at)
 VALUES(1,1,'PURCHASE_RECEIPT','PURCHASE_ORDER','PO-20260601',18,0,0,0,18,0,0,0,0,TIMESTAMP '2026-06-01 00:00:00'),
       (1,1,'INITIAL_IMPORT','EXCEL_IMPORT','7',20,0,0,0,20,0,0,0,0,TIMESTAMP '2026-08-07 12:00:00');
+
+ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;

@@ -10,7 +10,7 @@ public record EntityCommandRequest(
         String invoiceAddress, String invoicePhone, String bankName, String bankAccount,
         String username, String displayName, String password, String role, Boolean enabled,
         String skuCode, String productCode, String codeSuffix, String eanCode, String model, String productName, String color, String lockBody,
-        String productVersion, String configuration, String productConfiguration, String unit, BigDecimal currentCost, BigDecimal factoryPrice, String remark,
+        String productVersion, String configuration, String productConfiguration, String unit, Integer salesMinimumOrderQuantity, BigDecimal currentCost, BigDecimal factoryPrice, String remark,
         Long brandRuleId, Long seriesRuleId, Long bodyColorRuleId, Long lockTypeRuleId,
         Long connectivityRuleId, Long salesChannelRuleId, Long operatingEntityRuleId, Long languageRuleId,
         String productType, String materialType, Long doorModelRuleId, Long securityGradeRuleId, Long baseMaterialRuleId,

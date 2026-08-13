@@ -121,6 +121,7 @@ export interface OrderSku {
   pendingDeliveryQuantity: number
   supplyDemandBalance: number
   purchaseShortageQuantity: number
+  salesMinimumOrderQuantity: number
 }
 export function loadOrderSkus() { return request<OrderSku[]>('/api/orders/skus') }
 export interface OrderCustomer {
