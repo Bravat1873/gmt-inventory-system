@@ -48,7 +48,7 @@ async function save() {
           <div><span>已收金额</span><strong data-test="received-amount">¥ {{ money(receivedAmount) }}</strong><small>历史登记收款合计</small></div>
           <div><span>未收金额</span><strong>¥ {{ money(outstandingAmount) }}</strong><small>本次登记前</small></div>
         </div>
-        <p class="receipt-line-note">订单明细中的“剩余数量”指未发货数量（订单数量 − 已发货数量），不是库存数量。</p>
+        <p class="receipt-line-note">订单明细中的“未发货数量”＝订单数量 − 已发货数量，不是库存数量。</p>
         <div class="form-grid">
           <label><span>订单编号</span><input :value="String(order.orderNo ?? '')" disabled></label>
           <label><span>本次收款金额</span><input data-test="receipt-amount" v-model.number="form.amount" type="number" min="0.01" :max="outstandingAmount" step="0.01" :disabled="saving || outstandingAmount <= 0"></label>

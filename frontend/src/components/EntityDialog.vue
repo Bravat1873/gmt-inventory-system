@@ -87,7 +87,7 @@ const definitions: Record<string, Field[]> = {
     { key: 'availableQuantity', label: '未锁定库存数量', type: 'number' },
     { key: 'lockedQuantity', label: '已锁定数量', type: 'number' },
     { key: 'inTransitQuantity', label: '在途数量', type: 'number', required: true },
-    { key: 'pendingDeliveryQuantity', label: '待交订单数量', type: 'number', readOnly: true },
+    { key: 'pendingDeliveryQuantity', label: '未发货数量', type: 'number', readOnly: true },
     { key: 'supplyDemandBalance', label: '供需余量', type: 'number', readOnly: true },
     { key: 'sourceSupplierName', label: '供应商' },
     { key: 'inventoryRemark', label: '备注', multiline: true }

@@ -16,3 +16,9 @@ it('uses the shared overflow text treatment for every detail cell', () => {
   })
   expect(wrapper.findAll('[data-test="overflow-text"]')).toHaveLength(2)
 })
+it('labels sales order remaining quantity as unshipped quantity', () => {
+  const wrapper = mount(BusinessTraceDialog, {
+    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ remainingQuantity: 3 }], timeline: [] } }
+  })
+  expect(wrapper.text()).toContain('未发货数量')
+})

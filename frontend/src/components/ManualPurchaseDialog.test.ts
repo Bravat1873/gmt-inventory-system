@@ -53,7 +53,7 @@ it('shows purchase guidance for a negative balance without changing quantity', a
   await flushPromises()
   expect(wrapper.text()).toContain('实际库存 2')
   expect(wrapper.text()).toContain('在途数量 3')
-  expect(wrapper.text()).toContain('待交订单数量 10')
+  expect(wrapper.text()).toContain('未发货数量 10')
   expect(wrapper.text()).toContain('供需余量 -5')
   expect(wrapper.text()).toContain('建议采购 5')
   expect((wrapper.get('input[type="number"]').element as HTMLInputElement).value).toBe('1')

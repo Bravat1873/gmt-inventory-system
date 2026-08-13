@@ -218,7 +218,7 @@ it('shows the post-order supply-demand shortage while creating an order', async 
   const inventory = wrapper.get('[data-test="order-inventory-0"]')
   expect(inventory.text()).toContain('实际 5')
   expect(inventory.text()).toContain('在途 4')
-  expect(inventory.text()).toContain('待交订单 2')
+  expect(inventory.text()).toContain('未发货数量 2')
   expect(inventory.text()).toContain('供需余量 7')
   expect(inventory.text()).toContain('下单后供需余量 -3')
   expect(inventory.text()).toContain('下单后采购缺口 3')

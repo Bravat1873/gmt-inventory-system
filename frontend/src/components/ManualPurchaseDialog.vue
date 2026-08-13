@@ -184,7 +184,7 @@ onMounted(loadProducts)
           <div v-if="selectedProduct" class="purchase-supply-demand" data-test="purchase-supply-demand">
             <span>实际库存 <strong>{{ selectedProduct.actualQuantity }}</strong></span>
             <span>在途数量 <strong>{{ selectedProduct.inTransitQuantity }}</strong></span>
-            <span>待交订单数量 <strong>{{ selectedProduct.pendingDeliveryQuantity }}</strong></span>
+            <span>未发货数量 <strong>{{ selectedProduct.pendingDeliveryQuantity }}</strong></span>
             <span :class="{ negative: selectedProduct.supplyDemandBalance < 0 }">供需余量 <strong>{{ selectedProduct.supplyDemandBalance }}</strong></span>
             <small v-if="selectedProduct.purchaseShortageQuantity > 0" class="field-error">建议采购 {{ selectedProduct.purchaseShortageQuantity }}</small>
           </div>

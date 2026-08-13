@@ -11,6 +11,7 @@ const labels: Record<string, string> = {
   salePrice: '含税单价', receivedQuantity: '已入库数量', purchasePrice: '采购单价'
 }
 const detailKeys = () => Object.keys(props.trace.details[0] ?? {}).filter(key => labels[key])
+function detailLabel(key: string) { return key === 'remainingQuantity' && props.trace.type === 'order' ? '未发货数量' : labels[key] }
 function value(value: unknown) { return value == null || value === '' ? '—' : String(value) }
 function time(value: unknown) {
   const matched = String(value ?? '').match(/^(\d{4}-\d{2}-\d{2})[T\s]?(\d{2}:\d{2}:\d{2})?/) 
@@ -46,7 +47,7 @@ function header(key: string) { const raw = props.trace.header[key]; return key =
         </section>
         <section class="trace-section">
           <h3>{{ trace.type === 'order' ? '订单明细' : '采购明细' }}</h3>
-          <div class="trace-table-wrap"><table class="trace-table"><thead><tr><th v-for="key in detailKeys()" :key="key">{{ labels[key] }}</th></tr></thead><tbody><tr v-for="(row, rowIndex) in trace.details" :key="rowIndex"><td v-for="key in detailKeys()" :key="key"><OverflowText :value="value(row[key])" /></td></tr><tr v-if="!trace.details.length"><td class="trace-empty" :colspan="Math.max(1, detailKeys().length)">暂无明细</td></tr></tbody></table></div>
+          <div class="trace-table-wrap"><table class="trace-table"><thead><tr><th v-for="key in detailKeys()" :key="key">{{ detailLabel(key) }}</th></tr></thead><tbody><tr v-for="(row, rowIndex) in trace.details" :key="rowIndex"><td v-for="key in detailKeys()" :key="key"><OverflowText :value="value(row[key])" /></td></tr><tr v-if="!trace.details.length"><td class="trace-empty" :colspan="Math.max(1, detailKeys().length)">暂无明细</td></tr></tbody></table></div>
         </section>
       </div>
     </section>
