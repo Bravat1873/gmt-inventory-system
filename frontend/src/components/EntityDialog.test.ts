@@ -104,18 +104,15 @@ it('shows complete customer details and locks the existing customer code', () =>
   expect(wrapper.get('[data-test="customer-code"]').attributes('disabled')).toBeDefined()
 })
 
-it('产品弹窗只显示产品列表字段并自动计算价格差异', async () => {
+it('产品弹窗只显示产品基础字段并移除固定价格字段', () => {
   const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'FINANCE' } })
   expect(wrapper.text()).not.toContain('供应商编号')
   expect(wrapper.text()).not.toContain('采购单价')
   expect(wrapper.text()).toContain('销售最小起订量')
   expect(wrapper.text()).not.toContain('交货天数')
-  expect(wrapper.text()).toContain('差异：转厂价-原成本')
-
-  const inputs=wrapper.findAll('input')
-  await inputs.find(input=>input.attributes('type')==='number' && input.element.parentElement?.textContent?.includes('成本单价'))!.setValue('100')
-  await inputs.find(input=>input.attributes('type')==='number' && input.element.parentElement?.textContent?.includes('转厂价格'))!.setValue('135')
-  expect(wrapper.get('[data-test="price-difference"]').attributes('value')).toBe('35')
+  expect(wrapper.text()).not.toContain('成本单价（含税）')
+  expect(wrapper.text()).not.toContain('转厂价格')
+  expect(wrapper.text()).not.toContain('差异：转厂价-原成本')
 })
 
 it('修改产品时客户编号可编辑且不显示重复的旧颜色和锁体字段', async () => {
@@ -167,49 +164,27 @@ it('按品牌型号物料颜色锁体类型语言实时生成只读物料规格�
   expect(api.updateEntity).toHaveBeenLastCalledWith('product', 7, expect.objectContaining({ productConfiguration: '可视对讲 + 指纹' }))
   expect(api.updateEntity.mock.calls.at(-1)?.[2]).not.toHaveProperty('configuration')
 })
-it('allows finance users to edit and submit both product prices', async () => {
-  api.createEntity.mockResolvedValue({ id: 1 })
-  const wrapper = mount(EntityDialog, {
-    props: { module: 'product', currentUserRole: 'FINANCE' }
-  })
-
-  const currentCost = wrapper.get('[data-test="product-current-cost"]')
-  const factoryPrice = wrapper.get('[data-test="product-factory-price"]')
-  expect(currentCost.attributes('disabled')).toBeUndefined()
-  expect(factoryPrice.attributes('disabled')).toBeUndefined()
-
-  await currentCost.setValue('100')
-  await factoryPrice.setValue('135')
-  await wrapper.get('form').trigger('submit')
-  await flushPromises()
-
-  expect(api.createEntity).toHaveBeenLastCalledWith('product', expect.objectContaining({ currentCost: 100, factoryPrice: 135 }))
-})
-
-it('shows product prices read-only to ordinary users and omits them from the payload', async () => {
-  api.updateEntity.mockResolvedValue({ id: 7, version: 4 })
+it('hides fixed product prices and shows every supplier quote in the edit dialog', async () => {
   const wrapper = mount(EntityDialog, {
     props: {
-      module: 'product',
-      currentUserRole: 'USER',
-      row: { id: 7, model: 'P90', currentCost: 100, factoryPrice: 135, version: 3 }
+      module: 'product', currentUserRole: 'ADMIN',
+      row: {
+        id: 7, model: 'P90', salesMinimumOrderQuantity: 2, version: 3,
+        currentCost: 100, factoryPrice: 135, priceDifference: 35,
+        supplierQuotes: [
+          { supplierId: 1, supplierName: '供应商甲', purchasePrice: 100 },
+          { supplierId: 2, supplierName: '供应商乙', purchasePrice: 105.5 }
+        ]
+      }
     }
   })
 
-  const currentCost = wrapper.get('[data-test="product-current-cost"]')
-  const factoryPrice = wrapper.get('[data-test="product-factory-price"]')
-  expect((currentCost.element as HTMLInputElement).value).toBe('100')
-  expect((factoryPrice.element as HTMLInputElement).value).toBe('135')
-  expect(currentCost.attributes('disabled')).toBeDefined()
-  expect(factoryPrice.attributes('disabled')).toBeDefined()
-  expect(wrapper.get('[data-test="product-price-permission-hint"]').text()).toBe('仅财务或管理员可修改')
-
-  await wrapper.get('form').trigger('submit')
-  await flushPromises()
-
-  const payload = api.updateEntity.mock.calls.at(-1)?.[2]
-  expect(payload).not.toHaveProperty('currentCost')
-  expect(payload).not.toHaveProperty('factoryPrice')
+  expect(wrapper.text()).not.toContain('成本单价（含税）')
+  expect(wrapper.text()).not.toContain('转厂价格')
+  expect(wrapper.text()).not.toContain('差异：转厂价-原成本')
+  expect(wrapper.text()).toContain('销售最小起订量')
+  const quotes = wrapper.get('[data-test="product-supplier-quotes"]')
+  expect(quotes.findAll('span').map(item => item.text())).toEqual(['供应商甲：¥100', '供应商乙：¥105.5'])
 })
 
 it('allows administrators to select and submit a user role with Chinese labels', async () => {

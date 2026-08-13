@@ -411,5 +411,9 @@ thead th:last-child { position:sticky; right:0; z-index:3; background:#fafafa; b
 .supply-demand-balance { display:flex; flex-direction:column; gap:2px; } .supply-demand-balance small { color:#777; font-size:12px; } .supply-demand-balance.negative,.supply-demand-balance.negative small { color:#b42318; font-weight:600; }
 .purchase-supply-demand { grid-column:1/-1; display:flex; flex-wrap:wrap; gap:10px 18px; padding:10px 12px; border:1px solid #dde1e6; border-radius:5px; background:#f7f8fa; color:#555; font-size:13px; } .purchase-supply-demand strong { color:#30343a; font-variant-numeric:tabular-nums; } .purchase-supply-demand .negative,.purchase-supply-demand .negative strong { color:#b42318; }
 
-.supplier-quotes { display:flex; flex-direction:column; gap:4px; line-height:1.45; }
-.supplier-quotes span { white-space:nowrap; }
+.supplier-quotes { display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.45; cursor:help; }
+
+.product-supplier-quotes-section { margin-top:18px; padding:16px; border:1px solid #e1e5e8; border-radius:8px; background:#fafafa; }
+.product-supplier-quotes-section h3 { margin:0 0 10px; font-size:15px; }
+.product-supplier-quotes { display:flex; flex-direction:column; gap:6px; }
+.product-supplier-quotes-section small { display:block; margin-top:10px; color:#777; }

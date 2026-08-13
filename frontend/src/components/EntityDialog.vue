@@ -70,10 +70,7 @@ const definitions: Record<string, Field[]> = {
     { key: 'model', label: '型号', required: true },
     { key: 'configuration', label: '物料规格', multiline: true, readOnly: true },
     { key: 'productConfiguration', label: '产品配置', multiline: true },
-    { key: 'currentCost', label: '成本单价（含税）', type: 'number' },
-    { key: 'factoryPrice', label: '转厂价格', type: 'number' },
     { key: 'salesMinimumOrderQuantity', label: '销售最小起订量', type: 'number', required: true },
-    { key: 'priceDifference', label: '差异：转厂价-原成本', type: 'number', readOnly: true },
     { key: 'remark', label: '备注', multiline: true },
   ],
   inventory: [
@@ -117,6 +114,10 @@ if (props.module === 'user' && !props.row?.id) {
 }
 const form = reactive(initialForm)
 const canEditProductPrice = computed(() => ['ADMIN', 'FINANCE'].includes(props.currentUserRole))
+const productSupplierQuotes = computed(() => Array.isArray(props.row?.supplierQuotes)
+  ? props.row.supplierQuotes as Array<{ supplierId: number; supplierName: string; purchasePrice: number }>
+  : [])
+function supplierQuotePrice(value: number) { return Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 }) }
 const canManageUserRoles = computed(() => props.currentUserRole === 'ADMIN')
 const roleOptions: { value: UserRole; label: string }[] = [
   { value: 'ADMIN', label: '管理员' },
@@ -473,7 +474,14 @@ async function save() {
           </label>
           </template>
         </div>
-        <p v-if="module === 'product' && !canEditProductPrice" data-test="product-price-permission-hint" class="field-hint">仅财务或管理员可修改</p>
+<section v-if="module === 'product' && row?.id" class="product-supplier-quotes-section">
+          <h3>供应商报价</h3>
+          <div data-test="product-supplier-quotes" class="product-supplier-quotes">
+            <span v-for="quote in productSupplierQuotes" :key="quote.supplierId">{{ quote.supplierName }}：¥{{ supplierQuotePrice(quote.purchasePrice) }}</span>
+            <span v-if="!productSupplierQuotes.length">—</span>
+          </div>
+          <small>供应商和采购价格请在供应商管理中维护</small>
+        </section>
         <ProductImagePicker
           v-if="module === 'product'"
           v-model="pendingImages"
