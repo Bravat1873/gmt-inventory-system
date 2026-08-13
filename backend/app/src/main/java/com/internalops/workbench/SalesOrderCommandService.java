@@ -22,7 +22,13 @@ public class SalesOrderCommandService {
     private static final Set<String> EDITABLE_STATUSES = Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT");
     private final JdbcTemplate jdbc;
     private final InventoryAllocationService allocation;
-    public SalesOrderCommandService(JdbcTemplate jdbc, InventoryAllocationService allocation) { this.jdbc = jdbc; this.allocation = allocation; }
+    private final SupplyDemandQueryService supplyDemand;
+    public SalesOrderCommandService(JdbcTemplate jdbc, InventoryAllocationService allocation,
+                                    SupplyDemandQueryService supplyDemand) {
+        this.jdbc = jdbc;
+        this.allocation = allocation;
+        this.supplyDemand = supplyDemand;
+    }
 
     @Transactional
     public Map<String, Object> create(SalesOrderRequest request) {
@@ -134,19 +140,12 @@ public class SalesOrderCommandService {
     }
 
     public List<Map<String, Object>> skuOptions() {
-        return jdbc.query("""
+        List<Map<String, Object>> items = jdbc.query("""
                 SELECT s.id,s.product_code,s.sku_code,s.product_name,s.model,s.product_type,s.product_configuration,s.configuration,s.product_version,s.color,s.lock_body,s.unit,s.current_cost,s.factory_price,
-                       COALESCE(inv.actual_quantity,0) AS actual_quantity,
-                       COALESCE(inv.available_quantity,0) AS available_quantity,
                        (SELECT pi.id FROM product_image pi
                         WHERE pi.product_id=s.id AND pi.is_primary=TRUE
                         ORDER BY pi.sort_order,pi.id LIMIT 1) AS primary_image_id
                 FROM sku s
-                LEFT JOIN (
-                    SELECT sku_id,SUM(actual_quantity) AS actual_quantity,
-                           SUM(actual_quantity-locked_quantity) AS available_quantity
-                    FROM inventory_balance GROUP BY sku_id
-                ) inv ON inv.sku_id=s.id
                 WHERE s.enabled=TRUE
                 ORDER BY s.product_code
                 """, (rs, n) -> {
@@ -158,11 +157,21 @@ public class SalesOrderCommandService {
             item.put("currentCost", rs.getBigDecimal("current_cost"));
             item.put("factoryPrice", rs.getBigDecimal("factory_price"));
             item.put("primaryImageId", rs.getObject("primary_image_id", Long.class));
-            item.put("actualQuantity", rs.getInt("actual_quantity")); item.put("availableQuantity", rs.getInt("available_quantity"));
             return item;
         });
+        Map<Long, SupplyDemandQueryService.SupplyDemandSnapshot> snapshots = supplyDemand.bySkuIds(
+                items.stream().map(item -> ((Number) item.get("id")).longValue()).toList());
+        items.forEach(item -> {
+            var snapshot = snapshots.get(((Number) item.get("id")).longValue());
+            item.put("actualQuantity", snapshot.actualQuantity());
+            item.put("availableQuantity", snapshot.availableQuantity());
+            item.put("inTransitQuantity", snapshot.inTransitQuantity());
+            item.put("pendingDeliveryQuantity", snapshot.pendingDeliveryQuantity());
+            item.put("supplyDemandBalance", snapshot.supplyDemandBalance());
+            item.put("purchaseShortageQuantity", snapshot.purchaseShortageQuantity());
+        });
+        return items;
     }
-
     public List<Map<String, Object>> customerOptions() {
         return jdbc.query("""
                 SELECT id,customer_code,customer_name,contact_name,phone,address,

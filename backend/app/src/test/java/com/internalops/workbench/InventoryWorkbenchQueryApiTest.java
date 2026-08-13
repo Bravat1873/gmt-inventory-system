@@ -65,7 +65,12 @@ class InventoryWorkbenchQueryApiTest {
                 .andExpect(jsonPath("$.data.items[0].actualQuantity").value(20))
                 .andExpect(jsonPath("$.data.items[0].lockedQuantity").value(15))
                 .andExpect(jsonPath("$.data.items[0].inTransitQuantity").value(5))
-                .andExpect(jsonPath("$.data.items[0].availableQuantity").value(5));
+                .andExpect(jsonPath("$.data.items[0].availableQuantity").value(5))
+                .andExpect(jsonPath("$.data.items[0].pendingDeliveryQuantity").value(6))
+                .andExpect(jsonPath("$.data.items[0].supplyDemandBalance").value(19))
+                .andExpect(jsonPath("$.data.items[0].purchaseShortageQuantity").value(0))
+                .andExpect(jsonPath("$.data.items[1].supplyDemandBalance").value(-6))
+                .andExpect(jsonPath("$.data.items[1].purchaseShortageQuantity").value(6));
     }
     @Test
     void normalizesRealExcelOutboundAndIgnoresInitialImportSnapshotForFifoAge() throws Exception {
@@ -91,7 +96,8 @@ class InventoryWorkbenchQueryApiTest {
     @Test
     void loadsAllCurrentPageInventoryTransactionsWithOneQuery() {
         QueryCountingDataSource monitoredDataSource = new QueryCountingDataSource(dataSource);
-        WorkbenchQueryService service = new WorkbenchQueryService(new JdbcTemplate(monitoredDataSource));
+        JdbcTemplate monitoredJdbc = new JdbcTemplate(monitoredDataSource);
+        WorkbenchQueryService service = new WorkbenchQueryService(monitoredJdbc, new SupplyDemandQueryService(monitoredJdbc));
 
         PageResult<Map<String, Object>> page = service.query(
                 "inventory", new ListQuery(1, "", "id", "asc"));

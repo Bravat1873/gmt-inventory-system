@@ -21,17 +21,26 @@ class SalesOrderCommandApiTest {
         jdbc.update("INSERT INTO warehouse VALUES(2,'SECOND','Second',FALSE,TRUE)");
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,3,2,0)");
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(2,1,5,1,4,0)");
+        jdbc.update("INSERT INTO sales_order(order_no,customer_id,status,total_amount,order_date) VALUES('SO-DEMAND',1,'WAITING_STOCK',0,CURRENT_DATE)");
+        jdbc.update("INSERT INTO sales_order_item(sales_order_id,line_no,sku_id,quantity,shipped_quantity,locked_quantity,uncovered_quantity,sale_price) SELECT id,10000,1,8,2,0,6,1 FROM sales_order WHERE order_no='SO-DEMAND'");
         jdbc.update("INSERT INTO product_image(id,product_id,is_primary,sort_order) VALUES(91,1,TRUE,0)");
 
         mvc.perform(get("/api/orders/skus"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].primaryImageId").value(91))
-                .andExpect(jsonPath("$.data[0].actualQuantity").value(15))
-                .andExpect(jsonPath("$.data[0].availableQuantity").value(11))
+                .andExpect(jsonPath("$.data[0].actualQuantity").value(10))
+                .andExpect(jsonPath("$.data[0].availableQuantity").value(7))
+                .andExpect(jsonPath("$.data[0].inTransitQuantity").value(2))
+                .andExpect(jsonPath("$.data[0].pendingDeliveryQuantity").value(6))
+                .andExpect(jsonPath("$.data[0].supplyDemandBalance").value(6))
+                .andExpect(jsonPath("$.data[0].purchaseShortageQuantity").value(0))
                 .andExpect(jsonPath("$.data[1].primaryImageId").doesNotExist())
                 .andExpect(jsonPath("$.data[1].actualQuantity").value(0))
-                .andExpect(jsonPath("$.data[1].availableQuantity").value(0));
+                .andExpect(jsonPath("$.data[1].availableQuantity").value(0))
+                .andExpect(jsonPath("$.data[1].inTransitQuantity").value(0))
+                .andExpect(jsonPath("$.data[1].pendingDeliveryQuantity").value(0))
+                .andExpect(jsonPath("$.data[1].supplyDemandBalance").value(0));
     }
     @Test void manuallyReducesAnAutomaticAllocationAndReleasesInventory() throws Exception {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");

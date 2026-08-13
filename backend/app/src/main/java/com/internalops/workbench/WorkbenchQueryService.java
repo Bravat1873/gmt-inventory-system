@@ -72,11 +72,13 @@ public class WorkbenchQueryService {
             Map.entry("applicationdate", "applicationDate")
     );
     private final JdbcTemplate jdbc;
+    private final SupplyDemandQueryService supplyDemand;
     private final InventoryAgeCalculator inventoryAgeCalculator = new InventoryAgeCalculator();
     private final Map<String, ModuleSpec> modules = new LinkedHashMap<>();
 
-    public WorkbenchQueryService(JdbcTemplate jdbc) {
+    public WorkbenchQueryService(JdbcTemplate jdbc, SupplyDemandQueryService supplyDemand) {
         this.jdbc = jdbc;
+        this.supplyDemand = supplyDemand;
         registerModules();
     }
 
@@ -116,12 +118,21 @@ public class WorkbenchQueryService {
         if ("inventory".equals(module)) {
             Map<Long, List<InventoryTransactionRow>> transactionsByInventoryId = inventoryTransactions(items);
             Map<Long, List<Map<String, Object>>> allocationsByInventoryId = inventoryLockedAllocations(items);
+            Map<Long, SupplyDemandQueryService.SupplyDemandSnapshot> supplyBySku = supplyDemand.bySkuIds(
+                    items.stream().map(item -> ((Number) item.get("skuId")).longValue()).toList());
             items = items.stream().map(row -> {
                 Map<String, Object> item = new LinkedHashMap<>(row);
                 long inventoryId = ((Number) item.get("id")).longValue();
                 List<InventoryTransactionRow> transactions = transactionsByInventoryId.getOrDefault(inventoryId, List.of());
                 item.put("lockedAllocations", allocationsByInventoryId.getOrDefault(inventoryId, List.of()));
                 item.put("movementSummary", inventoryMovementSummary(transactions));
+                var supply = supplyBySku.get(((Number) item.get("skuId")).longValue());
+                int pending = supply.pendingDeliveryQuantity();
+                int balance = ((Number) item.get("actualQuantity")).intValue()
+                        + ((Number) item.get("inTransitQuantity")).intValue() - pending;
+                item.put("pendingDeliveryQuantity", pending);
+                item.put("supplyDemandBalance", balance);
+                item.put("purchaseShortageQuantity", Math.max(-balance, 0));
                 inventoryAge(transactions, ((Number) item.get("actualQuantity")).intValue()).ifPresentOrElse(
                         age -> {
                             item.put("oldestStockDate", age.oldestStockDate());
