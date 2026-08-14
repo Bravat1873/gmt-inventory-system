@@ -5,6 +5,7 @@ import { canReviewCustomerFunds, loadCustomerFundLedger, loadCustomerFundOvervie
 const props=defineProps<{customer:Record<string,unknown>;currentUserRole:UserRole}>()
 const emit=defineEmits<{close:[];changed:[];message:[text:string,kind?:'success'|'error']}>()
 const overview=ref<FundOverview>();const requests=ref<FundRequest[]>([]);const ledger=ref<FundLedger[]>([]);const summary=ref<FundSummary[]>([]);const loading=ref(true);const error=ref('');const tab=ref<'requests'|'ledger'|'summary'>('requests');const saving=ref(false)
+const dialog=ref<HTMLElement>()
 const form=reactive({amount:'',paymentDate:new Date().toISOString().slice(0,10),paymentMethod:'银行转账',referenceNo:'',remark:''})
 const customerId=computed(()=>Number(props.customer.id));const canReview=computed(()=>canReviewCustomerFunds(props.currentUserRole))
 const money=(v:unknown)=>Number(v??0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})
@@ -12,12 +13,12 @@ const requestType=(v:string)=>({CUSTOMER_DEPOSIT:'客户打款',AFTER_SALES_REFU
 const status=(v:string)=>({PENDING:'待审核',APPROVED:'已通过',REJECTED:'已拒绝',REVERSED:'已冲正'}[v]??v)
 const entryType=(v:string)=>({CUSTOMER_DEPOSIT:'客户打款',ORDER_RECEIPT:'订单收款扣减',AFTER_SALES_REFUND:'售后退款',REVERSAL:'冲正'}[v]??v)
 async function load(){loading.value=true;error.value='';try{[overview.value,requests.value,ledger.value,summary.value]=await Promise.all([loadCustomerFundOverview(customerId.value),loadCustomerFundRequests(customerId.value),loadCustomerFundLedger(customerId.value),loadCustomerFundSummary(customerId.value)])}catch(cause){error.value=cause instanceof Error?cause.message:'读取客户资金失败'}finally{loading.value=false}}
-async function deposit(){const amount=Number(form.amount);if(!Number.isFinite(amount)||amount<=0){error.value='打款金额必须大于 0';return}if(!form.paymentDate||!form.paymentMethod.trim()){error.value='请填写打款日期和方式';return}saving.value=true;try{await submitCustomerDeposit(customerId.value,{amount,paymentDate:form.paymentDate,paymentMethod:form.paymentMethod.trim(),referenceNo:form.referenceNo.trim()||undefined,remark:form.remark.trim()||undefined});form.amount='';emit('message','打款记录已提交，等待审核');emit('changed');await load()}catch(cause){error.value=cause instanceof Error?cause.message:'提交失败'}finally{saving.value=false}}
+async function deposit(){const amount=Number(form.amount);if(!Number.isFinite(amount)||amount<=0){error.value='打款金额必须大于 0';return}if(!form.paymentDate||!form.paymentMethod.trim()){error.value='请填写打款日期和方式';return}saving.value=true;try{await submitCustomerDeposit(customerId.value,{amount,paymentDate:form.paymentDate,paymentMethod:form.paymentMethod.trim(),referenceNo:form.referenceNo.trim()||undefined,remark:form.remark.trim()||undefined});form.amount='';form.referenceNo='';form.remark='';dialog.value?.dispatchEvent(new CustomEvent('dialog-clean',{bubbles:true}));emit('message','打款记录已提交，等待审核');emit('changed');await load()}catch(cause){error.value=cause instanceof Error?cause.message:'提交失败'}finally{saving.value=false}}
 async function review(id:number,approved:boolean){saving.value=true;try{await reviewCustomerFundRequest(id,approved,'');emit('message',approved?'审核通过并已入账':'记录已拒绝');emit('changed');await load()}catch(cause){error.value=cause instanceof Error?cause.message:'审核失败'}finally{saving.value=false}}
 onMounted(load)
 </script>
 <template>
-<div class="dialog-mask"><section class="dialog-card customer-funds-dialog" role="dialog" aria-modal="true"><header><div><h2>客户资金管理</h2><p>{{ customer.customerName }}</p></div><button type="button" :disabled="saving" @click="emit('close')">关闭</button></header>
+<div class="dialog-mask"><section ref="dialog" class="dialog-card customer-funds-dialog" role="dialog" aria-modal="true"><header><div><h2>客户资金管理</h2><p>{{ customer.customerName }}</p></div><button type="button" :disabled="saving" @click="emit('close')">关闭</button></header>
 <div class="customer-funds-body"><p v-if="loading">正在读取资金数据…</p><template v-else>
 <div class="fund-overview"><div><span>可用余额</span><strong>¥ {{ money(overview?.balance) }}</strong></div><div><span>订单未收金额</span><strong>¥ {{ money(overview?.orderOutstandingAmount) }}</strong></div><div><span>余额覆盖比例</span><strong :class="{danger:overview?.insufficient}">{{ money(overview?.coverageRatio) }}%</strong></div><div><span>待审核金额</span><strong>¥ {{ money(overview?.pendingAmount) }}</strong></div></div>
 <p v-if="overview?.insufficient" class="fund-warning">余额不足，请关注后续打款；该提示仅供查看和业务判断。</p>

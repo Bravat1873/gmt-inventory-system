@@ -44,7 +44,7 @@ public class CustomerFundQueryService {
         List<Map<String,Object>> rows = jdbc.queryForList("SELECT entry_type,direction,amount,balance_before,balance_after,operated_at FROM customer_fund_ledger WHERE customer_id=? AND operated_at>=? AND operated_at<? ORDER BY operated_at,id", customerId, start.atStartOfDay(), end.plusDays(1).atStartOfDay());
         Map<String,Accumulator> groups = new LinkedHashMap<>();
         for (Map<String,Object> row : rows) {
-            LocalDateTime time = ((java.sql.Timestamp) row.get("operated_at")).toLocalDateTime();
+            LocalDateTime time = localDateTime(row.get("operated_at"));
             String key = switch (normalized) { case "DAY" -> time.toLocalDate().toString(); case "YEAR" -> String.valueOf(time.getYear()); default -> time.format(DateTimeFormatter.ofPattern("yyyy-MM")); };
             groups.computeIfAbsent(key, ignored -> new Accumulator(decimal(row.get("balance_before")))).add(row);
         }
@@ -74,6 +74,11 @@ public class CustomerFundQueryService {
     }
     private BigDecimal amount(String sql, long id) { BigDecimal value=jdbc.queryForObject(sql,BigDecimal.class,id); return value==null?BigDecimal.ZERO:value; }
     private static BigDecimal decimal(Object value) { return value instanceof BigDecimal b ? b : new BigDecimal(String.valueOf(value)); }
+    static LocalDateTime localDateTime(Object value) {
+        if (value instanceof LocalDateTime time) return time;
+        if (value instanceof java.sql.Timestamp timestamp) return timestamp.toLocalDateTime();
+        throw new IllegalArgumentException("Unsupported fund ledger time type: " + value);
+    }
     private static final class Accumulator {
         BigDecimal deposit=BigDecimal.ZERO,receipt=BigDecimal.ZERO,refund=BigDecimal.ZERO,reversal=BigDecimal.ZERO,opening,closing;
         Accumulator(BigDecimal opening){this.opening=opening;this.closing=opening;}

@@ -177,4 +177,13 @@ describe('连续导航和浏览器地址状态', () => {
     await wrapper.get('[data-test="gallery-close"]').trigger('click')
     expect(wrapper.find('[data-test="gallery-dialog-stub"]').exists()).toBe(false)
   })
-})
+
+  it('editing a customer opens only the customer-specific dialog', async () => {
+    history.replaceState(null, '', '/?module=customer&page=1')
+    const wrapper = mount(App)
+    await flushPromises()
+    wrapper.getComponent(ModuleListPage).vm.$emit('edit', { id: 1, customerName: '测试客户', customerType: 'DOMESTIC', contracts: [] })
+    await flushPromises()
+    expect(wrapper.findComponent((await import('./components/CustomerDialog.vue')).default).exists()).toBe(true)
+    expect(wrapper.findComponent(EntityDialog).exists()).toBe(false)
+  })})

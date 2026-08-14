@@ -57,3 +57,19 @@ describe('useUnsavedChangesGuard', () => {
     wrapper.unmount()
   })
 })
+
+it('does not mark a dialog dirty merely by clicking a review button and supports marking a submitted form clean', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  const wrapper = mount(defineComponent({
+    setup() { useGlobalDialogCloseGuard() },
+    template: '<section class="dialog-card"><input><button class="review">通过</button><button class="close">关闭</button></section>'
+  }), { attachTo: document.body })
+  await wrapper.get('.review').trigger('click')
+  await wrapper.get('.close').trigger('click')
+  expect(confirm).not.toHaveBeenCalled()
+  await wrapper.get('input').trigger('input')
+  wrapper.get('.dialog-card').element.dispatchEvent(new CustomEvent('dialog-clean', { bubbles: true }))
+  await wrapper.get('.close').trigger('click')
+  expect(confirm).not.toHaveBeenCalled()
+  wrapper.unmount()
+})

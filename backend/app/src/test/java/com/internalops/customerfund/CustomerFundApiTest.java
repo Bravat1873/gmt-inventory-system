@@ -17,6 +17,7 @@ import javax.sql.DataSource;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class CustomerFundApiTest {
     private MockMvc mvc;
@@ -33,6 +34,10 @@ class CustomerFundApiTest {
     }
 
     @AfterEach void clear() { CurrentUser.clear(); }
+
+    @Test void summaryAcceptsMySqlLocalDateTimeValues() {
+        assertThat(CustomerFundQueryService.localDateTime(java.time.LocalDateTime.of(2026,8,14,12,30))).isEqualTo(java.time.LocalDateTime.of(2026,8,14,12,30));
+    }
 
     @Test
     void overviewShowsBalanceOutstandingCoverageAndPendingAmount() throws Exception {
