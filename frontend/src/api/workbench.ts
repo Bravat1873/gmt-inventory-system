@@ -322,6 +322,39 @@ export function receivePurchase(id: number, items: { purchaseOrderItemId: number
   })
 }
 
+export interface ProcurementSuggestionItem {
+  id: number
+  skuId: number
+  skuCode?: string
+  productName?: string
+  shortageQuantity: number
+  minimumOrderQuantity: number
+  suggestedQuantity: number
+  purchasePrice: number
+  estimatedAmount: number
+  expectedArrivalDate?: string | null
+  supplierPurchaseInfoId: number
+}
+export interface ProcurementSuggestionDetail {
+  id: number
+  suggestionNo: string
+  status: string
+  version: number
+  supplierId: number
+  supplierName: string
+  reviewReason?: string | null
+  items: ProcurementSuggestionItem[]
+}
+export function loadProcurementSuggestion(id: number) { return request<ProcurementSuggestionDetail>(`/api/procurement/suggestions/${id}`) }
+export function updateProcurementSuggestion(id: number, version: number, items: { id: number; quantity: number; expectedArrivalDate?: string | null }[]) {
+  return request<{ id: number; status: string; version: number }>(`/api/procurement/suggestions/${id}`, { method: 'PUT', body: JSON.stringify({ version, items }) })
+}
+export function rejectProcurementSuggestion(id: number, version: number, reason: string) {
+  return request<{ id: number; status: string; version: number }>(`/api/procurement/suggestions/${id}/reject`, { method: 'POST', body: JSON.stringify({ version, reason }) })
+}
+export function confirmProcurementSuggestion(id: number) {
+  return request<{ suggestionId: number; purchaseId: number; purchaseNo: string; status: string }>(`/api/procurement/suggestions/${id}/confirm`, { method: 'POST', body: JSON.stringify({}) })
+}
 export interface ProductCodeRule {
   id: number
   category: string

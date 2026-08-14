@@ -11,6 +11,7 @@ import OrderDialog from './components/OrderDialog.vue'
 import ManualPurchaseDialog from './components/ManualPurchaseDialog.vue'
 import PaymentDialog from './components/PaymentDialog.vue'
 import PurchaseReceiptDialog from './components/PurchaseReceiptDialog.vue'
+import ProcurementReviewDialog from './components/ProcurementReviewDialog.vue'
 import ReceiptDialog from './components/ReceiptDialog.vue'
 import ShipmentQuantityDialog from './components/ShipmentQuantityDialog.vue'
 import OrderAllocationDialog from './components/OrderAllocationDialog.vue'
@@ -39,6 +40,7 @@ const paymentOpen = ref(false)
 const paymentRow = ref<Record<string, unknown>>()
 const purchaseReceiptOpen = ref(false)
 const purchaseReceiptOrder = ref<PurchaseDetail>()
+const procurementReviewId = ref<number>()
 const receiptOpen = ref(false)
 const receiptRow = ref<Record<string, unknown>>()
 const traceOpen = ref(false)
@@ -88,6 +90,7 @@ function selectModule(key: ModuleKey) {
   paymentRow.value = undefined
   purchaseReceiptOpen.value = false
   purchaseReceiptOrder.value = undefined
+  procurementReviewId.value = undefined
   receiptOpen.value = false
   allocationOpen.value = false
   orderAllocation.value = undefined
@@ -206,7 +209,7 @@ async function workflow(row: Record<string, unknown>) {
   const id = Number(row.id)
   if (status === 'DRAFT') {
     if (activeModule.value === 'purchase') {
-if (window.confirm('确认该采购建议并创建采购单吗？')) await action(`/api/procurement/suggestions/${id}/confirm`)
+      procurementReviewId.value = id
       return
     }
     showMessage('草稿订单请先修改为确认订单')
@@ -263,6 +266,7 @@ async function saved(closeDialog = true) {
     <ManualPurchaseDialog v-if="manualPurchaseOpen" @close="manualPurchaseOpen=false" @saved="saved" @message="showMessage" />
     <PaymentDialog v-if="paymentOpen && paymentRow" :purchase="paymentRow" @close="paymentOpen=false; paymentRow=undefined" @saved="saved" @message="showMessage" />
     <PurchaseReceiptDialog v-if="purchaseReceiptOpen && purchaseReceiptOrder" :purchase="purchaseReceiptOrder" @close="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined" @saved="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined; saved()" @message="showMessage" />
+    <ProcurementReviewDialog v-if="procurementReviewId" :suggestion-id="procurementReviewId" @close="procurementReviewId=undefined" @saved="procurementReviewId=undefined; list?.reload()" @message="showMessage" />
     <ReceiptDialog v-if="receiptOpen && receiptRow" :order="receiptRow" @close="receiptOpen=false" @saved="receiptOpen=false; saved()" @message="showMessage" />
     <OrderAllocationDialog v-if="allocationOpen && orderAllocation" :allocation="orderAllocation" @close="allocationOpen=false; orderAllocation=undefined" @saved="allocationOpen=false; orderAllocation=undefined; list?.reload()" @message="showMessage" />
     <ShipmentQuantityDialog v-if="shipmentOpen && shipmentOrder" :order="shipmentOrder" @close="shipmentOpen=false" @saved="shipmentOpen=false; list?.reload()" @message="showMessage" />
