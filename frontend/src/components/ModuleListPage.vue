@@ -6,7 +6,7 @@ import type { ModuleDefinition } from '../modules/module-config'
 import OverflowText from './OverflowText.vue'
 
 const props = defineProps<{ module: ModuleDefinition; currentUserRole?: UserRole }>()
-const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
+const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; funds: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesRefund: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
 const keyword = ref('')
 const loading = ref(false)
 const data = ref<PageResult>({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
@@ -65,6 +65,7 @@ function columnWidth(field: string) {
   return widths[field] ?? 150
 }
 const actionColumnWidth = computed(() => {
+  if (props.module.key === 'customer') return 190
   if (props.module.key === 'order') return 390
   if (props.module.key === 'purchase') return 240
   if (props.module.key === 'afterSales') return 300
@@ -113,6 +114,7 @@ defineExpose({ reload: () => load(data.value.page) })
                 <button v-if="['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')" data-test="view-details" @click="emit('details', row)">查看</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('receipt', row)">登记收款</button>
                 <button v-if="module.key === 'order' && ['READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))" data-test="order-allocation" @click="emit('allocation', row)">分配库存</button>
+                <button v-if="module.key === 'customer'" data-test="customer-funds" @click="emit('funds', row)">资金管理</button>
                 <button v-if="canEditRow() && (['customer', 'user', 'product', 'supplier', 'inventory'].includes(module.key) || (module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT', 'READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))))" @click="emit('edit', row)">修改</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('shipment', row)">发货</button>
                 <button v-if="module.key === 'finance' && isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-receipt" @click="emit('receipt', row)">登记收款</button>
@@ -122,6 +124,7 @@ defineExpose({ reload: () => load(data.value.page) })
                 <button v-if="module.key === 'purchase' && row.recordType === 'SUGGESTION'" data-test="review-procurement" @click="emit('workflow', row)">复核</button>
                 <button v-if="module.key === 'afterSales'" @click="emit('edit', row)">修改</button>
                 <button v-if="module.key === 'afterSales' && ['WAITING_RETURN','RETURN_RECEIVED'].includes(String(row.status))" @click="emit('afterSalesReceipt', row)">确认收货</button>
+                <button v-if="module.key === 'afterSales' && row.afterSalesType === 'RETURN' && row.status === 'RETURN_RECEIVED'" data-test="after-sales-refund" @click="emit('afterSalesRefund', row)">申请退款</button>
                 <button v-if="module.key === 'afterSales' && row.status === 'WAITING_REPLACEMENT'" @click="emit('afterSalesShipment', row)">换货发出</button>
                 <button v-if="module.key === 'afterSales' && row.status === 'WAITING_RETURN'" @click="emit('afterSalesCancel', row)">取消</button>
               </td>

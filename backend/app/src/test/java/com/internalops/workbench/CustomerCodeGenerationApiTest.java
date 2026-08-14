@@ -28,6 +28,7 @@ class CustomerCodeGenerationApiTest {
                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.customerCode").value("A.MABTRQEC91"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM customer_fund_account WHERE customer_id=(SELECT id FROM customer WHERE customer_code='A.MABTRQEC91')", Integer.class)).isEqualTo(1);
 
         mvc.perform(post("/api/customers").contentType("application/json").content("""
                 {"customerType":"EXPORT","customerName":"外销客户","taxpayerId":"91350100ABCDEF1234","contracts":[]}

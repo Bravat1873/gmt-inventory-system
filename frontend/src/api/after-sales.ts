@@ -14,3 +14,7 @@ export const updateAfterSales=(id:number,data:AfterSalesCommand)=>request<Record
 export const receiveAfterSales=(id:number,data:Record<string,unknown>)=>request<Record<string,unknown>>(`/api/after-sales/${id}/receipts`,{method:'POST',body:JSON.stringify(data)})
 export const shipAfterSales=(id:number,data:Record<string,unknown>)=>request<Record<string,unknown>>(`/api/after-sales/${id}/shipments`,{method:'POST',body:JSON.stringify(data)})
 export const cancelAfterSales=(id:number,version:number)=>request<Record<string,unknown>>(`/api/after-sales/${id}/cancel?version=${version}`,{method:'POST',body:'{}'})
+
+export interface AfterSalesRefundSuggestion { afterSalesId:number; afterSalesNo:string; customerId:number; suggestedAmount:number }
+export const loadAfterSalesRefundSuggestion=(id:number)=>request<AfterSalesRefundSuggestion>(`/api/after-sales/${id}/refund-suggestion`)
+export const submitAfterSalesRefund=(id:number,amount:number,suggestedAmount:number,adjustmentReason?:string)=>request<Record<string,unknown>>(`/api/after-sales/${id}/refunds`,{method:'POST',body:JSON.stringify({amount,suggestedAmount,adjustmentReason})})

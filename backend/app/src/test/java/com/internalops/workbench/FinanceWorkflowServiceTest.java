@@ -1,5 +1,7 @@
 package com.internalops.workbench;
 
+import com.internalops.customerfund.CustomerFundService;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -19,7 +21,7 @@ class FinanceWorkflowServiceTest {
         when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(Map.of("status", "READY_TO_SHIP", "total_amount", new BigDecimal("100")));
         when(jdbc.queryForObject(contains("FROM sales_order_item"), eq(BigDecimal.class), eq(7L))).thenReturn(new BigDecimal("100"));
         when(jdbc.queryForObject(contains("FROM customer_receipt"), eq(BigDecimal.class), eq(7L))).thenReturn(BigDecimal.ZERO);
-        FinanceWorkflowService service = new FinanceWorkflowService(jdbc, mock(InventoryAllocationService.class));
+        FinanceWorkflowService service = new FinanceWorkflowService(jdbc, mock(InventoryAllocationService.class), mock(CustomerFundService.class));
         LocalDate selectedDate = LocalDate.of(2026, 9, 20);
 
         Map<String, Object> result = service.receipt(7L, new FinanceActionRequest(new BigDecimal("100"), "银行转账", null, null, null, selectedDate));
@@ -32,7 +34,7 @@ class FinanceWorkflowServiceTest {
         when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(Map.of("status", "READY_TO_SHIP", "total_amount", new BigDecimal("100")));
         when(jdbc.queryForObject(contains("FROM sales_order_item"), eq(BigDecimal.class), eq(7L))).thenReturn(new BigDecimal("100"));
         when(jdbc.queryForObject(contains("FROM customer_receipt"), eq(BigDecimal.class), eq(7L))).thenReturn(BigDecimal.ZERO);
-        FinanceWorkflowService service = new FinanceWorkflowService(jdbc, mock(InventoryAllocationService.class));
+        FinanceWorkflowService service = new FinanceWorkflowService(jdbc, mock(InventoryAllocationService.class), mock(CustomerFundService.class));
 
         Map<String, Object> result = service.receipt(7L, new FinanceActionRequest(new BigDecimal("100"), "银行转账", null, null, null, null));
 

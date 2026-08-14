@@ -185,7 +185,8 @@ public class SalesOrderCommandService {
         return jdbc.query("""
                 SELECT id,customer_code,customer_name,contact_name,phone,address,
                        business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,
-                       finance_contact_name,finance_contact_phone
+                       finance_contact_name,finance_contact_phone,
+                       COALESCE((SELECT balance FROM customer_fund_account f WHERE f.customer_id=c.id),0) fund_balance
                 FROM customer c
                 WHERE c.enabled=TRUE
                   AND (NOT EXISTS (SELECT 1 FROM customer_contract all_contracts WHERE all_contracts.customer_id=c.id AND all_contracts.enabled=TRUE)
@@ -201,6 +202,7 @@ public class SalesOrderCommandService {
             item.put("orderContactPhone", Objects.toString(rs.getString("order_contact_phone"), ""));
             item.put("financeContactName", Objects.toString(rs.getString("finance_contact_name"), ""));
             item.put("financeContactPhone", Objects.toString(rs.getString("finance_contact_phone"), ""));
+            item.put("fundBalance", rs.getBigDecimal("fund_balance"));
             return item;
         });
     }

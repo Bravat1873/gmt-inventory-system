@@ -6,6 +6,7 @@ import ImportPanel from './components/ImportPanel.vue'
 import ModuleListPage from './components/ModuleListPage.vue'
 import EntityDialog from './components/EntityDialog.vue'
 import CustomerDialog from './components/CustomerDialog.vue'
+import CustomerFundsDialog from './components/CustomerFundsDialog.vue'
 import SupplierDialog from './components/SupplierDialog.vue'
 import OrderDialog from './components/OrderDialog.vue'
 import ManualPurchaseDialog from './components/ManualPurchaseDialog.vue'
@@ -22,6 +23,7 @@ import ActionInputDialog from './components/ActionInputDialog.vue'
 import AfterSalesDialog from './components/AfterSalesDialog.vue'
 import AfterSalesReceiptDialog from './components/AfterSalesReceiptDialog.vue'
 import AfterSalesShipmentDialog from './components/AfterSalesShipmentDialog.vue'
+import AfterSalesRefundDialog from './components/AfterSalesRefundDialog.vue'
 import { cancelAfterSales, loadAfterSales, type AfterSalesDetail } from './api/after-sales'
 import { getOrder, loadBusinessTrace, loadOrderAllocations, loadPurchase, postAction, type BusinessTrace, type OrderAllocation, type PurchaseDetail } from './api/workbench'
 import { moduleDefinitions, type ModuleKey } from './modules/module-config'
@@ -33,6 +35,7 @@ const message = ref('')
 const messageKind = ref<'success' | 'error'>('success')
 const importOpen = ref(false)
 const entityOpen = ref(false)
+const customerFundsRow = ref<Record<string, unknown>>()
 const supplierOpen = ref(false)
 const orderOpen = ref(false)
 const manualPurchaseOpen = ref(false)
@@ -58,6 +61,7 @@ const orderAllocation = ref<OrderAllocation>()
 const afterSalesOpen = ref(false)
 const afterSalesReceiptOpen = ref(false)
 const afterSalesShipmentOpen = ref(false)
+const afterSalesRefundId = ref<number>()
 const afterSalesDetail = ref<AfterSalesDetail>()
 const user = ref<CurrentUser | null>(null)
 const authReady = ref(false)
@@ -83,6 +87,7 @@ function selectModule(key: ModuleKey) {
   activeModule.value = key
   importOpen.value = false
   entityOpen.value = false
+  customerFundsRow.value = undefined
   supplierOpen.value = false
   orderOpen.value = false
   manualPurchaseOpen.value = false
@@ -135,6 +140,8 @@ function manual() {
   if (activeModule.value === 'supplier') { supplierOpen.value = true; return }
   entityOpen.value = true
 }
+
+function openCustomerFunds(row: Record<string, unknown>) { customerFundsRow.value = row }
 
 function openProductGallery(row: Record<string, unknown>) {
   if (activeModule.value === 'product') productGalleryRow.value = row
@@ -257,9 +264,10 @@ async function saved(closeDialog = true) {
     </aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><ProductCodeRulesDialog v-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @gallery="openProductGallery" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-cancel="cancelAfterSalesRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @message="showMessage" /></div></main>
+    <main><div class="content"><ProductCodeRulesDialog v-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @message="showMessage" /></div></main>
     <div v-if="importOpen && currentModule.importType && canUseCurrentModulePrimary" class="dialog-mask import-dialog-mask"><ImportPanel :type="currentModule.importType" :title="currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <CustomerDialog v-if="entityOpen && activeModule === 'customer'" :row="editRow" @close="entityOpen=false" @saved="saved" @message="showMessage" />
+    <CustomerFundsDialog v-if="customerFundsRow" :customer="customerFundsRow" :current-user-role="user.role" @close="customerFundsRow=undefined" @changed="list?.reload()" @message="showMessage" />
     <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <SupplierDialog v-if="supplierOpen" :row="editRow" @close="supplierOpen=false" @saved="saved" @message="showMessage" />
     <OrderDialog v-if="orderOpen" :row="editRow" :default-salesperson="user?.displayName" @close="orderOpen=false" @saved="saved" @message="showMessage" />
@@ -276,6 +284,7 @@ async function saved(closeDialog = true) {
     <AfterSalesDialog v-if="afterSalesOpen" :detail="afterSalesDetail" @close="afterSalesOpen=false" @saved="afterSalesSaved" @message="showMessage" />
     <AfterSalesReceiptDialog v-if="afterSalesReceiptOpen && afterSalesDetail" :detail="afterSalesDetail" @close="afterSalesReceiptOpen=false" @saved="afterSalesSaved" @message="showMessage" />
     <AfterSalesShipmentDialog v-if="afterSalesShipmentOpen && afterSalesDetail" :detail="afterSalesDetail" @close="afterSalesShipmentOpen=false" @saved="afterSalesSaved" @message="showMessage" />
+    <AfterSalesRefundDialog v-if="afterSalesRefundId" :after-sales-id="afterSalesRefundId" @close="afterSalesRefundId=undefined" @saved="afterSalesRefundId=undefined; list?.reload()" @message="showMessage" />
     <ActionInputDialog v-if="actionInput" :title="actionInput.title" :label="actionInput.label" :placeholder="actionInput.placeholder" @close="actionInput=null" @confirm="submitActionInput" />
   </div>
 </template>

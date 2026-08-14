@@ -143,6 +143,7 @@ export interface OrderCustomer {
   orderContactPhone?: string
   financeContactName?: string
   financeContactPhone?: string
+  fundBalance?: number
 }
 export function loadOrderCustomers() { return request<OrderCustomer[]>('/api/orders/customers') }
 export async function loadContractPrice(customerId: number, skuId: number) {

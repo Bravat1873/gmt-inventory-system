@@ -45,6 +45,11 @@ const customers = ref<OrderCustomer[]>([])
 const saving = ref(false)
 const error = ref('')
 const isEditing = computed(() => Boolean(props.row?.id))
+const selectedCustomer = computed(() => customers.value.find(item => item.id === form.customerId))
+const orderAmount = computed(() => form.items.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.salePrice || 0), 0))
+const customerBalance = computed(() => Number(selectedCustomer.value?.fundBalance ?? 0))
+const balanceCoverage = computed(() => orderAmount.value <= 0 ? 100 : customerBalance.value / orderAmount.value * 100)
+const money = (value:number) => value.toLocaleString('zh-CN', { minimumFractionDigits:2, maximumFractionDigits:2 })
 const customerOptions = computed<FuzzyPickerOption[]>(() => customers.value.map(customer => ({
   id: customer.id,
   label: customer.customerName,
@@ -175,7 +180,8 @@ onMounted(async () => {
         </section>
         <section class="order-section">
           <h3>客户信息</h3>
-          <div class="form-grid order-customer-picker-row">
+<div v-if="form.customerId" class="order-fund-coverage" :class="{ insufficient: balanceCoverage < 100 }" data-test="order-fund-coverage"><span>客户可用余额 <strong>¥ {{ money(customerBalance) }}</strong></span><span>订单金额 <strong>¥ {{ money(orderAmount) }}</strong></span><span>余额覆盖比例 <strong>{{ money(balanceCoverage) }}%</strong></span><small v-if="balanceCoverage < 100">余额不足，仅作下单判断提示，仍可直接生成订单。</small></div>
+                    <div class="form-grid order-customer-picker-row">
             <label :class="{ 'field-invalid': hasError('请选择客户') }"><span>客户 <small v-if="hasError('请选择客户')" data-test="customer-error" class="field-error">请选择客户</small></span><FuzzyPicker data-test="order-customer-picker" v-model="form.customerId" :options="customerOptions" placeholder="输入客户名称、编码或联系人搜索" :disabled="saving" empty-text="没有匹配的客户" @update:model-value="selectCustomerById" /></label>
             <label class="wide-field"><span>备注</span><textarea v-model.trim="form.remark"></textarea></label>
           </div>

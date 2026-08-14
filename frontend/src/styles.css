@@ -419,3 +419,17 @@ thead th:last-child { position:sticky; right:0; z-index:3; background:#fafafa; b
 .product-supplier-quotes-section small { display:block; margin-top:10px; color:#777; }
 
 .supplier-product-cell { width:250px; min-width:0; }.supplier-product-name { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.supplier-product-cell>div { display:flex; gap:10px; margin-top:5px; }.purchase-info-updated { min-width:135px; white-space:nowrap; }
+
+.customer-funds-dialog { width:min(1120px,calc(100vw - 40px)); height:min(820px,calc(100vh - 40px)); max-height:calc(100vh - 40px); display:flex; flex-direction:column; overflow:hidden; }
+.customer-funds-dialog header p { margin:4px 0 0; color:#777; font-size:13px; }
+.customer-funds-body { min-height:0; flex:1; overflow:auto; padding:18px 22px 22px; }
+.fund-overview { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+.fund-overview>div { padding:14px; border:1px solid #e3e5e8; border-radius:6px; background:#fafafa; }
+.fund-overview span { display:block; margin-bottom:6px; color:#777; font-size:12px; }.fund-overview strong { font-size:20px; }
+.danger,.fund-warning { color:#b42318; }.fund-warning { margin:10px 0 0; padding:9px 12px; border-radius:4px; background:#fff1f0; font-size:13px; }
+.fund-deposit { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; align-items:end; margin:16px 0; padding:14px; border:1px solid #e4e6e8; border-radius:6px; }
+.fund-deposit label { min-width:0; }.fund-deposit label span { display:block; margin-bottom:6px; color:#666; font-size:12px; }.fund-deposit input { width:100%; padding:9px; border:1px solid #bbb; border-radius:3px; }.fund-remark { grid-column:span 3; }
+.fund-tabs { display:flex; gap:4px; border-bottom:1px solid #ddd; }.fund-tabs button { padding:9px 13px; border:0; background:transparent; cursor:pointer; }.fund-tabs button.active { border-bottom:2px solid #111; font-weight:600; }
+.fund-table-wrap { max-height:310px; overflow:auto; }.fund-table-wrap table { min-width:760px; }.fund-table-wrap th { position:sticky; top:0; z-index:1; }.fund-table-wrap td { height:50px; }.fund-table-wrap td button { margin-right:5px; padding:5px 8px; border:1px solid #bbb; border-radius:3px; background:#fff; cursor:pointer; }
+@media(max-width:850px){.fund-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.fund-deposit{grid-template-columns:1fr 1fr}.fund-remark{grid-column:span 1}}
+.order-fund-coverage { display:flex; flex-wrap:wrap; gap:8px 22px; margin:0 22px 14px; padding:11px 13px; border:1px solid #dfe3e7; border-radius:5px; background:#f7f8fa; color:#555; font-size:13px; }.order-fund-coverage strong { color:#222; }.order-fund-coverage small { width:100%; color:#777; }.order-fund-coverage.insufficient,.order-fund-coverage.insufficient strong,.order-fund-coverage.insufficient small { color:#b42318; }
