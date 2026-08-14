@@ -70,4 +70,26 @@ class WorkbenchSchemaTest {
         assertTrue(sql.contains("UPDATE sys_user SET password_hash = '123'"),
                 "V25 必须把所有现有账号密码统一重置为明文 123");
     }
-}
+
+    @Test
+    void supplierPurchaseInfoMigrationKeepsQuoteHistoryAndReferencesItsSource() throws Exception {
+        String sql = new ClassPathResource("db/migration/V40__supplier_purchase_info_history.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        for (String fragment : new String[]{
+                "CREATE TABLE sku_supplier_purchase_info",
+                "supplier_product_config_id BIGINT NOT NULL",
+                "purchase_price DECIMAL(18,4) NOT NULL",
+                "moq INT NOT NULL",
+                "lead_time_days INT NOT NULL",
+                "enabled BOOLEAN NOT NULL DEFAULT TRUE",
+                "version INT NOT NULL DEFAULT 0",
+                "INSERT INTO sku_supplier_purchase_info",
+                "FROM sku_supplier_config",
+                "ALTER TABLE purchase_order_item",
+                "ALTER TABLE procurement_suggestion_item",
+                "supplier_purchase_info_id BIGINT NULL"
+        }) {
+            assertTrue(sql.contains(fragment), "采购信息历史迁移缺少 " + fragment);
+        }
+    }}
