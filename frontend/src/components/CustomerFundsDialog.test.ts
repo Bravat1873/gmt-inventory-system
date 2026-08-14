@@ -6,7 +6,7 @@ import * as api from '../api/customer-funds'
 vi.mock('../api/customer-funds', () => ({
   loadCustomerFundOverview: vi.fn().mockResolvedValue({ balance: 120, orderOutstandingAmount: 200, coverageRatio: 60, pendingAmount: 30, insufficient: true }),
   loadCustomerFundRequests: vi.fn().mockResolvedValue([{ id: 9, requestType: 'CUSTOMER_DEPOSIT', status: 'PENDING', amount: 30 }]),
-  loadCustomerFundLedger: vi.fn().mockResolvedValue([]),
+  loadCustomerFundLedger: vi.fn().mockResolvedValue([{ id: 1, entryType: 'CUSTOMER_DEPOSIT', direction: 'IN', amount: 100, balanceAfter: 100, sourceNo: 'SO-001', operatedAt: '2026-08-14T16:39:51.288' }]),
   loadCustomerFundSummary: vi.fn().mockResolvedValue([]),
   loadCustomerFundOrders: vi.fn().mockResolvedValue([{ id: 31, orderNo: 'SO-031', status: 'DRAFT', orderDate: '2026-08-14' }]),
   submitCustomerDeposit: vi.fn(),
@@ -46,4 +46,14 @@ it('allows a prepayment without selecting an order', async () => {
   await wrapper.get('.fund-deposit').trigger('submit')
   await flushPromises()
   expect(api.submitCustomerDeposit).toHaveBeenCalledWith(7, expect.objectContaining({ amount: 50, orderId: undefined }))
+})
+
+it('labels the linked document and displays operation time to seconds', async () => {
+  const wrapper = mount(CustomerFundsDialog, { props: { customer: { id: 7, customerName: '测试客户' }, currentUserRole: 'FINANCE' } })
+  await flushPromises()
+  await wrapper.findAll('.fund-tabs button')[1].trigger('click')
+  expect(wrapper.text()).toContain('关联单据号')
+  expect(wrapper.text()).not.toContain('业务单号')
+  expect(wrapper.text()).toContain('2026-08-14 16:39:51')
+  expect(wrapper.text()).not.toContain('.288')
 })
