@@ -78,3 +78,22 @@ it('submits the complete supplier profile fields without losing text formatting'
     bankAccount: ' 0012 3456 7890 '
   }))
 })
+
+it('shows full product name on hover and edits multiple purchase infos', async () => {
+  api.getSupplier.mockResolvedValueOnce({
+    id: 201, supplierName: '供应商', version: 0,
+    products: [{ skuId: 101, skuCode: 'P90-001', productName: '非常长的完整产品名称',
+      purchaseInfos: [
+        { id: 11, purchasePrice: 220, moq: 5, leadTimeDays: 7, updatedAt: '2026-08-14T10:30:00', version: 0 },
+        { id: 10, purchasePrice: 210, moq: 10, leadTimeDays: 9, updatedAt: '2026-08-13T10:30:00', version: 0 }
+      ] }]
+  })
+  const wrapper = mount(SupplierDialog, { props: { row: { id: 201 } } })
+  await flushPromises()
+
+  const name = wrapper.get('[data-test="supplier-product-name-101"]')
+  expect(name.attributes('title')).toContain('非常长的完整产品名称')
+  expect(wrapper.findAll('[data-test^="purchase-info-row-"]')).toHaveLength(2)
+  await wrapper.get('[data-test="add-purchase-info-101"]').trigger('click')
+  expect(wrapper.findAll('[data-test^="purchase-info-row-"]')).toHaveLength(3)
+})

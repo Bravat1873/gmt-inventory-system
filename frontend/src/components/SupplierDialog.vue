@@ -61,12 +61,20 @@ function addProduct() {
   if (skuId == null) return
   const sku = skus.value.find(item => item.id === skuId)
   if (!sku) return
-  products.value.push({ skuId, label: labelOf(sku), purchasePrice: 0, moq: 1, leadTimeDays: 0 })
+  products.value.push({ skuId, label: labelOf(sku), purchaseInfos: [{ purchasePrice: 0, moq: 1, leadTimeDays: 0 }] })
   pickedSku.value = null
 }
 
 function removeProduct(index: number) {
   products.value.splice(index, 1)
+}
+
+function addPurchaseInfo(product: ProductRow) {
+  product.purchaseInfos.push({ purchasePrice: 0, moq: 1, leadTimeDays: 0 })
+}
+
+function removePurchaseInfo(product: ProductRow, index: number) {
+  if (product.purchaseInfos.length > 1) product.purchaseInfos.splice(index, 1)
 }
 
 function trimmedOrUndefined(value: string) {
@@ -93,7 +101,10 @@ function payload(): SupplierCommand {
     taxRegistrationNo: preservedOrUndefined(form.taxRegistrationNo),
     bankAddress: trimmedOrUndefined(form.bankAddress),
     bankAccount: preservedOrUndefined(form.bankAccount),
-    products: products.value.map(({ skuId, purchasePrice, moq, leadTimeDays }) => ({ skuId, purchasePrice: Number(purchasePrice), moq: Number(moq), leadTimeDays: Number(leadTimeDays) })),
+    products: products.value.map(({ skuId, purchaseInfos }) => ({
+      skuId,
+      purchaseInfos: purchaseInfos.map(info => ({ ...info, purchasePrice: Number(info.purchasePrice), moq: Number(info.moq), leadTimeDays: Number(info.leadTimeDays) }))
+    })),
     version: version.value
   }
 }
@@ -105,7 +116,7 @@ async function save() {
     error.value = '请填写供应商名称'
     return
   }
-  if (products.value.some(item => !Number.isFinite(Number(item.purchasePrice)) || Number(item.purchasePrice) < 0 || !Number.isInteger(Number(item.moq)) || Number(item.moq) <= 0 || !Number.isInteger(Number(item.leadTimeDays)) || Number(item.leadTimeDays) < 0)) {
+  if (products.value.some(item => !item.purchaseInfos.length || item.purchaseInfos.some(info => !Number.isFinite(Number(info.purchasePrice)) || Number(info.purchasePrice) < 0 || !Number.isInteger(Number(info.moq)) || Number(info.moq) <= 0 || !Number.isInteger(Number(info.leadTimeDays)) || Number(info.leadTimeDays) < 0))) {
     error.value = '请完整填写供应产品的采购单价、最小起订量和交货天数'
     return
   }
@@ -146,12 +157,14 @@ async function initialise() {
     products.value = configured.map(item => {
       const product = item as Record<string, unknown>
       const sku = skus.value.find(value => value.id === Number(product.skuId))
+      const detailLabel = [product.skuCode, product.productName, product.model].filter(Boolean).map(String).join(' · ')
       return {
         skuId: Number(product.skuId),
-        label: sku ? labelOf(sku) : `${String(product.skuCode ?? '产品')} · ${String(product.productName ?? '')}`,
-        purchasePrice: Number(product.purchasePrice ?? 0),
-        moq: Number(product.moq ?? 1),
-        leadTimeDays: Number(product.leadTimeDays ?? 0)
+        label: detailLabel || (sku ? labelOf(sku) : `产品 ${String(product.skuId)}`),
+        purchaseInfos: (Array.isArray(product.purchaseInfos) ? product.purchaseInfos : [{ purchasePrice: product.purchasePrice, moq: product.moq, leadTimeDays: product.leadTimeDays }]).map(value => {
+          const info = value as Record<string, unknown>
+          return { id: info.id == null ? undefined : Number(info.id), purchasePrice: Number(info.purchasePrice ?? 0), moq: Number(info.moq ?? 1), leadTimeDays: Number(info.leadTimeDays ?? 0), updatedAt: info.updatedAt == null ? undefined : String(info.updatedAt), version: info.version == null ? undefined : Number(info.version) }
+        })
       }
     })
   } catch (cause) {
@@ -187,8 +200,8 @@ onMounted(initialise)
         </div>
 
         <section class="supplier-products-section">
-          <div class="supplier-products-heading"><div><h3>供应产品</h3><p>维护该供应商可采购的产品、默认采购单价、起订量和交货天数。</p></div><div class="supplier-product-add"><FuzzyPicker data-test="supplier-product-picker" v-model="pickedSku" :options="availableSkuOptions" placeholder="输入物料编号、型号或名称搜索" :disabled="loading || saving" empty-text="没有可添加的产品" /><button data-test="add-supplier-product" type="button" class="secondary-action" :disabled="pickedSku == null || saving" @click="addProduct">添加产品</button></div></div>
-          <div v-if="products.length" class="supplier-products-table-wrap"><table class="supplier-products-table"><thead><tr><th>产品</th><th>采购单价</th><th>最小起订量</th><th>交货天数</th><th>操作</th></tr></thead><tbody><tr v-for="(product,index) in products" :key="product.skuId"><td>{{ product.label }}</td><td><input v-model.number="product.purchasePrice" type="number" min="0" step="0.0001" :disabled="saving"></td><td><input v-model.number="product.moq" type="number" min="1" step="1" :disabled="saving"></td><td><input v-model.number="product.leadTimeDays" type="number" min="0" step="1" :disabled="saving"></td><td><button type="button" class="text-action" :disabled="saving" @click="removeProduct(index)">删除</button></td></tr></tbody></table></div>
+          <div class="supplier-products-heading"><div><h3>供应产品</h3><p>同一产品可维护多条采购单价、起订量和交货天数，采购时默认使用最新记录。</p></div><div class="supplier-product-add"><FuzzyPicker data-test="supplier-product-picker" v-model="pickedSku" :options="availableSkuOptions" placeholder="输入物料编号、型号或名称搜索" :disabled="loading || saving" empty-text="没有可添加的产品" /><button data-test="add-supplier-product" type="button" class="secondary-action" :disabled="pickedSku == null || saving" @click="addProduct">添加产品</button></div></div>
+          <div v-if="products.length" class="supplier-products-table-wrap"><table class="supplier-products-table"><thead><tr><th>产品</th><th>采购单价</th><th>最小起订量</th><th>交货天数</th><th>修改时间</th><th>操作</th></tr></thead><tbody><template v-for="(product,index) in products" :key="product.skuId"><tr v-for="(info,infoIndex) in product.purchaseInfos" :key="info.id ?? `new-${infoIndex}`" :data-test="`purchase-info-row-${product.skuId}-${infoIndex}`"><td><div v-if="infoIndex===0" class="supplier-product-cell"><span class="supplier-product-name" :data-test="`supplier-product-name-${product.skuId}`" :title="product.label">{{ product.label }}</span><div><button type="button" class="text-action" :data-test="`add-purchase-info-${product.skuId}`" @click="addPurchaseInfo(product)">新增采购信息</button><button type="button" class="text-action danger" @click="removeProduct(index)">移除产品</button></div></div></td><td><input v-model.number="info.purchasePrice" type="number" min="0" step="0.0001" :disabled="saving"></td><td><input v-model.number="info.moq" type="number" min="1" step="1" :disabled="saving"></td><td><input v-model.number="info.leadTimeDays" type="number" min="0" step="1" :disabled="saving"></td><td class="purchase-info-updated">{{ info.updatedAt ? String(info.updatedAt).replace('T',' ').slice(0,16) : '保存后生成' }}</td><td><button type="button" class="text-action" :disabled="saving || product.purchaseInfos.length===1" @click="removePurchaseInfo(product,infoIndex)">删除</button></td></tr></template></tbody></table></div>
           <p v-else class="supplier-products-empty">暂未添加供应产品。可以先保存供应商资料，后续再补充产品。</p>
         </section>
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>

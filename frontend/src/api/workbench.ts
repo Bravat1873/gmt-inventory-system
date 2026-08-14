@@ -177,10 +177,9 @@ export function postAction<T = Record<string, unknown>>(path: string, data: Reco
 export interface ManualPurchaseData {
   supplierId: number
   skuId: number
+  supplierPurchaseInfoId: number
   quantity: number
-  purchasePrice: number
   expectedArrivalDate?: string
-  priceSource: 'CURRENT_COST' | 'FACTORY_PRICE'
   remark?: string
 }
 
@@ -204,11 +203,18 @@ export interface SupplierProductOption {
   leadTimeDays: number
 }
 
-export interface SupplierProductConfig {
-  skuId: number
+export interface SupplierPurchaseInfoConfig {
+  id?: number
   purchasePrice: number
   moq: number
   leadTimeDays: number
+  updatedAt?: string
+  version?: number
+}
+
+export interface SupplierProductConfig {
+  skuId: number
+  purchaseInfos: SupplierPurchaseInfoConfig[]
 }
 
 export interface SupplierCommand {
@@ -230,11 +236,18 @@ export interface SupplierCommand {
   version?: number
 }
 
-export interface ProductSupplierOption extends SupplierOption {
-  supplierId: number
+export interface SupplierPurchaseInfoOption {
+  id: number
   purchasePrice: number
   moq: number
   leadTimeDays: number
+  updatedAt: string
+}
+
+export interface ProductSupplierOption extends SupplierOption {
+  supplierId: number
+  purchaseInfos: SupplierPurchaseInfoOption[]
+  latestPurchaseInfo: SupplierPurchaseInfoOption
 }
 
 export function loadProductSuppliers(skuId: number, keyword = '') {

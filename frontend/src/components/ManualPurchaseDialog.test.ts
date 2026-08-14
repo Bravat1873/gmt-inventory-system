@@ -9,7 +9,10 @@ const api = vi.hoisted(() => ({
     { id: 102, currentCost: 80, factoryPrice: 95, skuCode: 'P50-001', productName: 'P50 智能锁', model: 'P50', unit: '件', actualQuantity: 12, availableQuantity: 10, inTransitQuantity: 3, pendingDeliveryQuantity: 5, supplyDemandBalance: 10, purchaseShortageQuantity: 0 }
   ]),
   loadProductSuppliers: vi.fn().mockResolvedValue([
-    { supplierId: 201, supplierName: '贝朗供应商', purchasePrice: 220, moq: 5, leadTimeDays: 7 }
+    { supplierId: 201, supplierName: '贝朗供应商', purchaseInfos: [
+      { id: 12, purchasePrice: 220, moq: 5, leadTimeDays: 7, updatedAt: '2026-08-14T10:00:00' },
+      { id: 11, purchasePrice: 210, moq: 10, leadTimeDays: 9, updatedAt: '2026-08-13T10:00:00' }
+    ], latestPurchaseInfo: { id: 12, purchasePrice: 220, moq: 5, leadTimeDays: 7, updatedAt: '2026-08-14T10:00:00' } }
   ])
 }))
 
@@ -33,17 +36,17 @@ it('selects a product first and then its configured supplier', async () => {
   await supplierSearch.trigger('focus')
   await wrapper.get('[data-test="supplier-option-201"]').trigger('click')
   const priceSelect = wrapper.get('[data-test="purchase-price"]')
-  expect((priceSelect.element as HTMLSelectElement).value).toBe('')
-  await priceSelect.setValue('CURRENT_COST')
-  expect((priceSelect.element as HTMLSelectElement).value).toBe('CURRENT_COST')
+  expect(priceSelect.text()).toContain('¥220｜起订 5｜交货 7 天')
   expect(wrapper.text()).toContain('最小起订量：5')
+  expect(wrapper.text()).not.toContain('成本单价')
+  expect(wrapper.text()).not.toContain('转厂价格')
 
   await productSearch.trigger('focus')
   await productSearch.setValue('P50')
   await wrapper.get('[data-test="product-option-102"]').trigger('click')
   await flushPromises()
   expect((supplierSearch.element as HTMLInputElement).value).toBe('')
-  expect((wrapper.get('[data-test="purchase-price"]').element as HTMLInputElement).value).toBe('')
+  expect(wrapper.get('[data-test="purchase-price"]').text()).toContain('请选择采购信息')
 })
 it('shows purchase guidance for a negative balance without changing quantity', async () => {
   const wrapper = mount(ManualPurchaseDialog)

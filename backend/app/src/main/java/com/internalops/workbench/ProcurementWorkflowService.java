@@ -36,17 +36,27 @@ public class ProcurementWorkflowService {
         var missing = jdbc.queryForList("""
                 SELECT i.id AS item_id, i.sku_id,
                        i.uncovered_quantity-COALESCE(c.covered_quantity,0) AS uncovered_quantity,
-                       ssc.supplier_id, ssc.purchase_price, ssc.moq, ssc.lead_time_days
+                       quote.supplier_id, quote.purchase_price, quote.moq, quote.lead_time_days,
+                       quote.supplier_purchase_info_id
                 FROM sales_order_item i
                 JOIN sales_order o ON o.id=i.sales_order_id
                 LEFT JOIN (
                     SELECT sales_order_item_id,SUM(covered_quantity) AS covered_quantity
                     FROM shortage_coverage WHERE active=TRUE GROUP BY sales_order_item_id
                 ) c ON c.sales_order_item_id=i.id
-                LEFT JOIN sku_supplier_config ssc ON ssc.sku_id=i.sku_id AND ssc.enabled=TRUE
+                LEFT JOIN (
+                    SELECT ranked.* FROM (
+                        SELECT cfg.sku_id,cfg.supplier_id,pi.id AS supplier_purchase_info_id,
+                               pi.purchase_price,pi.moq,pi.lead_time_days,
+                               ROW_NUMBER() OVER(PARTITION BY cfg.sku_id ORDER BY pi.updated_at DESC,pi.id DESC) AS rn
+                        FROM sku_supplier_config cfg
+                        JOIN sku_supplier_purchase_info pi ON pi.supplier_product_config_id=cfg.id
+                        WHERE cfg.enabled=TRUE AND pi.enabled=TRUE
+                    ) ranked WHERE ranked.rn=1
+                ) quote ON quote.sku_id=i.sku_id
                 WHERE o.status='WAITING_STOCK'
                   AND i.uncovered_quantity-COALESCE(c.covered_quantity,0)>0
-                ORDER BY ssc.supplier_id,i.sku_id,i.id
+                ORDER BY quote.supplier_id,i.sku_id,i.id
                 """);
         if (missing.isEmpty()) {
             throw new IllegalStateException("当前没有需要采购的缺口");
@@ -85,10 +95,10 @@ public class ProcurementWorkflowService {
                 long suggestionItemId = insert("""
                                 INSERT INTO procurement_suggestion_item(
                                     suggestion_id,sku_id,supplier_id,shortage_quantity,suggested_quantity,
-                                    confirmed_quantity,purchase_price,expected_arrival_date)
-                                VALUES(?,?,?,?,?,NULL,?,?)
+                                    confirmed_quantity,purchase_price,expected_arrival_date,supplier_purchase_info_id)
+                                VALUES(?,?,?,?,?,NULL,?,?,?)
                                 """,
-                        suggestionId, sku.getKey(), group.getKey(), shortage, quantity, price, eta);
+                        suggestionId, sku.getKey(), group.getKey(), shortage, quantity, price, eta, num(first, "supplier_purchase_info_id"));
                 for (var item : sku.getValue()) {
                     jdbc.update("""
                                     INSERT INTO shortage_coverage(
@@ -111,7 +121,7 @@ public class ProcurementWorkflowService {
             throw new IllegalStateException("当前采购建议不能重复确认");
         }
         var lines = jdbc.queryForList("""
-                SELECT sku_id,supplier_id,suggested_quantity,purchase_price,expected_arrival_date
+                SELECT sku_id,supplier_id,suggested_quantity,purchase_price,expected_arrival_date,supplier_purchase_info_id
                 FROM procurement_suggestion_item WHERE suggestion_id=? ORDER BY id
                 """, suggestionId);
         if (lines.isEmpty()) {
@@ -152,10 +162,10 @@ public class ProcurementWorkflowService {
             BigDecimal price = (BigDecimal) val(line, "purchase_price");
             jdbc.update("""
                             INSERT INTO purchase_order_item(
-                                purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price)
-                            VALUES(?,?,?,?,0,?)
+                                purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price,supplier_purchase_info_id)
+                            VALUES(?,?,?,?,0,?,?)
                             """,
-                    purchaseId, lineNo++, skuId, quantity, price);
+                    purchaseId, lineNo++, skuId, quantity, price, val(line, "supplier_purchase_info_id"));
             increaseTransit(skuId, quantity, purchaseNo);
         }
         jdbc.update("UPDATE procurement_suggestion_item SET confirmed_quantity=suggested_quantity WHERE suggestion_id=?",
@@ -175,53 +185,40 @@ public class ProcurementWorkflowService {
 
     @Transactional
     public Map<String, Object> manual(ManualPurchaseRequest request) {
-        if (request.quantity() <= 0) {
-            throw new IllegalArgumentException("采购数量必须大于零");
-        }
-        requireExists("supplier", request.supplierId(), "供应商不存在");
-        requireExists("sku", request.skuId(), "产品不存在");
-        String priceSource = request.priceSource() == null ? "" : request.priceSource().trim().toUpperCase();
-        if (!"CURRENT_COST".equals(priceSource) && !"FACTORY_PRICE".equals(priceSource)) throw new IllegalArgumentException("请选择采购价格来源");
-        Map<String,Object> skuPrice = jdbc.queryForMap("SELECT current_cost,factory_price FROM sku WHERE id=?", request.skuId());
-        BigDecimal purchasePrice = (BigDecimal) val(skuPrice, "current_cost");
-        if ("FACTORY_PRICE".equals(priceSource)) purchasePrice = (BigDecimal) val(skuPrice, "factory_price");
-        if (purchasePrice == null) throw new IllegalArgumentException("所选采购价格尚未设置");
-        if (request.purchasePrice() == null || purchasePrice.compareTo(request.purchasePrice()) != 0) throw new IllegalArgumentException("采购价格与产品当前价格不一致");
-        Integer relationCount = jdbc.queryForObject("""
-                        SELECT COUNT(*) FROM sku_supplier_config
-                        WHERE supplier_id=? AND sku_id=? AND enabled=TRUE
-                        """, Integer.class, request.supplierId(), request.skuId());
-        if (relationCount == null || relationCount == 0) {
-            throw new IllegalArgumentException("所选产品未配置给该供应商");
-        }
-
-        BigDecimal total = purchasePrice
-                .multiply(BigDecimal.valueOf(request.quantity()))
-                .setScale(2, RoundingMode.HALF_UP);
-        if (total.signum() <= 0 || total.compareTo(MAX_PURCHASE_TOTAL) > 0) {
-            throw new IllegalArgumentException("采购总额必须为大于0且不超过数据库金额上限的金额");
-        }
+        if (request.quantity() <= 0) throw new IllegalArgumentException("采购数量必须大于零");
+        List<Map<String, Object>> matches = jdbc.queryForList("""
+                SELECT pi.id,pi.purchase_price,pi.moq,cfg.sku_id,cfg.supplier_id
+                FROM sku_supplier_purchase_info pi
+                JOIN sku_supplier_config cfg ON cfg.id=pi.supplier_product_config_id
+                JOIN supplier sp ON sp.id=cfg.supplier_id
+                JOIN sku s ON s.id=cfg.sku_id
+                WHERE pi.id=? AND pi.enabled=TRUE AND cfg.enabled=TRUE
+                  AND sp.enabled=TRUE AND s.enabled=TRUE
+                  AND cfg.supplier_id=? AND cfg.sku_id=?
+                """, request.supplierPurchaseInfoId(), request.supplierId(), request.skuId());
+        if (matches.isEmpty()) throw new IllegalArgumentException("所选采购信息不属于该供应商和产品，或已停用");
+        Map<String, Object> quote = matches.get(0);
+        int moq = (int) num(quote, "moq");
+        if (request.quantity() < moq) throw new IllegalArgumentException("采购数量不能低于最小起订量 " + moq);
+        BigDecimal purchasePrice = (BigDecimal) val(quote, "purchase_price");
+        BigDecimal total = purchasePrice.multiply(BigDecimal.valueOf(request.quantity())).setScale(2, RoundingMode.HALF_UP);
+        if (total.signum() <= 0 || total.compareTo(MAX_PURCHASE_TOTAL) > 0)
+            throw new IllegalArgumentException("采购总额必须为大于 0 且不超过数据库金额上限的金额");
         String purchaseNo = "PO" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
         long purchaseId = insert("""
-                        INSERT INTO purchase_order(
-                            purchase_no,suggestion_id,manual_entry,supplier_id,status,total_amount,
-                            expected_arrival_date,purchase_remark,created_by)
-                        VALUES(?,NULL,TRUE,?,'PENDING_SUPPLIER_PAYMENT',?,?,?,1)
-                        """,
-                purchaseNo, request.supplierId(), total, request.expectedArrivalDate(), request.remark());
+                INSERT INTO purchase_order(
+                    purchase_no,suggestion_id,manual_entry,supplier_id,status,total_amount,
+                    expected_arrival_date,purchase_remark,created_by)
+                VALUES(?,NULL,TRUE,?,'PENDING_SUPPLIER_PAYMENT',?,?,?,1)
+                """, purchaseNo, request.supplierId(), total, request.expectedArrivalDate(), request.remark());
         jdbc.update("""
-                        INSERT INTO purchase_order_item(
-                            purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price,price_source)
-                        VALUES(?,1,?,?,0,?,?)
-                        """,
-                purchaseId, request.skuId(), request.quantity(), purchasePrice, priceSource);
+                INSERT INTO purchase_order_item(
+                    purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price,supplier_purchase_info_id)
+                VALUES(?,1,?,?,0,?,?)
+                """, purchaseId, request.skuId(), request.quantity(), purchasePrice, request.supplierPurchaseInfoId());
         increaseTransit(request.skuId(), request.quantity(), purchaseNo);
-        return Map.of(
-                "purchaseId", purchaseId,
-                "purchaseNo", purchaseNo,
-                "status", "PENDING_SUPPLIER_PAYMENT");
+        return Map.of("purchaseId", purchaseId, "purchaseNo", purchaseNo, "status", "PENDING_SUPPLIER_PAYMENT");
     }
-
     @Transactional
     public Map<String, Object> payment(long id, FinanceActionRequest request) {
         var purchase = jdbc.queryForMap("SELECT status,total_amount FROM purchase_order WHERE id=? FOR UPDATE", id);

@@ -253,20 +253,35 @@ public class WorkbenchQueryService {
     public List<Map<String, Object>> productSuppliers(long skuId, String keyword) {
         String search = keyword == null ? "" : keyword.trim();
         return jdbc.queryForList("""
-                        SELECT sp.id AS `supplierId`,sp.supplier_code AS `supplierCode`,
-                               sp.supplier_name AS `supplierName`,sp.contact_name AS `contactName`,sp.phone,
-                               ssc.purchase_price AS `purchasePrice`,ssc.moq,
-                               ssc.lead_time_days AS `leadTimeDays`
-                        FROM sku_supplier_config ssc
-                        JOIN supplier sp ON sp.id=ssc.supplier_id
-                        JOIN sku s ON s.id=ssc.sku_id
-                        WHERE ssc.sku_id=? AND ssc.enabled=TRUE AND sp.enabled=TRUE AND s.enabled=TRUE
-                          AND (LOCATE(?,COALESCE(sp.supplier_name,''))>0
-                               OR LOCATE(?,COALESCE(sp.supplier_code,''))>0
-                               OR LOCATE(?,COALESCE(sp.contact_name,''))>0)
-                        ORDER BY sp.supplier_name,sp.id
-                        LIMIT 30
-                        """, skuId, search, search, search).stream().map(this::normalizeKeys).toList();
+                SELECT cfg.id AS `relationId`,sp.id AS `supplierId`,sp.supplier_code AS `supplierCode`,
+                       sp.supplier_name AS `supplierName`,sp.contact_name AS `contactName`,sp.phone
+                FROM sku_supplier_config cfg
+                JOIN supplier sp ON sp.id=cfg.supplier_id
+                JOIN sku s ON s.id=cfg.sku_id
+                WHERE cfg.sku_id=? AND cfg.enabled=TRUE AND sp.enabled=TRUE AND s.enabled=TRUE
+                  AND (LOCATE(?,COALESCE(sp.supplier_name,''))>0
+                       OR LOCATE(?,COALESCE(sp.supplier_code,''))>0
+                       OR LOCATE(?,COALESCE(sp.contact_name,''))>0)
+                ORDER BY sp.supplier_name,sp.id LIMIT 30
+                """, skuId, search, search, search).stream().map(this::normalizeKeys).map(supplier -> {
+                    Map<String, Object> result = new LinkedHashMap<>(supplier);
+                    long relationId = ((Number) result.remove("relationId")).longValue();
+                    List<Map<String, Object>> infos = jdbc.queryForList("""
+                            SELECT id,purchase_price AS `purchasePrice`,moq,
+                                   lead_time_days AS `leadTimeDays`,updated_at AS `updatedAt`
+                            FROM sku_supplier_purchase_info
+                            WHERE supplier_product_config_id=? AND enabled=TRUE
+                            ORDER BY updated_at DESC,id DESC
+                            """, relationId).stream().map(this::normalizeKeys).toList();
+                    result.put("purchaseInfos", infos);
+                    result.put("latestPurchaseInfo", infos.isEmpty() ? null : infos.get(0));
+                    if (!infos.isEmpty()) {
+                        result.put("purchasePrice", infos.get(0).get("purchasePrice"));
+                        result.put("moq", infos.get(0).get("moq"));
+                        result.put("leadTimeDays", infos.get(0).get("leadTimeDays"));
+                    }
+                    return result;
+                }).filter(result -> !((List<?>) result.get("purchaseInfos")).isEmpty()).toList();
     }
     public Map<String, Object> supplierDetail(long supplierId) {
         List<Map<String, Object>> suppliers = jdbc.queryForList("""

@@ -5,15 +5,17 @@ import {
   loadOrderSkus,
   loadProductSuppliers,
   type OrderSku,
-  type ProductSupplierOption
+  type ProductSupplierOption,
+  type SupplierPurchaseInfoOption
 } from '../api/workbench'
 
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
-const form = reactive({ quantity: 1, purchasePrice: '', priceSource: '', expectedArrivalDate: '', remark: '' })
+const form = reactive({ quantity: 1, expectedArrivalDate: '', remark: '' })
 const products = ref<OrderSku[]>([])
 const suppliers = ref<ProductSupplierOption[]>([])
 const selectedProduct = ref<OrderSku | null>(null)
 const selectedSupplier = ref<ProductSupplierOption | null>(null)
+const selectedPurchaseInfo = ref<SupplierPurchaseInfoOption | null>(null)
 const productQuery = ref('')
 const supplierQuery = ref('')
 const productOpen = ref(false)
@@ -105,22 +107,26 @@ async function selectProduct(product: OrderSku) {
   selectedSupplier.value = null
   supplierQuery.value = ''
   suppliers.value = []
-  form.purchasePrice = ''
-  form.priceSource = ''
+  selectedPurchaseInfo.value = null
   form.expectedArrivalDate = ''
   errors.product = ''
   errors.supplier = ''
-  errors.purchasePrice = ''
+  errors.purchaseInfo = ''
   await searchSuppliers()
 }
 
 function selectSupplier(supplier: ProductSupplierOption) {
   selectedSupplier.value = supplier
+  selectedPurchaseInfo.value = supplier.purchaseInfos[0] ?? null
   supplierQuery.value = supplier.supplierName
   supplierOpen.value = false
-  setExpectedArrival(supplier.leadTimeDays)
+  if (selectedPurchaseInfo.value) setExpectedArrival(selectedPurchaseInfo.value.leadTimeDays)
   errors.supplier = ''
-  errors.purchasePrice = ''
+  errors.purchaseInfo = ''
+}
+
+function selectPurchaseInfo() {
+  if (selectedPurchaseInfo.value) setExpectedArrival(selectedPurchaseInfo.value.leadTimeDays)
 }
 
 function validate() {
@@ -129,25 +135,22 @@ function validate() {
   if (!selectedSupplier.value) errors.supplier = selectedProduct.value ? '请选择该产品的供应商' : '请先选择产品'
   const quantity = Number(form.quantity)
   if (!Number.isInteger(quantity) || quantity <= 0) errors.quantity = '采购数量必须是大于 0 的整数'
-  if (selectedSupplier.value && quantity < selectedSupplier.value.moq) errors.quantity = `采购数量不能低于最小起订量 ${selectedSupplier.value.moq}`
-  if (!form.priceSource) errors.purchasePrice = '请选择采购价格来源'
-  const price = Number(form.purchasePrice)
-  if (form.priceSource && (!Number.isFinite(price) || price <= 0)) errors.purchasePrice = '所选采购价格必须是大于 0 的有效数字'
+  if (selectedPurchaseInfo.value && quantity < selectedPurchaseInfo.value.moq) errors.quantity = `采购数量不能低于最小起订量 ${selectedPurchaseInfo.value.moq}`
+  if (!selectedPurchaseInfo.value) errors.purchaseInfo = '请选择供应商采购信息'
   return Object.keys(errors).length === 0
 }
 
 function requestClose() { if (!saving.value) emit('close') }
 
 async function save() {
-  if (saving.value || !validate() || !selectedSupplier.value || !selectedProduct.value) return
+  if (saving.value || !validate() || !selectedSupplier.value || !selectedProduct.value || !selectedPurchaseInfo.value) return
   saving.value = true
   try {
     const result = await createManualPurchase({
       supplierId: selectedSupplier.value.supplierId,
       skuId: selectedProduct.value.id,
+      supplierPurchaseInfoId: selectedPurchaseInfo.value.id,
       quantity: Number(form.quantity),
-      purchasePrice: Number(form.purchasePrice),
-      priceSource: form.priceSource as 'CURRENT_COST' | 'FACTORY_PRICE',
       expectedArrivalDate: form.expectedArrivalDate || undefined,
       remark: form.remark.trim() || undefined
     })
@@ -194,15 +197,15 @@ onMounted(loadProducts)
             <div v-if="supplierOpen && selectedProduct" class="choice-options" role="listbox">
               <span v-if="loadingSuppliers" class="choice-empty">正在查询供应商…</span>
               <button v-for="supplier in visibleSuppliers" v-else :key="supplier.supplierId" :data-test="`supplier-option-${supplier.supplierId}`" type="button" @mousedown.prevent @click="selectSupplier(supplier)">
-                <strong>{{ supplier.supplierName }}</strong><small>{{ supplier.supplierCode || '未设置编码' }} · 采购价 {{ supplier.purchasePrice }} · 起订 {{ supplier.moq }} · 交货 {{ supplier.leadTimeDays }} 天</small>
+                <strong>{{ supplier.supplierName }}</strong><small>{{ supplier.supplierCode || '未设置编码' }} · 最新采购价 {{ supplier.latestPurchaseInfo.purchasePrice }} · 共 {{ supplier.purchaseInfos.length }} 条采购信息</small>
               </button>
               <span v-if="!loadingSuppliers && visibleSuppliers.length===0" class="choice-empty">该产品暂无供应商，请先到供应商管理维护供货关系。</span>
             </div>
-            <small v-if="selectedSupplier" class="field-hint">最小起订量：{{ selectedSupplier.moq }}，交货天数：{{ selectedSupplier.leadTimeDays }}</small>
+            <small v-if="selectedPurchaseInfo" class="field-hint">最小起订量：{{ selectedPurchaseInfo.moq }}，交货天数：{{ selectedPurchaseInfo.leadTimeDays }}</small>
             <small v-if="errors.supplier" class="field-error">{{ errors.supplier }}</small>
           </label>
           <label><span>采购数量</span><input v-model.number="form.quantity" type="number" min="1" step="1" :aria-invalid="Boolean(errors.quantity)" :disabled="saving"><small v-if="errors.quantity" class="field-error">{{ errors.quantity }}</small></label>
-          <label><span>采购单价</span><select data-test="purchase-price" v-model="form.priceSource" :disabled="saving || !selectedProduct" @change="form.purchasePrice = form.priceSource === 'CURRENT_COST' ? String(selectedProduct?.currentCost ?? '') : form.priceSource === 'FACTORY_PRICE' ? String(selectedProduct?.factoryPrice ?? '') : ''"><option value="">请选择价格来源</option><option value="CURRENT_COST" :disabled="selectedProduct?.currentCost == null">成本单价（含税）：{{ selectedProduct?.currentCost ?? '未设置' }}</option><option value="FACTORY_PRICE" :disabled="selectedProduct?.factoryPrice == null">转厂价格：{{ selectedProduct?.factoryPrice ?? '未设置' }}</option></select><small v-if="errors.purchasePrice" class="field-error">{{ errors.purchasePrice }}</small></label>
+          <label><span>采购单价</span><select data-test="purchase-price" v-model="selectedPurchaseInfo" :disabled="saving || !selectedSupplier" @change="selectPurchaseInfo"><option :value="null">请选择采购信息</option><option v-for="info in selectedSupplier?.purchaseInfos ?? []" :key="info.id" :value="info">¥{{ info.purchasePrice }}｜起订 {{ info.moq }}｜交货 {{ info.leadTimeDays }} 天｜{{ String(info.updatedAt).replace('T',' ').slice(0,16) }}</option></select><small v-if="errors.purchaseInfo" class="field-error">{{ errors.purchaseInfo }}</small></label>
           <label class="date-field"><span>预计到货日期</span><div class="date-picker"><button type="button" class="date-display" :class="{ empty: !form.expectedArrivalDate }" data-test="expected-arrival-display" :disabled="saving" @click="openDatePicker"><span>{{ formattedArrivalDate() }}</span><span class="date-display-icon" aria-hidden="true"></span></button><input ref="dateInput" v-model="form.expectedArrivalDate" class="native-date-input" type="date" :disabled="saving"></div></label>
           <label><span>备注</span><textarea v-model="form.remark" maxlength="500" :disabled="saving"></textarea></label>
         </div>
