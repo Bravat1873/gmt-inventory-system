@@ -232,10 +232,12 @@ class SalesOrderCommandApiTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("READY_TO_SHIP"));
         org.junit.jupiter.api.Assertions.assertEquals(7, jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(7, jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
+        org.junit.jupiter.api.Assertions.assertEquals(7, jdbc.queryForObject("SELECT locked_quantity FROM sales_order_item WHERE sales_order_id=?", Integer.class, id));
         mvc.perform(put("/api/orders/{id}/shipment-quantities",id).contentType("application/json").content("{\"deliveryAddress\":\"Shenzhen\",\"items\":[{\"lineNo\":10000,\"shippedQuantity\":10}]}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("SHIPPED"));
         org.junit.jupiter.api.Assertions.assertEquals(0, jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(10, jdbc.queryForObject("SELECT shipped_quantity FROM sales_order_item WHERE sales_order_id=?", Integer.class, id));
+        org.junit.jupiter.api.Assertions.assertEquals(0, jdbc.queryForObject("SELECT locked_quantity FROM sales_order_item WHERE sales_order_id=?", Integer.class, id));
     }
 
     @Test void rejectsBlankDeliveryAddressWhenShipmentIncreases() throws Exception {

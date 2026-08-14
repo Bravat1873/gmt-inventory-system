@@ -73,14 +73,18 @@ public class ShipmentQuantityService {
             int target = requested.getOrDefault(lineNo, current);
             int delta = target - current;
             int locked = (int) InventoryAllocationService.num(line, "locked_quantity");
-            int newLocked = locked - delta;
+            int remainingAfter = ordered - target;
+            int lockedAfterShipment = locked - delta;
+            int excessLocked = delta > 0 ? Math.max(0, lockedAfterShipment - remainingAfter) : 0;
+            int finalLocked = lockedAfterShipment - excessLocked;
+            int lockedReduction = delta + excessLocked;
             if (delta != 0) {
                 long skuId = InventoryAllocationService.num(line, "sku_id");
                 Map<String, Object> balance = jdbc.queryForMap("SELECT id,actual_quantity,locked_quantity,in_transit_quantity FROM inventory_balance WHERE warehouse_id=? AND sku_id=? FOR UPDATE", warehouseId, skuId);
                 int actual = (int) InventoryAllocationService.num(balance, "actual_quantity");
                 int balanceLocked = (int) InventoryAllocationService.num(balance, "locked_quantity");
                 int transit = (int) InventoryAllocationService.num(balance, "in_transit_quantity");
-                if (delta > 0 && (balanceLocked < delta || actual < delta || locked < delta)) {
+                if (delta > 0 && (balanceLocked < lockedReduction || actual < delta || locked < delta)) {
                     String skuCode = String.valueOf(line.getOrDefault("sku_code", ""));
                     String productName = String.valueOf(line.getOrDefault("product_name", ""));
                     String material = !skuCode.isBlank() && !"null".equals(skuCode) ? skuCode
@@ -89,12 +93,12 @@ public class ShipmentQuantityService {
                             + "，本次最多可增加发货 " + Math.max(0, locked)
                             + "；请先完成采购到货或补充库存");
                 }
-                jdbc.update("UPDATE inventory_balance SET actual_quantity=actual_quantity-?, locked_quantity=locked_quantity-?, version=version+1 WHERE id=?", delta, delta, InventoryAllocationService.num(balance, "id"));
-                allocation.tx(warehouseId, skuId, "SALES_SHIPMENT", "SALES_ORDER", String.valueOf(orderId), -delta, -delta, 0,
-                        actual, actual - delta, balanceLocked, balanceLocked - delta, transit, transit);
+                jdbc.update("UPDATE inventory_balance SET actual_quantity=actual_quantity-?, locked_quantity=locked_quantity-?, version=version+1 WHERE id=?", delta, lockedReduction, InventoryAllocationService.num(balance, "id"));
+                allocation.tx(warehouseId, skuId, "SALES_SHIPMENT", "SALES_ORDER", String.valueOf(orderId), -delta, -lockedReduction, 0,
+                        actual, actual - delta, balanceLocked, balanceLocked - lockedReduction, transit, transit);
             }
-            int uncovered = Math.max(0, ordered - target - newLocked);
-            jdbc.update("UPDATE sales_order_item SET shipped_quantity=?, uncovered_quantity=?, version=version+1 WHERE id=?", target, uncovered, lineId);
+            int uncovered = Math.max(0, remainingAfter - finalLocked);
+            jdbc.update("UPDATE sales_order_item SET shipped_quantity=?, locked_quantity=?, uncovered_quantity=?, version=version+1 WHERE id=?", target, finalLocked, uncovered, lineId);
         }
         if (!positiveDeltas.isEmpty()) {
             long shipmentId = insertShipment(orderId, deliveryAddress, currentOperatorName(), trimToNull(request.remark()));
