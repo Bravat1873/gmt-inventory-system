@@ -246,6 +246,12 @@ class ProcurementWorkflowApiTest {
                 .andExpect(jsonPath("$.data.items[0].remainingQuantity").value(6));
     }
 
+    @Test
+    void createsManualPurchaseWithCgMonthlyNumber() throws Exception {
+        createManualPurchase(login(), 10);
+        assertThat(jdbc.queryForObject("SELECT purchase_no FROM purchase_order ORDER BY id DESC LIMIT 1", String.class))
+                .matches("CG\\d{6}00001");
+    }
     private long createManualPurchase(Cookie session, int quantity) throws Exception {
         String body = mvc.perform(post("/api/procurement/manual").cookie(session)
                         .contentType("application/json")

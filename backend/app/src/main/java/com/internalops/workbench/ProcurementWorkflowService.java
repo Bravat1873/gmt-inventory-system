@@ -1,6 +1,8 @@
 package com.internalops.workbench;
 
 import com.internalops.auth.CurrentUser;
+import com.internalops.numbering.DocumentNumberService;
+import com.internalops.numbering.DocumentType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -25,10 +27,12 @@ public class ProcurementWorkflowService {
 
     private final JdbcTemplate jdbc;
     private final InventoryAllocationService allocation;
+    private final DocumentNumberService documentNumbers;
 
-    public ProcurementWorkflowService(JdbcTemplate jdbc, InventoryAllocationService allocation) {
+    public ProcurementWorkflowService(JdbcTemplate jdbc, InventoryAllocationService allocation, DocumentNumberService documentNumbers) {
         this.jdbc = jdbc;
         this.allocation = allocation;
+        this.documentNumbers = documentNumbers;
     }
 
     @Transactional
@@ -74,10 +78,10 @@ public class ProcurementWorkflowService {
 
         List<Long> suggestions = new ArrayList<>();
         for (var group : groups.entrySet()) {
-            String stamp = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+            String suggestionNo = documentNumbers.next(DocumentType.PROCUREMENT_REVIEW, LocalDate.now());
             long suggestionId = insert(
                     "INSERT INTO procurement_suggestion(suggestion_no,status,created_by) VALUES(?,'DRAFT',1)",
-                    "PS" + stamp);
+                    suggestionNo);
 
             Map<Long, List<Map<String, Object>>> bySku = new LinkedHashMap<>();
             for (var row : group.getValue()) {
@@ -147,7 +151,7 @@ public class ProcurementWorkflowService {
                 .filter(Objects::nonNull)
                 .max(LocalDate::compareTo)
                 .orElse(null);
-        String purchaseNo = "PO" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        String purchaseNo = documentNumbers.next(DocumentType.PURCHASE_ORDER, LocalDate.now());
         long purchaseId = insert("""
                         INSERT INTO purchase_order(
                             purchase_no,suggestion_id,supplier_id,status,total_amount,expected_arrival_date,created_by)
@@ -204,7 +208,7 @@ public class ProcurementWorkflowService {
         BigDecimal total = purchasePrice.multiply(BigDecimal.valueOf(request.quantity())).setScale(2, RoundingMode.HALF_UP);
         if (total.signum() <= 0 || total.compareTo(MAX_PURCHASE_TOTAL) > 0)
             throw new IllegalArgumentException("采购总额必须为大于 0 且不超过数据库金额上限的金额");
-        String purchaseNo = "PO" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        String purchaseNo = documentNumbers.next(DocumentType.PURCHASE_ORDER, LocalDate.now());
         long purchaseId = insert("""
                 INSERT INTO purchase_order(
                     purchase_no,suggestion_id,manual_entry,supplier_id,status,total_amount,

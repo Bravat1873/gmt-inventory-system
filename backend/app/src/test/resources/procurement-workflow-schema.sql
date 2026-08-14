@@ -202,3 +202,6 @@ INSERT INTO sku_supplier_config(id,sku_id,supplier_id,purchase_price,moq,lead_ti
 INSERT INTO sku_supplier_purchase_info(id,supplier_product_config_id,purchase_price,moq,lead_time_days,enabled,updated_at,version) VALUES(1,1,10.0000,10,7,TRUE,CURRENT_TIMESTAMP,0);
 
 ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;
+
+DROP TABLE IF EXISTS document_number_sequence;
+CREATE TABLE document_number_sequence (document_type VARCHAR(32) NOT NULL, year_month CHAR(6) NOT NULL, current_value INT NOT NULL, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(document_type,year_month), CONSTRAINT ck_document_number_value CHECK(current_value BETWEEN 0 AND 99999));
