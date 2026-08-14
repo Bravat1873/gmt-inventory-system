@@ -43,7 +43,7 @@ public class ProcurementWorkflowService {
     public Map<String, Object> generate() {
         closeResolvedSystemSuggestions();
         var missing = jdbc.queryForList("""
-                SELECT i.id AS item_id, i.sku_id,
+                SELECT i.id AS item_id, i.sku_id, o.order_no,
                        i.uncovered_quantity-COALESCE(c.covered_quantity,0) AS uncovered_quantity
                 FROM sales_order_item i
                 JOIN sales_order o ON o.id=i.sales_order_id
@@ -87,6 +87,11 @@ public class ProcurementWorkflowService {
                 item.put("skuCode", val(sku, "sku_code"));
                 item.put("productName", val(sku, "product_name"));
                 item.put("shortageQuantity", shortage);
+                item.put("orderNumbers", skuEntry.getValue().stream()
+                        .map(row -> str(row, "order_no"))
+                        .filter(orderNo -> orderNo != null && !orderNo.isBlank())
+                        .distinct()
+                        .toList());
                 unconfiguredItems.add(item);
                 continue;
             }

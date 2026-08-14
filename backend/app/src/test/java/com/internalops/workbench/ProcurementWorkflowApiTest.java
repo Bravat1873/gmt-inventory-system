@@ -325,6 +325,7 @@ class ProcurementWorkflowApiTest {
                 .andExpect(jsonPath("$.data.unconfiguredItems[0].skuCode").value("D51-001"))
                 .andExpect(jsonPath("$.data.unconfiguredItems[0].productName").value("D51"))
                 .andExpect(jsonPath("$.data.unconfiguredItems[0].shortageQuantity").value(4))
+                .andExpect(jsonPath("$.data.unconfiguredItems[0].orderNumbers[0]").value("DD20260800001"))
                 .andReturn().getResponse().getContentAsString();
 
         long suggestionId = mapper.readTree(body).path("data").path("suggestionIds").get(0).asLong();
