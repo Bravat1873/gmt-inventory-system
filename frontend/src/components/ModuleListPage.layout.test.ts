@@ -23,6 +23,39 @@ it('reserves enough width for all after-sales action buttons', async () => {
 
   expect(wrapper.get('colgroup col:last-child').attributes('style')).toContain('300px')
 })
+it.each([
+  ['product', 'productCode'],
+  ['order', 'orderNo'],
+  ['afterSales', 'afterSalesNo'],
+  ['purchase', 'purchaseNo'],
+  ['finance', 'businessNo'],
+])('renders the %s identifier as complete single-line text', async (moduleKey, field) => {
+  const identifier = 'BR_D51YZH70WPSS-A-202608140001'
+  loadModule.mockResolvedValue({
+    items: [{ id: 1, recordType: moduleKey === 'purchase' ? 'PURCHASE' : undefined, [field]: identifier }],
+    total: 1,
+    page: 1,
+    pageSize: 10,
+    totalPages: 1,
+  })
+  const wrapper = mount(ModuleListPage, {
+    props: { module: moduleDefinitions.find(item => item.key === moduleKey)! },
+  })
+  await flushPromises()
+
+  const cell = wrapper.get('tbody tr td.full-identifier-cell')
+  expect(cell.get('.full-identifier').text()).toBe(identifier)
+  expect(cell.find('.overflow-text').exists()).toBe(false)
+})
+
+it('keeps identifier text on one line without clipping or ellipsis', () => {
+  const styles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8')
+  const identifierStyles = styles.match(/\.full-identifier\s*\{([^}]*)\}/s)?.[1] ?? ''
+
+  expect(identifierStyles).toMatch(/white-space:\s*nowrap/)
+  expect(identifierStyles).toMatch(/overflow:\s*visible/)
+  expect(identifierStyles).not.toMatch(/text-overflow:\s*ellipsis/)
+})
 it('keeps ten equal rows within the viewport and leaves the horizontal scrollbar visible', () => {
   const styles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8')
 
