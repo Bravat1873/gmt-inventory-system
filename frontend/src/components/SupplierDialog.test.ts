@@ -97,3 +97,16 @@ it('shows full product name on hover and edits multiple purchase infos', async (
   await wrapper.get('[data-test="add-purchase-info-101"]').trigger('click')
   expect(wrapper.findAll('[data-test^="purchase-info-row-"]')).toHaveLength(3)
 })
+it('places the remove-product action in the operation column', async () => {
+  const wrapper = mount(SupplierDialog)
+  await flushPromises()
+  const picker = wrapper.get('[data-test="supplier-product-picker"]')
+  await picker.get('input').setValue('P90')
+  document.body.querySelector<HTMLButtonElement>('[data-test="fuzzy-option-101"]')?.click()
+  await flushPromises()
+  await wrapper.get('[data-test="add-supplier-product"]').trigger('click')
+
+  const remove = wrapper.get('[data-test="remove-supplier-product-101"]')
+  expect(Array.from(remove.element.closest('tr')!.children).indexOf(remove.element.closest('td')!)).toBe(5)
+  expect(wrapper.get('[data-test="supplier-product-name-101"]').element.parentElement?.textContent).not.toContain('移除产品')
+})

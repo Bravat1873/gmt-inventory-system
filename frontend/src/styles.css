@@ -421,7 +421,7 @@ thead th:last-child { position:sticky; right:0; z-index:3; background:#fafafa; b
 .product-supplier-quotes { display:flex; flex-direction:column; gap:6px; }
 .product-supplier-quotes-section small { display:block; margin-top:10px; color:#777; }
 
-.supplier-product-cell { width:250px; min-width:0; }.supplier-product-name { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.supplier-product-cell>div { display:flex; gap:10px; margin-top:5px; }.purchase-info-updated { min-width:135px; white-space:nowrap; }
+.supplier-product-cell { width:250px; min-width:0; }.supplier-product-name { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.supplier-product-cell>div { display:flex; gap:10px; margin-top:5px; }.purchase-info-updated { min-width:135px; white-space:nowrap; }.supplier-product-actions { display:flex; align-items:center; gap:10px; white-space:nowrap; }.supplier-products-table th:last-child,.supplier-products-table td:last-child { min-width:130px; }
 
 .customer-funds-dialog { width:min(1120px,calc(100vw - 40px)); height:min(820px,calc(100vh - 40px)); max-height:calc(100vh - 40px); display:flex; flex-direction:column; overflow:hidden; }
 .customer-funds-dialog header p { margin:4px 0 0; color:#777; font-size:13px; }
