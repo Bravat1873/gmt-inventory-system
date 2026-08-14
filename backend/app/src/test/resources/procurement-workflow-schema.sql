@@ -38,6 +38,7 @@ CREATE TABLE sku(
 );
 CREATE TABLE sales_order(
     id BIGINT PRIMARY KEY,
+    order_no VARCHAR(50),
     status VARCHAR(40) NOT NULL,
     receipt_confirmed_at TIMESTAMP,
     version INT NOT NULL DEFAULT 0
@@ -198,7 +199,7 @@ INSERT INTO warehouse VALUES(1, TRUE, TRUE);
 INSERT INTO sku(id,sku_code,product_name,enabled,current_cost,factory_price) VALUES(101, 'P90-001', 'P90', TRUE,8.0000,10.0000);
 INSERT INTO sku(id,sku_code,product_name,enabled,current_cost,factory_price) VALUES(102, 'D51-001', 'D51', TRUE,9.0000,10.0000);
 INSERT INTO supplier(id,supplier_name,enabled) VALUES(201, '供应商一',TRUE);
-INSERT INTO sales_order(id,status,receipt_confirmed_at) VALUES(1,'WAITING_STOCK',CURRENT_TIMESTAMP);
+INSERT INTO sales_order(id,order_no,status,receipt_confirmed_at) VALUES(1,'DD20260800001','WAITING_STOCK',CURRENT_TIMESTAMP);
 INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity)
 VALUES(1,1,1,101,3,0,3);
 INSERT INTO sku_supplier_config(id,sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled) VALUES(1,101,201,10.0000,10,7,TRUE);

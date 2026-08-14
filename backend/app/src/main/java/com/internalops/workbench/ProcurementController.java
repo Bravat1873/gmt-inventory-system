@@ -4,6 +4,7 @@ import com.internalops.api.ApiResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -15,6 +16,10 @@ public class ProcurementController {
         this.service = service;
     }
 
+    @GetMapping("/unconfigured-shortages")
+    public ApiResponse<List<Map<String, Object>>> unconfiguredShortages() {
+        return ApiResponse.ok(service.unconfiguredShortages());
+    }
     @PostMapping("/generate")
     public ApiResponse<Map<String, Object>> generate() { return ApiResponse.ok(service.generate()); }
 

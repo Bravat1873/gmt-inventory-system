@@ -348,6 +348,40 @@ class ProcurementWorkflowApiTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion", Integer.class)).isZero();
     }
     @Test
+    void listsUnconfiguredShortagesGroupedBySku() throws Exception {
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity) VALUES(2,1,2,102,4,0,4)");
+        jdbc.update("INSERT INTO sales_order(id,order_no,status,receipt_confirmed_at) VALUES(2,'DD20260800002','WAITING_STOCK',CURRENT_TIMESTAMP)");
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity) VALUES(3,2,1,102,3,0,3)");
+
+        mvc.perform(get("/api/procurement/unconfigured-shortages").cookie(login()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].skuId").value(102))
+                .andExpect(jsonPath("$.data[0].shortageQuantity").value(7))
+                .andExpect(jsonPath("$.data[0].orderNumbers.length()").value(2))
+                .andExpect(jsonPath("$.data[0].orderNumbers[0]").value("DD20260800001"))
+                .andExpect(jsonPath("$.data[0].orderNumbers[1]").value("DD20260800002"));
+    }
+    @Test
+    void removesAlertAndGeneratesQrAfterSupplierConfigurationIsAdded() throws Exception {
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity) VALUES(2,1,2,102,4,0,4)");
+        Cookie session = login();
+        mvc.perform(get("/api/procurement/unconfigured-shortages").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].skuId").value(102));
+
+        jdbc.update("INSERT INTO sku_supplier_config(id,sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled) VALUES(2,102,201,12.0000,5,3,TRUE)");
+        jdbc.update("INSERT INTO sku_supplier_purchase_info(id,supplier_product_config_id,purchase_price,moq,lead_time_days,enabled,updated_at,version) VALUES(2,2,12.0000,5,3,TRUE,CURRENT_TIMESTAMP,0)");
+
+        mvc.perform(get("/api/procurement/unconfigured-shortages").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.unconfiguredCount").value(0));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion_item WHERE sku_id=102", Integer.class)).isEqualTo(1);
+    }
+    @Test
     void createsManualPurchaseWithCgMonthlyNumber() throws Exception {
         createManualPurchase(login(), 10);
         assertThat(jdbc.queryForObject("SELECT purchase_no FROM purchase_order ORDER BY id DESC LIMIT 1", String.class))

@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -179,6 +180,47 @@ public class ProcurementWorkflowService {
         }
     }
 
+    public List<Map<String, Object>> unconfiguredShortages() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT s.id AS sku_id,s.sku_code,s.product_name,o.order_no,
+                       i.uncovered_quantity-COALESCE(c.covered_quantity,0) AS shortage_quantity
+                FROM sales_order_item i
+                JOIN sales_order o ON o.id=i.sales_order_id
+                JOIN sku s ON s.id=i.sku_id
+                LEFT JOIN (
+                    SELECT sales_order_item_id,SUM(covered_quantity) AS covered_quantity
+                    FROM shortage_coverage WHERE active=TRUE GROUP BY sales_order_item_id
+                ) c ON c.sales_order_item_id=i.id
+                WHERE o.status='WAITING_STOCK'
+                  AND i.uncovered_quantity-COALESCE(c.covered_quantity,0)>0
+                  AND NOT EXISTS (
+                    SELECT 1 FROM sku_supplier_config cfg
+                    JOIN supplier sp ON sp.id=cfg.supplier_id AND sp.enabled=TRUE
+                    JOIN sku_supplier_purchase_info pi ON pi.supplier_product_config_id=cfg.id AND pi.enabled=TRUE
+                    WHERE cfg.sku_id=i.sku_id AND cfg.enabled=TRUE
+                  )
+                ORDER BY s.id,o.order_no,i.id
+                """);
+        Map<Long, Map<String, Object>> grouped = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            long skuId = num(row, "sku_id");
+            Map<String, Object> item = grouped.computeIfAbsent(skuId, ignored -> {
+                Map<String, Object> created = new LinkedHashMap<>();
+                created.put("skuId", skuId);
+                created.put("skuCode", val(row, "sku_code"));
+                created.put("productName", val(row, "product_name"));
+                created.put("shortageQuantity", 0);
+                created.put("orderNumbers", new LinkedHashSet<String>());
+                return created;
+            });
+            item.put("shortageQuantity", (int) num(item, "shortageQuantity") + (int) num(row, "shortage_quantity"));
+            @SuppressWarnings("unchecked")
+            LinkedHashSet<String> orderNumbers = (LinkedHashSet<String>) item.get("orderNumbers");
+            if (val(row, "order_no") != null) orderNumbers.add(String.valueOf(val(row, "order_no")));
+        }
+        grouped.values().forEach(item -> item.put("orderNumbers", List.copyOf((LinkedHashSet<?>) item.get("orderNumbers"))));
+        return new ArrayList<>(grouped.values());
+    }
     @Transactional
     public Map<String,Object> updateReview(long suggestionId,Map<String,Object> request) {
         int version=((Number)request.getOrDefault("version",-1)).intValue();
