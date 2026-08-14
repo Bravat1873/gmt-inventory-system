@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CustomerFundSchemaTest {
     @Test
     void migrationDefinesAccountApprovalLedgerAndAuditConstraints() throws Exception {
-        String sql = new ClassPathResource("db/migration/V41__customer_funds_management.sql")
+        String sql = new ClassPathResource("db/migration/V43__customer_funds_management.sql")
                 .getContentAsString(StandardCharsets.UTF_8);
 
         for (String table : new String[]{"customer_fund_account", "customer_fund_request", "customer_fund_ledger"}) {
