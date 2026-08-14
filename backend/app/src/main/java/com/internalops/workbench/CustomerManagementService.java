@@ -24,6 +24,7 @@ public class CustomerManagementService {
                 emptyToNull(request.businessContactName()), emptyToNull(request.businessContactPhone()), emptyToNull(request.orderContactName()), emptyToNull(request.orderContactPhone()),
                 emptyToNull(request.financeContactName()), emptyToNull(request.financeContactPhone()), emptyToNull(request.invoiceTitle()), emptyToNull(request.taxpayerId()),
                 emptyToNull(request.invoiceAddress()), emptyToNull(request.invoicePhone()), emptyToNull(request.bankName()), emptyToNull(request.bankAccount()));
+        jdbc.update("INSERT INTO customer_fund_account(customer_id,balance,version) VALUES(?,0,0)", id);
         replaceContracts(id, request.contracts());
         return detail(id);
     }
