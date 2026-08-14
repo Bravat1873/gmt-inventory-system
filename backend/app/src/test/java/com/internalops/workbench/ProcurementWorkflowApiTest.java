@@ -339,4 +339,20 @@ class ProcurementWorkflowApiTest {
         jdbc.update("UPDATE sys_user SET role=? WHERE username='admin'", role);
         return login();
     }
+    @Test
+    void marksSystemDraftAsNoPurchaseWhenShortageDisappears() throws Exception {
+        Cookie session = login();
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+        long suggestionId = jdbc.queryForObject("SELECT id FROM procurement_suggestion WHERE status='DRAFT'", Long.class);
+
+        jdbc.update("UPDATE sales_order_item SET uncovered_quantity=0 WHERE id=1");
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.count").value(0));
+
+        assertThat(jdbc.queryForObject("SELECT status FROM procurement_suggestion WHERE id=?", String.class, suggestionId)).isEqualTo("REJECTED");
+        assertThat(jdbc.queryForObject("SELECT review_reason FROM procurement_suggestion WHERE id=?", String.class, suggestionId)).isEqualTo("供需余量已恢复，无需采购");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM shortage_coverage WHERE active=TRUE", Integer.class)).isZero();
+    }
 }

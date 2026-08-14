@@ -40,6 +40,7 @@ public class ProcurementWorkflowService {
 
     @Transactional
     public Map<String, Object> generate() {
+        closeResolvedSystemSuggestions();
         var missing = jdbc.queryForList("""
                 SELECT i.id AS item_id, i.sku_id,
                        i.uncovered_quantity-COALESCE(c.covered_quantity,0) AS uncovered_quantity
@@ -53,7 +54,7 @@ public class ProcurementWorkflowService {
                   AND i.uncovered_quantity-COALESCE(c.covered_quantity,0)>0
                 ORDER BY i.sku_id,i.id
                 """);
-        if (missing.isEmpty()) throw new IllegalStateException("当前没有需要采购的缺口");
+        if (missing.isEmpty()) return Map.of("suggestionIds", List.of(), "count", 0);
 
         Map<Long, List<Map<String, Object>>> rowsBySku = new LinkedHashMap<>();
         for (var row : missing) rowsBySku.computeIfAbsent(num(row, "sku_id"), ignored -> new ArrayList<>()).add(row);
@@ -93,7 +94,7 @@ public class ProcurementWorkflowService {
             long suggestionId;
             if (existingSuggestions.isEmpty()) {
                 String suggestionNo = documentNumbers.next(DocumentType.PROCUREMENT_REVIEW, LocalDate.now());
-                suggestionId = insert("INSERT INTO procurement_suggestion(suggestion_no,status,created_by) VALUES(?,'DRAFT',1)", suggestionNo);
+                suggestionId = insert("INSERT INTO procurement_suggestion(suggestion_no,status,system_managed,created_by) VALUES(?,'DRAFT',TRUE,1)", suggestionNo);
             } else {
                 suggestionId = existingSuggestions.get(0);
             }
@@ -139,6 +140,27 @@ public class ProcurementWorkflowService {
         }
         return Map.of("suggestionIds", suggestions, "count", suggestions.size());
     }
+
+    private void closeResolvedSystemSuggestions() {
+        List<Long> resolved = jdbc.queryForList("""
+                SELECT ps.id
+                FROM procurement_suggestion ps
+                WHERE ps.status='DRAFT' AND ps.system_managed=TRUE
+                  AND NOT EXISTS (
+                    SELECT 1 FROM procurement_suggestion_item psi
+                    JOIN shortage_coverage sc ON sc.suggestion_item_id=psi.id AND sc.active=TRUE
+                    JOIN sales_order_item soi ON soi.id=sc.sales_order_item_id
+                    JOIN sales_order so ON so.id=soi.sales_order_id
+                    WHERE psi.suggestion_id=ps.id
+                      AND so.status='WAITING_STOCK' AND soi.uncovered_quantity>0
+                  )
+                """, Long.class);
+        for (long suggestionId : resolved) {
+            jdbc.update("UPDATE procurement_suggestion SET status='REJECTED',review_reason='供需余量已恢复，无需采购',version=version+1 WHERE id=?", suggestionId);
+            jdbc.update("UPDATE shortage_coverage SET active=FALSE WHERE suggestion_item_id IN (SELECT id FROM procurement_suggestion_item WHERE suggestion_id=?)", suggestionId);
+        }
+    }
+
     @Transactional
     public Map<String,Object> updateReview(long suggestionId,Map<String,Object> request) {
         int version=((Number)request.getOrDefault("version",-1)).intValue();
