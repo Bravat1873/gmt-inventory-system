@@ -45,7 +45,7 @@ public class WorkbenchQueryService {
             Map.entry("shortname", "shortName"), Map.entry("contacttitle", "contactTitle"),
             Map.entry("taxregistrationno", "taxRegistrationNo"), Map.entry("bankaddress", "bankAddress"),
             Map.entry("productcount", "productCount"),
-            Map.entry("purchaseprice", "purchasePrice"), Map.entry("leadtimedays", "leadTimeDays"),
+            Map.entry("relationid", "relationId"), Map.entry("purchaseprice", "purchasePrice"), Map.entry("leadtimedays", "leadTimeDays"),
             Map.entry("orderno", "orderNo"), Map.entry("externalorderno", "externalOrderNo"),
             Map.entry("totalamount", "totalAmount"), Map.entry("receiptconfirmedat", "receiptConfirmedAt"),
             Map.entry("shippedat", "shippedAt"), Map.entry("trackingno", "trackingNo"),
@@ -283,15 +283,34 @@ public class WorkbenchQueryService {
             throw new IllegalArgumentException("供应商不存在");
         }
         Map<String, Object> supplier = new LinkedHashMap<>(suppliers.get(0));
-        supplier.put("products", jdbc.queryForList("""
-                        SELECT s.id AS `skuId`,s.sku_code AS `skuCode`,s.product_name AS `productName`,
-                               s.model,s.configuration,s.unit,ssc.purchase_price AS `purchasePrice`,
-                               ssc.moq,ssc.lead_time_days AS `leadTimeDays`
-                        FROM sku_supplier_config ssc
-                        JOIN sku s ON s.id=ssc.sku_id
-                        WHERE ssc.supplier_id=? AND ssc.enabled=TRUE
-                        ORDER BY s.sku_code,s.id
-                        """, supplierId).stream().map(this::normalizeKeys).toList());
+        List<Map<String, Object>> products = jdbc.queryForList("""
+                SELECT ssc.id AS `relationId`,s.id AS `skuId`,s.sku_code AS `skuCode`,
+                       s.product_name AS `productName`,s.model,s.configuration,s.unit,
+                       ssc.purchase_price AS `purchasePrice`,ssc.moq,
+                       ssc.lead_time_days AS `leadTimeDays`
+                FROM sku_supplier_config ssc
+                JOIN sku s ON s.id=ssc.sku_id
+                WHERE ssc.supplier_id=? AND ssc.enabled=TRUE
+                ORDER BY s.sku_code,s.id
+                """, supplierId).stream().map(this::normalizeKeys).map(product -> {
+                    Map<String, Object> result = new LinkedHashMap<>(product);
+                    long relationId = ((Number) result.remove("relationId")).longValue();
+                    List<Map<String, Object>> infos = jdbc.queryForList("""
+                            SELECT id,purchase_price AS `purchasePrice`,moq,
+                                   lead_time_days AS `leadTimeDays`,updated_at AS `updatedAt`,version
+                            FROM sku_supplier_purchase_info
+                            WHERE supplier_product_config_id=? AND enabled=TRUE
+                            ORDER BY updated_at DESC,id DESC
+                            """, relationId).stream().map(this::normalizeKeys).toList();
+                    result.put("purchaseInfos", infos);
+                    if (!infos.isEmpty()) {
+                        result.put("purchasePrice", infos.get(0).get("purchasePrice"));
+                        result.put("moq", infos.get(0).get("moq"));
+                        result.put("leadTimeDays", infos.get(0).get("leadTimeDays"));
+                    }
+                    return result;
+                }).toList();
+        supplier.put("products", products);
         return supplier;
     }
 

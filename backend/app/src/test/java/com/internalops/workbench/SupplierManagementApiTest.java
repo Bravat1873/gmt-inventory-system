@@ -175,7 +175,30 @@ class SupplierManagementApiTest {
                 .andExpect(jsonPath("$.data.bankAccount").value(" HK-ACCOUNT-001 "));
     }
 
-    private Cookie login() throws Exception {
+
+    @Test
+    void createsMultiplePurchaseInfosForOneSupplierProduct() throws Exception {
+        Cookie session = login();
+        mvc.perform(post("/api/suppliers").cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"supplierName":"多报价供应商","products":[{"skuId":101,"purchaseInfos":[
+                                  {"purchasePrice":230.5000,"moq":8,"leadTimeDays":12},
+                                  {"purchasePrice":228.0000,"moq":20,"leadTimeDays":15}
+                                ]}]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.products.length()").value(1))
+                .andExpect(jsonPath("$.data.products[0].purchaseInfos.length()").value(2))
+                .andExpect(jsonPath("$.data.products[0].purchaseInfos[0].purchasePrice").value(228))
+                .andExpect(jsonPath("$.data.products[0].purchaseInfos[1].purchasePrice").value(230.5));
+
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM sku_supplier_purchase_info pi
+                JOIN sku_supplier_config cfg ON cfg.id=pi.supplier_product_config_id
+                WHERE cfg.sku_id=101 AND pi.enabled=TRUE
+                """, Integer.class)).isEqualTo(3);
+    }    private Cookie login() throws Exception {
         return mvc.perform(post("/api/auth/login").contentType("application/json")
                         .content("{\"username\":\"admin\",\"password\":\"123\"}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getCookie("OPS_SESSION");
