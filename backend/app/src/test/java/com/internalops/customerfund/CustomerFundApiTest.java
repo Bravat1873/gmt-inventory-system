@@ -71,4 +71,30 @@ class CustomerFundApiTest {
                 .andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith("text/csv"))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("客户打款")));
     }
+
+    @Test
+    void depositMayLinkCurrentCustomerOrderButRejectsInvalidLinks() throws Exception {
+        mvc.perform(get("/api/customers/1/funds/orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].orderNo").value("SO-001"))
+                .andExpect(jsonPath("$.data.length()").value(1));
+
+        String response = mvc.perform(post("/api/customers/1/funds/deposits").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":100,\"paymentDate\":\"2026-08-14\",\"paymentMethod\":\"银行转账\",\"orderId\":10}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long id = Long.parseLong(response.replaceAll(".*\\\"data\\\":([0-9]+).*", "$1"));
+        mvc.perform(post("/api/customer-funds/requests/" + id + "/review").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"approved\":true,\"comment\":\"确认到账\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/customers/1/funds/ledger"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].sourceNo").value("SO-001"));
+
+        mvc.perform(post("/api/customers/1/funds/deposits").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":10,\"paymentDate\":\"2026-08-14\",\"paymentMethod\":\"银行转账\",\"orderId\":30}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/customers/1/funds/deposits").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":10,\"paymentDate\":\"2026-08-14\",\"paymentMethod\":\"银行转账\",\"orderId\":31}"))
+                .andExpect(status().isBadRequest());
+    }
 }

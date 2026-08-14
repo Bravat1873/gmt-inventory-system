@@ -32,6 +32,10 @@ public class CustomerFundQueryService {
         return camel(jdbc.queryForList("SELECT id,request_type AS `requestType`,status,amount,payment_date AS `paymentDate`,payment_method AS `paymentMethod`,reference_no AS `referenceNo`,source_type AS `sourceType`,source_id AS `sourceId`,remark,review_comment AS `reviewComment`,submitted_by AS `submittedBy`,submitted_at AS `submittedAt`,reviewed_by AS `reviewedBy`,reviewed_at AS `reviewedAt` FROM customer_fund_request WHERE customer_id=? ORDER BY submitted_at DESC,id DESC", customerId));
     }
 
+    public List<Map<String,Object>> orderOptions(long customerId) {
+        return camel(jdbc.queryForList("SELECT id,order_no AS `orderNo`,status,order_date AS `orderDate` FROM sales_order WHERE customer_id=? AND status<>'CANCELLED' ORDER BY updated_at DESC,id DESC", customerId));
+    }
+
     public List<Map<String,Object>> ledger(long customerId) {
         return camel(jdbc.queryForList("SELECT id,entry_type AS `entryType`,direction,amount,balance_before AS `balanceBefore`,balance_after AS `balanceAfter`,request_id AS `requestId`,source_type AS `sourceType`,source_id AS `sourceId`,source_no AS `sourceNo`,reverses_ledger_id AS `reversesLedgerId`,reason,operated_by AS `operatedBy`,operated_at AS `operatedAt` FROM customer_fund_ledger WHERE customer_id=? ORDER BY operated_at DESC,id DESC", customerId));
     }
@@ -69,7 +73,7 @@ public class CustomerFundQueryService {
                 Map.entry("reviewedby","reviewedBy"), Map.entry("reviewedat","reviewedAt"), Map.entry("entrytype","entryType"),
                 Map.entry("balancebefore","balanceBefore"), Map.entry("balanceafter","balanceAfter"), Map.entry("requestid","requestId"),
                 Map.entry("sourceno","sourceNo"), Map.entry("reversesledgerid","reversesLedgerId"), Map.entry("operatedby","operatedBy"),
-                Map.entry("operatedat","operatedAt"));
+                Map.entry("operatedat","operatedAt"), Map.entry("orderno","orderNo"), Map.entry("orderdate","orderDate"));
         return rows.stream().map(row -> { Map<String,Object> result=new LinkedHashMap<>(); row.forEach((key,value)->result.put(names.getOrDefault(key.replace("_","").toLowerCase(),key.toLowerCase()),value)); return result; }).toList();
     }
     private BigDecimal amount(String sql, long id) { BigDecimal value=jdbc.queryForObject(sql,BigDecimal.class,id); return value==null?BigDecimal.ZERO:value; }

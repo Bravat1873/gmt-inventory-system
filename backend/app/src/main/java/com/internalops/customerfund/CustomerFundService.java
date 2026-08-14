@@ -28,9 +28,18 @@ public class CustomerFundService {
     public long submitDeposit(long customerId, CustomerFundRequestCommand command) {
         requirePositive(command == null ? null : command.amount());
         ensureCustomer(customerId);
+        String sourceType = null;
+        Long sourceId = null;
+        if (command.orderId() != null) {
+            Map<String,Object> order = one("SELECT customer_id,order_no,status FROM sales_order WHERE id=?", command.orderId());
+            if (number(order, "customer_id") != customerId) throw new IllegalArgumentException("只能关联当前客户的订单");
+            if ("CANCELLED".equals(string(order.get("status")))) throw new IllegalArgumentException("已取消订单不能关联打款");
+            sourceType = "SALES_ORDER";
+            sourceId = command.orderId();
+        }
         CurrentUser user = CurrentUser.required();
         return insertRequest(customerId, "CUSTOMER_DEPOSIT", command.amount(), command.paymentDate(),
-                command.paymentMethod(), command.referenceNo(), null, null, command.remark(), user.id());
+                command.paymentMethod(), command.referenceNo(), sourceType, sourceId, command.remark(), user.id());
     }
 
     @Transactional
@@ -131,9 +140,12 @@ public class CustomerFundService {
         return rows.get(0);
     }
     private String sourceNo(Map<String,Object> request) {
-        if (!"AFTER_SALES".equals(string(request.get("source_type")))) return null;
+        String type = string(request.get("source_type"));
         Long id = nullableLong(request.get("source_id"));
-        return id == null ? null : jdbc.queryForObject("SELECT after_sales_no FROM after_sales_order WHERE id=?", String.class, id);
+        if (id == null) return null;
+        if ("SALES_ORDER".equals(type)) return jdbc.queryForObject("SELECT order_no FROM sales_order WHERE id=?", String.class, id);
+        if ("AFTER_SALES".equals(type)) return jdbc.queryForObject("SELECT after_sales_no FROM after_sales_order WHERE id=?", String.class, id);
+        return null;
     }
     private void requirePositive(BigDecimal value) { if (value == null || value.signum() <= 0) throw new IllegalArgumentException("金额必须大于 0"); }
     private long number(Map<String,Object> row, String key) { return ((Number)row.get(key)).longValue(); }
