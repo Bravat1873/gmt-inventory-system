@@ -86,9 +86,9 @@ async function save() {
 
       <div class="shipment-content">
         <section class="shipment-overview" aria-label="发货汇总">
-          <div><span>订单总数</span><strong>{{ totalOrder }}</strong></div>
-          <div><span>累计已发</span><strong>{{ totalShipped }}</strong></div>
-          <div><span>本次发货</span><strong data-test="shipment-total-current">{{ totalCurrent }}</strong></div>
+          <div><span>订单数量</span><strong>{{ totalOrder }}</strong></div>
+          <div><span>已发货数量</span><strong>{{ totalShipped }}</strong></div>
+          <div><span>本次发货数量</span><strong data-test="shipment-total-current">{{ totalCurrent }}</strong></div>
         </section>
 
         <div class="shipment-address-bar">
@@ -115,16 +115,16 @@ async function save() {
             <div class="shipment-line-heading">
               <div><strong>{{ item.productName || item.skuCode || '未命名物料' }}</strong><small>{{ item.skuCode }}{{ item.model ? ` · ${item.model}` : '' }}</small></div>
               <div class="shipment-line-state">
-                <span data-test="available-quantity">可用库存 {{ Number(item.availableQuantity ?? 0) }}{{ item.unit ? ` ${item.unit}` : '' }}</span>
+                <span data-test="available-quantity">未锁定库存数量 {{ Number(item.availableQuantity ?? 0) }}{{ item.unit ? ` ${item.unit}` : '' }}</span>
                 <span data-test="shipment-status-dot" class="shipment-status-dot" :class="completed(item) ? 'complete' : 'incomplete'">{{ completed(item) ? '已完成' : '待发货' }}</span>
               </div>
             </div>
             <div class="shipment-line-metrics">
               <span>订单数量<strong>{{ item.quantity }}</strong></span>
-              <span>累计已发<strong>{{ item.shippedQuantity }}</strong></span>
-              <span data-test="reserved-quantity">已备货<strong>{{ reserved(item) }}</strong></span>
-              <label>本次发货<input v-model.number="shipmentValues[item.lineNo]" type="number" min="0" :max="maximumCurrent(item)" step="1" aria-label="本次发货数量"></label>
-              <span data-test="remaining-quantity">发货后剩余<strong>{{ remainingAfter(item) }}</strong></span>
+              <span>已发货数量<strong>{{ item.shippedQuantity }}</strong></span>
+              <span data-test="reserved-quantity">本单锁定数量<strong>{{ reserved(item) }}</strong></span>
+              <label>本次发货数量<input v-model.number="shipmentValues[item.lineNo]" type="number" min="0" :max="maximumCurrent(item)" step="1" aria-label="本次发货数量"></label>
+              <span data-test="remaining-quantity">发货后未发货数量<strong>{{ remainingAfter(item) }}</strong></span>
             </div>
           </article>
         </div>

@@ -10,8 +10,9 @@ const labels: Record<string, string> = {
   quantity: '数量', shippedQuantity: '已发货数量', remainingQuantity: '剩余数量', availableQuantity: '可用库存', lockedQuantity: '锁定数量', uncoveredQuantity: '缺货数量',
   salePrice: '含税单价', receivedQuantity: '已入库数量', purchasePrice: '采购单价'
 }
+const orderLabels: Record<string, string> = { quantity: '订单数量', shippedQuantity: '已发货数量', remainingQuantity: '未发货数量', availableQuantity: '未锁定库存数量', lockedQuantity: '本单锁定数量', uncoveredQuantity: '缺货数量' }
 const detailKeys = () => Object.keys(props.trace.details[0] ?? {}).filter(key => labels[key])
-function detailLabel(key: string) { return key === 'remainingQuantity' && props.trace.type === 'order' ? '未发货数量' : labels[key] }
+function detailLabel(key: string) { return props.trace.type === 'order' ? (orderLabels[key] ?? labels[key]) : labels[key] }
 function value(value: unknown) { return value == null || value === '' ? '—' : String(value) }
 function time(value: unknown) {
   const matched = String(value ?? '').match(/^(\d{4}-\d{2}-\d{2})[T\s]?(\d{2}:\d{2}:\d{2})?/) 
