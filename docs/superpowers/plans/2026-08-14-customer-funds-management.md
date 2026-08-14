@@ -287,7 +287,7 @@ Expected: FAIL with 404。
 
 - [ ] **Step 3: 实现退款建议和申请**
 
-建议金额 SQL 使用 `after_sales_return_line.received_quantity * sales_order_item.sale_price`；最终金额必须大于 0，且不得超过建议金额，避免脱离原单价退款。创建 `AFTER_SALES_REFUND` 待审核申请，审核复用 Task 2 的入账逻辑。
+建议金额 SQL 使用 `after_sales_return_line.received_quantity * sales_order_item.sale_price`；最终金额必须大于 0，可以高于或低于建议金额；当最终金额与建议金额不一致时必须填写调整原因并写入审核记录。创建 `AFTER_SALES_REFUND` 待审核申请，审核复用 Task 2 的入账逻辑。
 
 - [ ] **Step 4: 运行退款测试**
 
