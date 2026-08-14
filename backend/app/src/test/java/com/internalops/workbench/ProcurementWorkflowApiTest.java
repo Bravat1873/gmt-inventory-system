@@ -247,6 +247,19 @@ class ProcurementWorkflowApiTest {
     }
 
     @Test
+    void updatesExistingDraftQrInsteadOfCreatingDuplicate() throws Exception {
+        Cookie session = login();
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity) VALUES(2,1,2,101,2,0,2)");
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion WHERE status='DRAFT'", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT shortage_quantity FROM procurement_suggestion_item", Integer.class)).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT suggested_quantity FROM procurement_suggestion_item", Integer.class)).isEqualTo(10);
+    }
+    @Test
     void recommendsSupplierWithLowestEstimatedTotalInsteadOfLatestQuote() throws Exception {
         jdbc.update("INSERT INTO supplier(id,supplier_name,enabled) VALUES(202,'供应商二',TRUE)");
         jdbc.update("INSERT INTO sku_supplier_config(id,sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled) VALUES(2,101,202,50.0000,3,2,TRUE)");

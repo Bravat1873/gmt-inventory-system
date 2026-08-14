@@ -83,19 +83,50 @@ public class ProcurementWorkflowService {
 
         List<Long> suggestions = new ArrayList<>();
         for (var group : groups.entrySet()) {
-            String suggestionNo = documentNumbers.next(DocumentType.PROCUREMENT_REVIEW, LocalDate.now());
-            long suggestionId = insert("INSERT INTO procurement_suggestion(suggestion_no,status,created_by) VALUES(?,'DRAFT',1)", suggestionNo);
+            List<Long> existingSuggestions = jdbc.queryForList("""
+                    SELECT DISTINCT ps.id
+                    FROM procurement_suggestion ps
+                    JOIN procurement_suggestion_item psi ON psi.suggestion_id=ps.id
+                    WHERE ps.status='DRAFT' AND psi.supplier_id=?
+                    ORDER BY ps.id LIMIT 1
+                    """, Long.class, group.getKey());
+            long suggestionId;
+            if (existingSuggestions.isEmpty()) {
+                String suggestionNo = documentNumbers.next(DocumentType.PROCUREMENT_REVIEW, LocalDate.now());
+                suggestionId = insert("INSERT INTO procurement_suggestion(suggestion_no,status,created_by) VALUES(?,'DRAFT',1)", suggestionNo);
+            } else {
+                suggestionId = existingSuggestions.get(0);
+            }
             for (var recommendation : group.getValue()) {
                 LocalDate eta = LocalDate.now().plusDays(recommendation.leadTimeDays());
-                long suggestionItemId = insert("""
-                                INSERT INTO procurement_suggestion_item(
-                                    suggestion_id,sku_id,supplier_id,shortage_quantity,suggested_quantity,
-                                    confirmed_quantity,purchase_price,expected_arrival_date,supplier_purchase_info_id)
-                                VALUES(?,?,?,?,?,NULL,?,?,?)
-                                """,
-                        suggestionId, recommendation.skuId(), recommendation.supplierId(),
-                        recommendation.shortageQuantity(), recommendation.suggestedQuantity(),
-                        recommendation.purchasePrice(), eta, recommendation.purchaseInfoId());
+                List<Map<String,Object>> existingItems = jdbc.queryForList("""
+                        SELECT id,shortage_quantity FROM procurement_suggestion_item
+                        WHERE suggestion_id=? AND sku_id=?
+                        ORDER BY id LIMIT 1 FOR UPDATE
+                        """, suggestionId, recommendation.skuId());
+                long suggestionItemId;
+                if (existingItems.isEmpty()) {
+                    suggestionItemId = insert("""
+                                    INSERT INTO procurement_suggestion_item(
+                                        suggestion_id,sku_id,supplier_id,shortage_quantity,suggested_quantity,
+                                        confirmed_quantity,purchase_price,expected_arrival_date,supplier_purchase_info_id)
+                                    VALUES(?,?,?,?,?,NULL,?,?,?)
+                                    """,
+                            suggestionId, recommendation.skuId(), recommendation.supplierId(),
+                            recommendation.shortageQuantity(), recommendation.suggestedQuantity(),
+                            recommendation.purchasePrice(), eta, recommendation.purchaseInfoId());
+                } else {
+                    suggestionItemId = num(existingItems.get(0), "id");
+                    int totalShortage = (int) num(existingItems.get(0), "shortage_quantity") + recommendation.shortageQuantity();
+                    int suggestedQuantity = Math.max(totalShortage, recommendation.minimumOrderQuantity());
+                    jdbc.update("""
+                            UPDATE procurement_suggestion_item
+                            SET shortage_quantity=?,suggested_quantity=?,supplier_id=?,purchase_price=?,
+                                expected_arrival_date=?,supplier_purchase_info_id=?
+                            WHERE id=?
+                            """, totalShortage, suggestedQuantity, recommendation.supplierId(),
+                            recommendation.purchasePrice(), eta, recommendation.purchaseInfoId(), suggestionItemId);
+                }
                 for (var item : rowsBySku.get(recommendation.skuId())) {
                     jdbc.update("""
                                     INSERT INTO shortage_coverage(

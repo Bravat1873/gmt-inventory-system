@@ -2,6 +2,7 @@ package com.internalops.workbench;
 
 import com.internalops.numbering.DocumentNumberService;
 import com.internalops.numbering.DocumentType;
+import com.internalops.procurement.AutoProcurementSuggestionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -26,12 +27,14 @@ public class SalesOrderCommandService {
     private final InventoryAllocationService allocation;
     private final SupplyDemandQueryService supplyDemand;
     private final DocumentNumberService documentNumbers;
+    private final AutoProcurementSuggestionService autoProcurement;
     public SalesOrderCommandService(JdbcTemplate jdbc, InventoryAllocationService allocation,
-                                    SupplyDemandQueryService supplyDemand, DocumentNumberService documentNumbers) {
+                                    SupplyDemandQueryService supplyDemand, DocumentNumberService documentNumbers, AutoProcurementSuggestionService autoProcurement) {
         this.jdbc = jdbc;
         this.allocation = allocation;
         this.supplyDemand = supplyDemand;
         this.documentNumbers = documentNumbers;
+        this.autoProcurement = autoProcurement;
     }
 
     @Transactional
@@ -46,6 +49,7 @@ public class SalesOrderCommandService {
                 blankToNull(request.remark()), blankToNull(request.deliveryAddress()), blankToNull(request.deliveryContact()), blankToNull(request.deliveryPhone()), blankToNull(request.shippingMethod()));
         insertItems(id, request.items());
         if ("PENDING_CUSTOMER_PAYMENT".equals(status(request))) allocation.allocate(id);
+        autoProcurement.requestRecalculation();
         return get(id);
     }
 
@@ -233,6 +237,7 @@ public class SalesOrderCommandService {
         jdbc.update("DELETE FROM sales_order_item WHERE sales_order_id=?", id);
         insertItems(id, request.items());
         if ("PENDING_CUSTOMER_PAYMENT".equals(status(request))) allocation.allocate(id);
+        autoProcurement.requestRecalculation();
         return get(id);
     }
 
