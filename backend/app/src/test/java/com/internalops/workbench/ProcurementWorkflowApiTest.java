@@ -313,6 +313,41 @@ class ProcurementWorkflowApiTest {
                 .containsEntry("purchase_price", new java.math.BigDecimal("10.0000"));
     }
     @Test
+    void generatesConfiguredSkuAndReportsUnconfiguredSku() throws Exception {
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity) VALUES(2,1,2,102,4,0,4)");
+
+        String body = mvc.perform(post("/api/procurement/generate").cookie(login())
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.count").value(1))
+                .andExpect(jsonPath("$.data.unconfiguredCount").value(1))
+                .andExpect(jsonPath("$.data.unconfiguredItems[0].skuId").value(102))
+                .andExpect(jsonPath("$.data.unconfiguredItems[0].skuCode").value("D51-001"))
+                .andExpect(jsonPath("$.data.unconfiguredItems[0].productName").value("D51"))
+                .andExpect(jsonPath("$.data.unconfiguredItems[0].shortageQuantity").value(4))
+                .andReturn().getResponse().getContentAsString();
+
+        long suggestionId = mapper.readTree(body).path("data").path("suggestionIds").get(0).asLong();
+        assertThat(jdbc.queryForObject("SELECT sku_id FROM procurement_suggestion_item WHERE suggestion_id=?", Long.class, suggestionId))
+                .isEqualTo(101L);
+    }
+    @Test
+    void returnsOneUnconfiguredItemWithoutCreatingQrWhenAllCandidatesAreDisabled() throws Exception {
+        jdbc.update("UPDATE sku_supplier_purchase_info SET enabled=FALSE WHERE supplier_product_config_id=1");
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(post("/api/procurement/generate").cookie(login())
+                            .contentType("application/json").content("{}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.count").value(0))
+                    .andExpect(jsonPath("$.data.unconfiguredCount").value(1))
+                    .andExpect(jsonPath("$.data.unconfiguredItems.length()").value(1))
+                    .andExpect(jsonPath("$.data.unconfiguredItems[0].skuId").value(101));
+        }
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion", Integer.class)).isZero();
+    }
+    @Test
     void createsManualPurchaseWithCgMonthlyNumber() throws Exception {
         createManualPurchase(login(), 10);
         assertThat(jdbc.queryForObject("SELECT purchase_no FROM purchase_order ORDER BY id DESC LIMIT 1", String.class))

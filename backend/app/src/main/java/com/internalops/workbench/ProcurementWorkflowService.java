@@ -54,12 +54,13 @@ public class ProcurementWorkflowService {
                   AND i.uncovered_quantity-COALESCE(c.covered_quantity,0)>0
                 ORDER BY i.sku_id,i.id
                 """);
-        if (missing.isEmpty()) return Map.of("suggestionIds", List.of(), "count", 0);
+        if (missing.isEmpty()) return generationResult(List.of(), List.of());
 
         Map<Long, List<Map<String, Object>>> rowsBySku = new LinkedHashMap<>();
         for (var row : missing) rowsBySku.computeIfAbsent(num(row, "sku_id"), ignored -> new ArrayList<>()).add(row);
 
         Map<Long, List<ProcurementRecommendationService.Recommendation>> groups = new LinkedHashMap<>();
+        List<Map<String, Object>> unconfiguredItems = new ArrayList<>();
         for (var skuEntry : rowsBySku.entrySet()) {
             int shortage = skuEntry.getValue().stream().mapToInt(row -> (int) num(row, "uncovered_quantity")).sum();
             var candidateRows = jdbc.queryForList("""
@@ -77,9 +78,18 @@ public class ProcurementWorkflowService {
             var candidates = candidateRows.stream().map(row -> new ProcurementRecommendationService.Candidate(
                     num(row,"supplier_id"), num(row,"purchase_info_id"), (BigDecimal) val(row,"purchase_price"),
                     (int) num(row,"moq"), (int) num(row,"lead_time_days"))).toList();
-            var recommendation = recommendations.recommend(skuEntry.getKey(), shortage, candidates)
-                    .orElseThrow(() -> new IllegalStateException("存在未配置有效供应商采购信息的缺货产品"));
-            groups.computeIfAbsent(recommendation.supplierId(), ignored -> new ArrayList<>()).add(recommendation);
+            var recommendation = recommendations.recommend(skuEntry.getKey(), shortage, candidates);
+            if (recommendation.isEmpty()) {
+                Map<String, Object> sku = jdbc.queryForMap("SELECT id,sku_code,product_name FROM sku WHERE id=?", skuEntry.getKey());
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("skuId", num(sku, "id"));
+                item.put("skuCode", val(sku, "sku_code"));
+                item.put("productName", val(sku, "product_name"));
+                item.put("shortageQuantity", shortage);
+                unconfiguredItems.add(item);
+                continue;
+            }
+            groups.computeIfAbsent(recommendation.get().supplierId(), ignored -> new ArrayList<>()).add(recommendation.get());
         }
 
         List<Long> suggestions = new ArrayList<>();
@@ -138,9 +148,17 @@ public class ProcurementWorkflowService {
             }
             suggestions.add(suggestionId);
         }
-        return Map.of("suggestionIds", suggestions, "count", suggestions.size());
+        return generationResult(suggestions, unconfiguredItems);
     }
 
+    private Map<String, Object> generationResult(List<Long> suggestionIds, List<Map<String, Object>> unconfiguredItems) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("suggestionIds", suggestionIds);
+        result.put("count", suggestionIds.size());
+        result.put("unconfiguredCount", unconfiguredItems.size());
+        result.put("unconfiguredItems", unconfiguredItems);
+        return result;
+    }
     private void closeResolvedSystemSuggestions() {
         List<Long> resolved = jdbc.queryForList("""
                 SELECT ps.id
