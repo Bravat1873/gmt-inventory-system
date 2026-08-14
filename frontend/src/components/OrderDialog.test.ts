@@ -8,7 +8,7 @@ const { createOrder, updateOrder, loadOrderCustomers, loadOrderSkus, loadContrac
 
 vi.mock('../api/workbench', () => ({ createOrder, updateOrder, loadOrderCustomers, loadOrderSkus, loadContractPrice }))
 
-const validOrder = () => ({ customerId: 1, orderDate: '2026-08-07', orderType: 'Sales', salesperson: 'Admin', items: [{ skuId: 1, quantity: 1, salePrice: 1 }] })
+const validOrder = () => ({ customerId: 1, orderDate: '2026-08-07', orderType: '工程订单', salesperson: 'Admin', items: [{ skuId: 1, quantity: 1, salePrice: 1 }] })
 const sku = (id: number) => ({ id, skuCode: `SKU-${id}`, productName: `Product ${id}`, model: 'M1', configuration: 'Standard', unit: 'PCS', primaryImageId: null as number | null, actualQuantity: 0, availableQuantity: 0, inTransitQuantity: 0, pendingDeliveryQuantity: 0, supplyDemandBalance: 0, purchaseShortageQuantity: 0 })
 const priceInput = (wrapper: VueWrapper) => wrapper.findAll('input[type="number"]')[1]
 function deferred<T>() { let resolve!: (value: T) => void; return { promise: new Promise<T>(done => { resolve = done }), resolve } }
@@ -206,6 +206,17 @@ it('does not apply a stale price to the row shifted after deleting the request r
   await wrapper.get('[data-test="remove-order-line-0"]').trigger('click')
   stale.resolve(100); await flushPromises()
   expect((priceInput(wrapper).element as HTMLInputElement).value).toBe('0')
+  wrapper.unmount()
+})
+
+it('requires one of the three supported order types', async () => {
+  loadOrderSkus.mockResolvedValue([sku(1)])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { props: { defaultSalesperson: 'Admin' } })
+  await flushPromises()
+  const select = wrapper.get('[data-test="order-type-select"]')
+  expect(select.findAll('option').map(option => option.text())).toEqual(['请选择订单类型', '工程订单', '零售订单', '前置订单'])
+  expect((select.element as HTMLSelectElement).value).toBe('')
   wrapper.unmount()
 })
 it('shows the post-order supply-demand shortage while creating an order', async () => {

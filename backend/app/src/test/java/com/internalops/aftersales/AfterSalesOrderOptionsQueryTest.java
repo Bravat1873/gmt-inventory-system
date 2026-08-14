@@ -26,7 +26,7 @@ class AfterSalesOrderOptionsQueryTest {
         verify(jdbc).queryForList(sql.capture(), any(Object[].class));
         String normalized = sql.getValue().replaceAll("\\s+", " ").toLowerCase();
         assertFalse(normalized.contains("select distinct"));
-        assertTrue(normalized.contains("group by o.id,o.order_no,c.customer_name,o.updated_at"));
+        assertTrue(normalized.contains("group by o.id,o.order_no,o.order_type,c.customer_name,o.updated_at"));
         assertTrue(normalized.contains("order by o.updated_at desc"));
     }
 }

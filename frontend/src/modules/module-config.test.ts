@@ -91,8 +91,8 @@ it('enables sorting for short management fields and excludes long display fields
     user: ['username', 'displayName', 'role', 'updatedAt'],
     product: ['productCode', 'customerCode', 'brand', 'model', 'productType', 'materialType', 'salesMinimumOrderQuantity', 'updatedAt'],
     supplier: ['manufacturerCategory', 'manufacturerType', 'supplierLocation', 'productAttribute', 'shortName', 'supplierName', 'contactName', 'contactTitle', 'phone', 'currency', 'taxRegistrationNo', 'bankAddress', 'bankAccount', 'productCount', 'updatedAt'],
-    order: ['orderNo', 'customerName', 'totalAmount', 'status', 'orderDate', 'salesperson', 'createdAt', 'updatedAt'],
-    afterSales: ['afterSalesNo', 'orderNo', 'customerName', 'afterSalesType', 'returnQuantity', 'replacementQuantity', 'status', 'applicationDate', 'updatedAt'],
+    order: ['orderNo', 'customerName', 'orderType', 'totalAmount', 'status', 'orderDate', 'salesperson', 'createdAt', 'updatedAt'],
+    afterSales: ['afterSalesNo', 'orderNo', 'customerName', 'orderType', 'afterSalesType', 'returnQuantity', 'replacementQuantity', 'status', 'applicationDate', 'updatedAt'],
     inventory: ['productCode', 'model', 'productType', 'unit', 'actualQuantity', 'availableQuantity', 'oldestStockDate', 'inventoryAgeDays', 'lockedQuantity', 'inTransitQuantity', 'pendingDeliveryQuantity', 'supplyDemandBalance', 'sourceSupplierName', 'updatedAt'],
     purchase: ['purchaseNo', 'supplierName', 'totalAmount', 'paymentStatus', 'receiptStatus', 'status', 'expectedArrivalDate', 'updatedAt'],
     finance: ['businessNo', 'businessType', 'counterparty', 'amount', 'settledAmount', 'outstandingAmount', 'status', 'updatedAt']
@@ -105,5 +105,14 @@ it('enables sorting for short management fields and excludes long display fields
   for (const module of moduleDefinitions) for (const field of excluded) {
     const index = module.fields.indexOf(field)
     if (index >= 0) expect(module.sortable[index], `${module.key}.${field}`).toBe('')
+  }
+})
+
+it('places order type after customer in order and after-sales lists', () => {
+  for (const key of ['order', 'afterSales'] as const) {
+    const module = moduleDefinitions.find(item => item.key === key)!
+    const customerIndex = module.fields.indexOf('customerName')
+    expect(module.fields[customerIndex + 1]).toBe('orderType')
+    expect(module.columns[customerIndex + 1]).toBe('订单类型')
   }
 })

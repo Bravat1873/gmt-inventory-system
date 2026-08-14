@@ -20,6 +20,7 @@ import java.util.UUID;
 public class SalesOrderCommandService {
     // 发货、库存锁定和开票状态必须由对应的业务动作推进，避免手工改状态绕过出入库流水。
     private static final Set<String> EDITABLE_STATUSES = Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT");
+    private static final Set<String> ORDER_TYPES = Set.of("\u5de5\u7a0b\u8ba2\u5355", "\u96f6\u552e\u8ba2\u5355", "\u524d\u7f6e\u8ba2\u5355");
     private final JdbcTemplate jdbc;
     private final InventoryAllocationService allocation;
     private final SupplyDemandQueryService supplyDemand;
@@ -235,7 +236,7 @@ public class SalesOrderCommandService {
     private void validate(SalesOrderRequest request) {
         if (request.customerId() == null || jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE id=? AND enabled=TRUE", Integer.class, request.customerId()) == 0) throw new IllegalArgumentException("请选择有效客户");
         if (request.orderDate() == null) throw new IllegalArgumentException("请选择订单日期");
-        if (blankToNull(request.orderType()) == null) throw new IllegalArgumentException("请填写订单类型");
+        if (!ORDER_TYPES.contains(trim(request.orderType()))) throw new IllegalArgumentException("\u8ba2\u5355\u7c7b\u578b\u53ea\u80fd\u9009\u62e9\u5de5\u7a0b\u8ba2\u5355\u3001\u96f6\u552e\u8ba2\u5355\u6216\u524d\u7f6e\u8ba2\u5355");
         if (blankToNull(request.salesperson()) == null) throw new IllegalArgumentException("请填写销售员");
         if (!EDITABLE_STATUSES.contains(status(request))) throw new IllegalArgumentException("不支持的订单状态");
         if (request.items() == null || request.items().isEmpty()) throw new IllegalArgumentException("订单至少需要一条产品明细");

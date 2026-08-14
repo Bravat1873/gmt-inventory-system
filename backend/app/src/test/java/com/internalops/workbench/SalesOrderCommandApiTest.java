@@ -44,7 +44,7 @@ class SalesOrderCommandApiTest {
     }
     @Test void manuallyReducesAnAutomaticAllocationAndReleasesInventory() throws Exception {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
-        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"PROJECT\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]}";
+        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]}";
         String created=mvc.perform(post("/api/orders").contentType("application/json").content(order)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         long id=new com.fasterxml.jackson.databind.ObjectMapper().readTree(created).path("data").path("id").asLong();
         String allocation=mvc.perform(get("/api/orders/{id}/allocations",id)).andExpect(status().isOk())
@@ -61,7 +61,7 @@ class SalesOrderCommandApiTest {
     }
     @Test void editsAnUnshippedLockedOrderAndReallocatesInventory() throws Exception {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
-        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"PROJECT\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]}";
+        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]}";
         String created=mvc.perform(post("/api/orders").contentType("application/json").content(order)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         var data=new com.fasterxml.jackson.databind.ObjectMapper().readTree(created).path("data");
         long id=data.path("id").asLong(); int version=data.path("version").asInt();
@@ -72,7 +72,7 @@ class SalesOrderCommandApiTest {
         org.junit.jupiter.api.Assertions.assertEquals(3,jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1",Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM inventory_transaction WHERE business_no=? AND transaction_type='ORDER_EDIT_RELEASE'",Integer.class,String.valueOf(id)));
     }    @Test void createsCalculatesAndFreezesPaidOrder() throws Exception {
-        String json="{\"customerId\":1,\"externalOrderNo\":\"KH-001\",\"orderDate\":\"2026-08-06\",\"orderType\":\"PROJECT\",\"status\":\"DRAFT\",\"salesperson\":\"Admin\",\"customerContact\":\"Zhang\",\"customerPhone\":\"13800138000\",\"remark\":\"Order note\",\"deliveryAddress\":\"Shenzhen\",\"deliveryContact\":\"Li\",\"deliveryPhone\":\"13900139000\",\"shippingMethod\":\"Logistics\",\"items\":[{\"skuId\":1,\"quantity\":2,\"salePrice\":12.50},{\"skuId\":2,\"quantity\":3,\"salePrice\":10}]}";
+        String json="{\"customerId\":1,\"externalOrderNo\":\"KH-001\",\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"status\":\"DRAFT\",\"salesperson\":\"Admin\",\"customerContact\":\"Zhang\",\"customerPhone\":\"13800138000\",\"remark\":\"Order note\",\"deliveryAddress\":\"Shenzhen\",\"deliveryContact\":\"Li\",\"deliveryPhone\":\"13900139000\",\"shippingMethod\":\"Logistics\",\"items\":[{\"skuId\":1,\"quantity\":2,\"salePrice\":12.50},{\"skuId\":2,\"quantity\":3,\"salePrice\":10}]}";
         String response=mvc.perform(post("/api/orders").contentType("application/json").content(json))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalAmount").value(55.0))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
@@ -93,7 +93,7 @@ class SalesOrderCommandApiTest {
     }
 
     @Test void refusesToCreateAnAlreadyShippedOrderBecauseShipmentMustUseTheOutboundWorkflow() throws Exception {
-        String json="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"PROJECT\",\"status\":\"SHIPPED\",\"salesperson\":\"Admin\",\"items\":[{\"skuId\":1,\"quantity\":1,\"salePrice\":12.50}]}";
+        String json="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"status\":\"SHIPPED\",\"salesperson\":\"Admin\",\"items\":[{\"skuId\":1,\"quantity\":1,\"salePrice\":12.50}]}";
         mvc.perform(post("/api/orders").contentType("application/json").content(json))
                 .andExpect(status().isBadRequest());
         org.junit.jupiter.api.Assertions.assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sales_order", Integer.class));
@@ -123,7 +123,7 @@ class SalesOrderCommandApiTest {
 
     @Test void createsAndUpdatesThreeContactSnapshotsWhileKeepingLegacyOrderContactFields() throws Exception {
         String createJson="""
-                {"customerId":1,"orderDate":"2026-08-06","orderType":"PROJECT","status":"DRAFT","salesperson":"Admin",
+                {"customerId":1,"orderDate":"2026-08-06","orderType":"\u5de5\u7a0b\u8ba2\u5355","status":"DRAFT","salesperson":"Admin",
                  "customerContact":"Legacy ignored","customerPhone":"10086",
                  "businessContactName":"Business One","businessContactPhone":"13100000001",
                  "orderContactName":"Order One","orderContactPhone":"13200000001",
@@ -149,7 +149,7 @@ class SalesOrderCommandApiTest {
                         .get(0).values().stream().toList());
 
         String updateJson="""
-                {"customerId":1,"orderDate":"2026-08-07","orderType":"PROJECT","status":"DRAFT","salesperson":"Admin","version":0,
+                {"customerId":1,"orderDate":"2026-08-07","orderType":"\u5de5\u7a0b\u8ba2\u5355","status":"DRAFT","salesperson":"Admin","version":0,
                  "businessContactName":"Business Two","businessContactPhone":"13100000002",
                  "orderContactName":"Order Two","orderContactPhone":"13200000002",
                  "financeContactName":"Finance Two","financeContactPhone":"13300000002",
@@ -171,7 +171,7 @@ class SalesOrderCommandApiTest {
 
     @Test void fallsBackToLegacyOrderContactForRequestsAndOldRowsOnly() throws Exception {
         String json="""
-                {"customerId":1,"orderDate":"2026-08-06","orderType":"PROJECT","status":"DRAFT","salesperson":"Admin",
+                {"customerId":1,"orderDate":"2026-08-06","orderType":"\u5de5\u7a0b\u8ba2\u5355","status":"DRAFT","salesperson":"Admin",
                  "customerContact":"Legacy Order","customerPhone":"13900000000",
                  "items":[{"skuId":1,"quantity":1,"salePrice":12.50}]}
                 """;
@@ -197,7 +197,7 @@ class SalesOrderCommandApiTest {
     @Test void preservesLegacyCustomerPhoneUpToSixtyCharactersWhenNewPhoneIsMissing() throws Exception {
         String createPhone="1".repeat(60);
         String createJson="""
-                {"customerId":1,"orderDate":"2026-08-06","orderType":"PROJECT","status":"DRAFT","salesperson":"Admin",
+                {"customerId":1,"orderDate":"2026-08-06","orderType":"\u5de5\u7a0b\u8ba2\u5355","status":"DRAFT","salesperson":"Admin",
                  "customerContact":"Legacy Create","customerPhone":"%s",
                  "items":[{"skuId":1,"quantity":1,"salePrice":12.50}]}
                 """.formatted(createPhone);
@@ -211,7 +211,7 @@ class SalesOrderCommandApiTest {
 
         String updatePhone="2".repeat(41);
         String updateJson="""
-                {"customerId":1,"orderDate":"2026-08-07","orderType":"PROJECT","status":"DRAFT","salesperson":"Admin","version":0,
+                {"customerId":1,"orderDate":"2026-08-07","orderType":"\u5de5\u7a0b\u8ba2\u5355","status":"DRAFT","salesperson":"Admin","version":0,
                  "customerContact":"Legacy Update","customerPhone":"%s",
                  "items":[{"skuId":1,"quantity":1,"salePrice":12.50}]}
                 """.formatted(updatePhone);
@@ -225,7 +225,7 @@ class SalesOrderCommandApiTest {
 
     @Test void adjustsCumulativeShippedQuantityAndOnlyAppliesTheDifferenceToInventory() throws Exception {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
-        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"PROJECT\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":10,\"salePrice\":12.50}]}";
+        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":10,\"salePrice\":12.50}]}";
         String created=mvc.perform(post("/api/orders").contentType("application/json").content(order)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         long id=new com.fasterxml.jackson.databind.ObjectMapper().readTree(created).path("data").path("id").asLong();
         mvc.perform(put("/api/orders/{id}/shipment-quantities",id).contentType("application/json").content("{\"deliveryAddress\":\"Shenzhen\",\"items\":[{\"lineNo\":10000,\"shippedQuantity\":3}]}"))
@@ -421,7 +421,7 @@ class SalesOrderCommandApiTest {
     private long createReadyOrder(String deliveryAddress,String items) throws Exception {
         jdbc.update("MERGE INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) KEY(warehouse_id,sku_id) VALUES(1,1,10,0,0,0)");
         jdbc.update("MERGE INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) KEY(warehouse_id,sku_id) VALUES(1,2,10,0,0,0)");
-        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"PROJECT\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"deliveryAddress\":\""+deliveryAddress+"\",\"items\":"+items+"}";
+        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"deliveryAddress\":\""+deliveryAddress+"\",\"items\":"+items+"}";
         String created=mvc.perform(post("/api/orders").contentType("application/json").content(order)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return new com.fasterxml.jackson.databind.ObjectMapper().readTree(created).path("data").path("id").asLong();
     }
