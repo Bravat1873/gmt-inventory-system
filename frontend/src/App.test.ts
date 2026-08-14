@@ -186,4 +186,15 @@ describe('连续导航和浏览器地址状态', () => {
     await flushPromises()
     expect(wrapper.findComponent((await import('./components/CustomerDialog.vue')).default).exists()).toBe(true)
     expect(wrapper.findComponent(EntityDialog).exists()).toBe(false)
-  })})
+  })
+
+  it('keeps the product submenu expanded after navigating to another module', async () => {
+    history.replaceState(null, '', '/?module=customer&page=1')
+    const wrapper = mount(App)
+    await flushPromises()
+    await wrapper.get('[data-module="product"]').trigger('click')
+    expect(wrapper.find('.nav-subitem').exists()).toBe(true)
+    await wrapper.get('[data-module="customer"]').trigger('click')
+    expect(wrapper.find('.nav-subitem').exists()).toBe(true)
+  })
+})

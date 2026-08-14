@@ -113,7 +113,6 @@ function navigateModule(key: ModuleKey) {
     productMenuOpen.value = alreadyOnProduct ? !productMenuOpen.value : true
     return
   }
-  productMenuOpen.value = false
   productCodeRulesOpen.value = false
   selectModule(key)
 }
