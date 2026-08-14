@@ -3,6 +3,7 @@ package com.internalops.workbench;
 import com.internalops.auth.CurrentUser;
 import com.internalops.numbering.DocumentNumberService;
 import com.internalops.numbering.DocumentType;
+import com.internalops.procurement.ProcurementRecommendationService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -28,95 +29,85 @@ public class ProcurementWorkflowService {
     private final JdbcTemplate jdbc;
     private final InventoryAllocationService allocation;
     private final DocumentNumberService documentNumbers;
+    private final ProcurementRecommendationService recommendations;
 
-    public ProcurementWorkflowService(JdbcTemplate jdbc, InventoryAllocationService allocation, DocumentNumberService documentNumbers) {
+    public ProcurementWorkflowService(JdbcTemplate jdbc, InventoryAllocationService allocation, DocumentNumberService documentNumbers, ProcurementRecommendationService recommendations) {
         this.jdbc = jdbc;
         this.allocation = allocation;
         this.documentNumbers = documentNumbers;
+        this.recommendations = recommendations;
     }
 
     @Transactional
     public Map<String, Object> generate() {
         var missing = jdbc.queryForList("""
                 SELECT i.id AS item_id, i.sku_id,
-                       i.uncovered_quantity-COALESCE(c.covered_quantity,0) AS uncovered_quantity,
-                       quote.supplier_id, quote.purchase_price, quote.moq, quote.lead_time_days,
-                       quote.supplier_purchase_info_id
+                       i.uncovered_quantity-COALESCE(c.covered_quantity,0) AS uncovered_quantity
                 FROM sales_order_item i
                 JOIN sales_order o ON o.id=i.sales_order_id
                 LEFT JOIN (
                     SELECT sales_order_item_id,SUM(covered_quantity) AS covered_quantity
                     FROM shortage_coverage WHERE active=TRUE GROUP BY sales_order_item_id
                 ) c ON c.sales_order_item_id=i.id
-                LEFT JOIN (
-                    SELECT ranked.* FROM (
-                        SELECT cfg.sku_id,cfg.supplier_id,pi.id AS supplier_purchase_info_id,
-                               pi.purchase_price,pi.moq,pi.lead_time_days,
-                               ROW_NUMBER() OVER(PARTITION BY cfg.sku_id ORDER BY pi.updated_at DESC,pi.id DESC) AS rn
-                        FROM sku_supplier_config cfg
-                        JOIN sku_supplier_purchase_info pi ON pi.supplier_product_config_id=cfg.id
-                        WHERE cfg.enabled=TRUE AND pi.enabled=TRUE
-                    ) ranked WHERE ranked.rn=1
-                ) quote ON quote.sku_id=i.sku_id
                 WHERE o.status='WAITING_STOCK'
                   AND i.uncovered_quantity-COALESCE(c.covered_quantity,0)>0
-                ORDER BY quote.supplier_id,i.sku_id,i.id
+                ORDER BY i.sku_id,i.id
                 """);
-        if (missing.isEmpty()) {
-            throw new IllegalStateException("当前没有需要采购的缺口");
-        }
-        for (var row : missing) {
-            if (val(row, "supplier_id") == null) {
-                throw new IllegalStateException("存在未绑定供应商的缺货产品，请先完善产品资料");
-            }
-        }
+        if (missing.isEmpty()) throw new IllegalStateException("当前没有需要采购的缺口");
 
-        Map<Long, List<Map<String, Object>>> groups = new LinkedHashMap<>();
-        for (var row : missing) {
-            groups.computeIfAbsent(num(row, "supplier_id"), ignored -> new ArrayList<>()).add(row);
+        Map<Long, List<Map<String, Object>>> rowsBySku = new LinkedHashMap<>();
+        for (var row : missing) rowsBySku.computeIfAbsent(num(row, "sku_id"), ignored -> new ArrayList<>()).add(row);
+
+        Map<Long, List<ProcurementRecommendationService.Recommendation>> groups = new LinkedHashMap<>();
+        for (var skuEntry : rowsBySku.entrySet()) {
+            int shortage = skuEntry.getValue().stream().mapToInt(row -> (int) num(row, "uncovered_quantity")).sum();
+            var candidateRows = jdbc.queryForList("""
+                    SELECT cfg.supplier_id,pi.id AS purchase_info_id,pi.purchase_price,pi.moq,pi.lead_time_days
+                    FROM sku_supplier_config cfg
+                    JOIN supplier sp ON sp.id=cfg.supplier_id AND sp.enabled=TRUE
+                    JOIN (
+                        SELECT ranked.* FROM (
+                            SELECT info.*,ROW_NUMBER() OVER(PARTITION BY info.supplier_product_config_id ORDER BY info.updated_at DESC,info.id DESC) rn
+                            FROM sku_supplier_purchase_info info WHERE info.enabled=TRUE
+                        ) ranked WHERE ranked.rn=1
+                    ) pi ON pi.supplier_product_config_id=cfg.id
+                    WHERE cfg.sku_id=? AND cfg.enabled=TRUE
+                    """, skuEntry.getKey());
+            var candidates = candidateRows.stream().map(row -> new ProcurementRecommendationService.Candidate(
+                    num(row,"supplier_id"), num(row,"purchase_info_id"), (BigDecimal) val(row,"purchase_price"),
+                    (int) num(row,"moq"), (int) num(row,"lead_time_days"))).toList();
+            var recommendation = recommendations.recommend(skuEntry.getKey(), shortage, candidates)
+                    .orElseThrow(() -> new IllegalStateException("存在未配置有效供应商采购信息的缺货产品"));
+            groups.computeIfAbsent(recommendation.supplierId(), ignored -> new ArrayList<>()).add(recommendation);
         }
 
         List<Long> suggestions = new ArrayList<>();
         for (var group : groups.entrySet()) {
             String suggestionNo = documentNumbers.next(DocumentType.PROCUREMENT_REVIEW, LocalDate.now());
-            long suggestionId = insert(
-                    "INSERT INTO procurement_suggestion(suggestion_no,status,created_by) VALUES(?,'DRAFT',1)",
-                    suggestionNo);
-
-            Map<Long, List<Map<String, Object>>> bySku = new LinkedHashMap<>();
-            for (var row : group.getValue()) {
-                bySku.computeIfAbsent(num(row, "sku_id"), ignored -> new ArrayList<>()).add(row);
-            }
-            for (var sku : bySku.entrySet()) {
-                int shortage = sku.getValue().stream()
-                        .mapToInt(row -> (int) num(row, "uncovered_quantity"))
-                        .sum();
-                var first = sku.getValue().get(0);
-                int moq = (int) num(first, "moq");
-                int quantity = Math.max(shortage, moq);
-                BigDecimal price = (BigDecimal) val(first, "purchase_price");
-                LocalDate eta = LocalDate.now().plusDays((int) num(first, "lead_time_days"));
+            long suggestionId = insert("INSERT INTO procurement_suggestion(suggestion_no,status,created_by) VALUES(?,'DRAFT',1)", suggestionNo);
+            for (var recommendation : group.getValue()) {
+                LocalDate eta = LocalDate.now().plusDays(recommendation.leadTimeDays());
                 long suggestionItemId = insert("""
                                 INSERT INTO procurement_suggestion_item(
                                     suggestion_id,sku_id,supplier_id,shortage_quantity,suggested_quantity,
                                     confirmed_quantity,purchase_price,expected_arrival_date,supplier_purchase_info_id)
                                 VALUES(?,?,?,?,?,NULL,?,?,?)
                                 """,
-                        suggestionId, sku.getKey(), group.getKey(), shortage, quantity, price, eta, num(first, "supplier_purchase_info_id"));
-                for (var item : sku.getValue()) {
+                        suggestionId, recommendation.skuId(), recommendation.supplierId(),
+                        recommendation.shortageQuantity(), recommendation.suggestedQuantity(),
+                        recommendation.purchasePrice(), eta, recommendation.purchaseInfoId());
+                for (var item : rowsBySku.get(recommendation.skuId())) {
                     jdbc.update("""
                                     INSERT INTO shortage_coverage(
                                         sales_order_item_id,suggestion_item_id,covered_quantity,active)
                                     VALUES(?,?,?,TRUE)
-                                    """,
-                            num(item, "item_id"), suggestionItemId, num(item, "uncovered_quantity"));
+                                    """, num(item,"item_id"), suggestionItemId, num(item,"uncovered_quantity"));
                 }
             }
             suggestions.add(suggestionId);
         }
         return Map.of("suggestionIds", suggestions, "count", suggestions.size());
     }
-
     @Transactional
     public Map<String, Object> confirm(long suggestionId) {
         var suggestion = jdbc.queryForMap(

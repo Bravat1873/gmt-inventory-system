@@ -247,6 +247,19 @@ class ProcurementWorkflowApiTest {
     }
 
     @Test
+    void recommendsSupplierWithLowestEstimatedTotalInsteadOfLatestQuote() throws Exception {
+        jdbc.update("INSERT INTO supplier(id,supplier_name,enabled) VALUES(202,'供应商二',TRUE)");
+        jdbc.update("INSERT INTO sku_supplier_config(id,sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled) VALUES(2,101,202,50.0000,3,2,TRUE)");
+        jdbc.update("INSERT INTO sku_supplier_purchase_info(id,supplier_product_config_id,purchase_price,moq,lead_time_days,enabled,updated_at,version) VALUES(2,2,50.0000,3,2,TRUE,CURRENT_TIMESTAMP,0)");
+        String body = mvc.perform(post("/api/procurement/generate").cookie(login()).contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long suggestionId = mapper.readTree(body).path("data").path("suggestionIds").get(0).asLong();
+        assertThat(jdbc.queryForMap("SELECT supplier_id,suggested_quantity,purchase_price FROM procurement_suggestion_item WHERE suggestion_id=?", suggestionId))
+                .containsEntry("supplier_id", 201L)
+                .containsEntry("suggested_quantity", 10)
+                .containsEntry("purchase_price", new java.math.BigDecimal("10.0000"));
+    }
+    @Test
     void createsManualPurchaseWithCgMonthlyNumber() throws Exception {
         createManualPurchase(login(), 10);
         assertThat(jdbc.queryForObject("SELECT purchase_no FROM purchase_order ORDER BY id DESC LIMIT 1", String.class))
