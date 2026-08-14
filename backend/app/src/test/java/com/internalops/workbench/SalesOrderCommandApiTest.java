@@ -437,4 +437,13 @@ class SalesOrderCommandApiTest {
         },keys);
         return java.util.Objects.requireNonNull(keys.getKey()).longValue();
     }
+    @Test void createsSalesOrderWithDdMonthlyNumber() throws Exception {
+        String order="{\"customerId\":1,\"orderDate\":\"2026-08-14\",\"orderType\":\"工程订单\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":1,\"salePrice\":12.50}]}";
+        mvc.perform(post("/api/orders").contentType("application/json").content(order)).andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT order_no FROM sales_order ORDER BY id DESC LIMIT 1",String.class)).isEqualTo("DD20260800001");
+    }    @Test void automaticallyCreatesQrWhenNewOrderHasPurchaseShortage() throws Exception {
+        String order="{\"customerId\":1,\"orderDate\":\"2026-08-14\",\"orderType\":\"工程订单\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]}";
+        mvc.perform(post("/api/orders").contentType("application/json").content(order)).andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion WHERE suggestion_no LIKE 'QR%'",Integer.class)).isEqualTo(1);
+    }
 }

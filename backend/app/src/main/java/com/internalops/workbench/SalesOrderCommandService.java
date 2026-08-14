@@ -1,5 +1,8 @@
 package com.internalops.workbench;
 
+import com.internalops.numbering.DocumentNumberService;
+import com.internalops.numbering.DocumentType;
+import com.internalops.procurement.AutoProcurementSuggestionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -14,7 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 
 @Service
 public class SalesOrderCommandService {
@@ -24,17 +26,21 @@ public class SalesOrderCommandService {
     private final JdbcTemplate jdbc;
     private final InventoryAllocationService allocation;
     private final SupplyDemandQueryService supplyDemand;
+    private final DocumentNumberService documentNumbers;
+    private final AutoProcurementSuggestionService autoProcurement;
     public SalesOrderCommandService(JdbcTemplate jdbc, InventoryAllocationService allocation,
-                                    SupplyDemandQueryService supplyDemand) {
+                                    SupplyDemandQueryService supplyDemand, DocumentNumberService documentNumbers, AutoProcurementSuggestionService autoProcurement) {
         this.jdbc = jdbc;
         this.allocation = allocation;
         this.supplyDemand = supplyDemand;
+        this.documentNumbers = documentNumbers;
+        this.autoProcurement = autoProcurement;
     }
 
     @Transactional
     public Map<String, Object> create(SalesOrderRequest request) {
         validate(request);
-        String orderNo = "SO" + java.time.LocalDate.now().toString().replace("-", "") + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        String orderNo = documentNumbers.next(DocumentType.SALES_ORDER, request.orderDate());
         String orderContactName = firstNonBlank(request.orderContactName(), request.customerContact());
         String orderContactPhone = firstNonBlank(request.orderContactPhone(), request.customerPhone());
         long id = insert("INSERT INTO sales_order(order_no,external_order_no,customer_id,status,total_amount,order_date,order_type,salesperson,customer_contact,customer_phone,business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,finance_contact_name,finance_contact_phone,order_remark,delivery_address,delivery_contact,delivery_phone,shipping_method) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -43,6 +49,7 @@ public class SalesOrderCommandService {
                 blankToNull(request.remark()), blankToNull(request.deliveryAddress()), blankToNull(request.deliveryContact()), blankToNull(request.deliveryPhone()), blankToNull(request.shippingMethod()));
         insertItems(id, request.items());
         if ("PENDING_CUSTOMER_PAYMENT".equals(status(request))) allocation.allocate(id);
+        autoProcurement.requestRecalculation();
         return get(id);
     }
 
@@ -230,6 +237,7 @@ public class SalesOrderCommandService {
         jdbc.update("DELETE FROM sales_order_item WHERE sales_order_id=?", id);
         insertItems(id, request.items());
         if ("PENDING_CUSTOMER_PAYMENT".equals(status(request))) allocation.allocate(id);
+        autoProcurement.requestRecalculation();
         return get(id);
     }
 

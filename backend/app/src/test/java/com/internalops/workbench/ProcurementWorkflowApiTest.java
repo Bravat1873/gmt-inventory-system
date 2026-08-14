@@ -16,6 +16,7 @@ import jakarta.servlet.http.Cookie;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -246,6 +247,77 @@ class ProcurementWorkflowApiTest {
                 .andExpect(jsonPath("$.data.items[0].remainingQuantity").value(6));
     }
 
+    @Test
+    void updatesReviewQuantityAndRejectsQuantityBelowMoq() throws Exception {
+        Cookie session=login();
+        String generated=mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long suggestionId=mapper.readTree(generated).path("data").path("suggestionIds").get(0).asLong();
+        long itemId=jdbc.queryForObject("SELECT id FROM procurement_suggestion_item WHERE suggestion_id=?",Long.class,suggestionId);
+
+        mvc.perform(put("/api/procurement/suggestions/{id}",suggestionId).cookie(session).contentType("application/json")
+                        .content("{\"version\":0,\"items\":[{\"id\":"+itemId+",\"quantity\":9,\"expectedArrivalDate\":\"2026-08-25\"}]}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(put("/api/procurement/suggestions/{id}",suggestionId).cookie(session).contentType("application/json")
+                        .content("{\"version\":0,\"items\":[{\"id\":"+itemId+",\"quantity\":12,\"expectedArrivalDate\":\"2026-08-25\"}]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.version").value(1));
+        mvc.perform(get("/api/procurement/suggestions/{id}",suggestionId).cookie(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].suggestedQuantity").value(12))
+                .andExpect(jsonPath("$.data.items[0].estimatedAmount").value(120.0));
+    }
+    @Test
+    void readsAndRejectsPendingProcurementReview() throws Exception {
+        Cookie session = login();
+        String generated = mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long suggestionId = mapper.readTree(generated).path("data").path("suggestionIds").get(0).asLong();
+
+        mvc.perform(get("/api/procurement/suggestions/{id}", suggestionId).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.suggestionNo").value(org.hamcrest.Matchers.startsWith("QR")))
+                .andExpect(jsonPath("$.data.supplierName").value("供应商一"))
+                .andExpect(jsonPath("$.data.items[0].shortageQuantity").value(3))
+                .andExpect(jsonPath("$.data.items[0].suggestedQuantity").value(10))
+                .andExpect(jsonPath("$.data.items[0].minimumOrderQuantity").value(10));
+
+        mvc.perform(post("/api/procurement/suggestions/{id}/reject", suggestionId).cookie(session)
+                        .contentType("application/json").content("{\"version\":0,\"reason\":\"暂不采购\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+        assertThat(jdbc.queryForObject("SELECT status FROM procurement_suggestion WHERE id=?", String.class, suggestionId)).isEqualTo("REJECTED");
+    }
+    @Test
+    void updatesExistingDraftQrInsteadOfCreatingDuplicate() throws Exception {
+        Cookie session = login();
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity) VALUES(2,1,2,101,2,0,2)");
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion WHERE status='DRAFT'", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT shortage_quantity FROM procurement_suggestion_item", Integer.class)).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT suggested_quantity FROM procurement_suggestion_item", Integer.class)).isEqualTo(10);
+    }
+    @Test
+    void recommendsSupplierWithLowestEstimatedTotalInsteadOfLatestQuote() throws Exception {
+        jdbc.update("INSERT INTO supplier(id,supplier_name,enabled) VALUES(202,'供应商二',TRUE)");
+        jdbc.update("INSERT INTO sku_supplier_config(id,sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled) VALUES(2,101,202,50.0000,3,2,TRUE)");
+        jdbc.update("INSERT INTO sku_supplier_purchase_info(id,supplier_product_config_id,purchase_price,moq,lead_time_days,enabled,updated_at,version) VALUES(2,2,50.0000,3,2,TRUE,CURRENT_TIMESTAMP,0)");
+        String body = mvc.perform(post("/api/procurement/generate").cookie(login()).contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long suggestionId = mapper.readTree(body).path("data").path("suggestionIds").get(0).asLong();
+        assertThat(jdbc.queryForMap("SELECT supplier_id,suggested_quantity,purchase_price FROM procurement_suggestion_item WHERE suggestion_id=?", suggestionId))
+                .containsEntry("supplier_id", 201L)
+                .containsEntry("suggested_quantity", 10)
+                .containsEntry("purchase_price", new java.math.BigDecimal("10.0000"));
+    }
+    @Test
+    void createsManualPurchaseWithCgMonthlyNumber() throws Exception {
+        createManualPurchase(login(), 10);
+        assertThat(jdbc.queryForObject("SELECT purchase_no FROM purchase_order ORDER BY id DESC LIMIT 1", String.class))
+                .matches("CG\\d{6}00001");
+    }
     private long createManualPurchase(Cookie session, int quantity) throws Exception {
         String body = mvc.perform(post("/api/procurement/manual").cookie(session)
                         .contentType("application/json")
@@ -266,5 +338,21 @@ class ProcurementWorkflowApiTest {
     private Cookie loginAsRole(String role) throws Exception {
         jdbc.update("UPDATE sys_user SET role=? WHERE username='admin'", role);
         return login();
+    }
+    @Test
+    void marksSystemDraftAsNoPurchaseWhenShortageDisappears() throws Exception {
+        Cookie session = login();
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+        long suggestionId = jdbc.queryForObject("SELECT id FROM procurement_suggestion WHERE status='DRAFT'", Long.class);
+
+        jdbc.update("UPDATE sales_order_item SET uncovered_quantity=0 WHERE id=1");
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.count").value(0));
+
+        assertThat(jdbc.queryForObject("SELECT status FROM procurement_suggestion WHERE id=?", String.class, suggestionId)).isEqualTo("REJECTED");
+        assertThat(jdbc.queryForObject("SELECT review_reason FROM procurement_suggestion WHERE id=?", String.class, suggestionId)).isEqualTo("供需余量已恢复，无需采购");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM shortage_coverage WHERE active=TRUE", Integer.class)).isZero();
     }
 }

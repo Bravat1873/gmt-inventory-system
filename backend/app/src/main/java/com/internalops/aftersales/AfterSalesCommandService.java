@@ -2,6 +2,8 @@ package com.internalops.aftersales;
 
 import com.internalops.auth.CurrentUser;
 import com.internalops.auth.UserRole;
+import com.internalops.numbering.DocumentNumberService;
+import com.internalops.numbering.DocumentType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -11,20 +13,20 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
 public class AfterSalesCommandService {
     private final JdbcTemplate jdbc;
-    public AfterSalesCommandService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private final DocumentNumberService documentNumbers;
+    public AfterSalesCommandService(JdbcTemplate jdbc, DocumentNumberService documentNumbers) { this.jdbc = jdbc; this.documentNumbers = documentNumbers; }
 
     @Transactional
     public Map<String,Object> create(AfterSalesRequest request) {
         writable(); validateHeader(request);
         Map<String,Object> order = one("SELECT id,customer_id,order_no FROM sales_order WHERE id=? FOR UPDATE", request.orderId());
         if (request.returnLines()==null || request.returnLines().isEmpty()) throw new IllegalArgumentException("至少选择一条退货明细");
-        String no = "AS" + LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE) + UUID.randomUUID().toString().replace("-","").substring(0,8).toUpperCase();
+        String no = documentNumbers.next(DocumentType.AFTER_SALES, request.applicationDate() == null ? LocalDate.now() : request.applicationDate());
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         jdbc.update(c -> { PreparedStatement s=c.prepareStatement("INSERT INTO after_sales_order(after_sales_no,sales_order_id,customer_id,after_sales_type,status,issue_description,application_date,contact_name,contact_phone,delivery_address,remark,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS); int i=1; s.setString(i++,no);s.setLong(i++,request.orderId());s.setLong(i++,num(order,"customer_id"));s.setString(i++,request.replacementLines()!=null&&!request.replacementLines().isEmpty()?"EXCHANGE":"RETURN");s.setString(i++,"WAITING_RETURN");s.setString(i++,request.issueDescription().trim());s.setObject(i++,request.applicationDate()==null?LocalDate.now():request.applicationDate());s.setString(i++,request.contactName());s.setString(i++,request.contactPhone());s.setString(i++,request.deliveryAddress());s.setString(i++,request.remark());s.setObject(i++,userId());s.setObject(i,userId());return s; },key);
         long id=Objects.requireNonNull(key.getKey()).longValue();

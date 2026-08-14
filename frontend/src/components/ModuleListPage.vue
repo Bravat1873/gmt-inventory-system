@@ -119,7 +119,7 @@ defineExpose({ reload: () => load(data.value.page) })
                 <button v-if="module.key === 'finance' && !isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-payment" @click="emit('payment', row)">登记付款</button>
                 <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && hasOutstandingAmount(row)" data-test="purchase-payment" @click="emit('payment', row)">登记付款</button>
                 <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && Number(row.remainingQuantity ?? 0) > 0" data-test="purchase-receipt" @click="emit('purchaseReceipt', row)">登记收货</button>
-                <button v-if="module.key === 'purchase' && row.recordType === 'SUGGESTION'" @click="emit('workflow', row)">确认建议</button>
+                <button v-if="module.key === 'purchase' && row.recordType === 'SUGGESTION'" data-test="review-procurement" @click="emit('workflow', row)">复核</button>
                 <button v-if="module.key === 'afterSales'" @click="emit('edit', row)">修改</button>
                 <button v-if="module.key === 'afterSales' && ['WAITING_RETURN','RETURN_RECEIVED'].includes(String(row.status))" @click="emit('afterSalesReceipt', row)">确认收货</button>
                 <button v-if="module.key === 'afterSales' && row.status === 'WAITING_REPLACEMENT'" @click="emit('afterSalesShipment', row)">换货发出</button>

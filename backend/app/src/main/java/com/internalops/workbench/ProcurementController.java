@@ -18,6 +18,18 @@ public class ProcurementController {
     @PostMapping("/generate")
     public ApiResponse<Map<String, Object>> generate() { return ApiResponse.ok(service.generate()); }
 
+    @PutMapping("/suggestions/{id}")
+    public ApiResponse<Map<String,Object>> updateReview(@PathVariable long id,@RequestBody Map<String,Object> body) {
+        return ApiResponse.ok(service.updateReview(id,body));
+    }
+    @GetMapping("/suggestions/{id}")
+    public ApiResponse<Map<String,Object>> review(@PathVariable long id) { return ApiResponse.ok(service.review(id)); }
+
+    @PostMapping("/suggestions/{id}/reject")
+    public ApiResponse<Map<String,Object>> reject(@PathVariable long id,@RequestBody Map<String,Object> body) {
+        int version=((Number)body.getOrDefault("version",-1)).intValue();
+        return ApiResponse.ok(service.reject(id,version,String.valueOf(body.getOrDefault("reason",""))));
+    }
     @PostMapping("/suggestions/{id}/confirm")
     public ApiResponse<Map<String, Object>> confirm(@PathVariable long id) { return ApiResponse.ok(service.confirm(id)); }
 
