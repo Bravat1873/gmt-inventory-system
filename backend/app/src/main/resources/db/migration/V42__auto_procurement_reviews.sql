@@ -1,7 +1,3 @@
-ALTER TABLE sku_supplier_config
-    DROP INDEX uk_sku_supplier_config_sku,
-    ADD CONSTRAINT uk_sku_supplier_config_pair UNIQUE (sku_id, supplier_id);
-
 ALTER TABLE procurement_suggestion
     ADD COLUMN system_managed BOOLEAN NOT NULL DEFAULT FALSE AFTER status,
     ADD COLUMN manually_edited BOOLEAN NOT NULL DEFAULT FALSE AFTER system_managed,
