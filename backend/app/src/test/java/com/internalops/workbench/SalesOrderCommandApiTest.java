@@ -59,6 +59,24 @@ class SalesOrderCommandApiTest {
         org.junit.jupiter.api.Assertions.assertEquals(2,jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1",Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM inventory_transaction WHERE business_no=? AND transaction_type='MANUAL_RELEASE'",Integer.class,String.valueOf(id)));
     }
+    @Test void reallocatesOnlyTheUnshippedQuantityAfterAPartialShipment() throws Exception {
+        jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,5,0,0)");
+        jdbc.update("INSERT INTO sales_order(order_no,customer_id,status,total_amount,order_date,version) VALUES('SO-PARTIAL-ALLOCATE',1,'READY_TO_SHIP',0,CURRENT_DATE,0)");
+        long id=jdbc.queryForObject("SELECT id FROM sales_order WHERE order_no='SO-PARTIAL-ALLOCATE'",Long.class);
+        jdbc.update("INSERT INTO sales_order_item(sales_order_id,line_no,sku_id,quantity,shipped_quantity,locked_quantity,uncovered_quantity,sale_price) VALUES(?,10000,1,10,4,5,1,1)",id);
+
+        mvc.perform(get("/api/orders/{id}/allocations",id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.adjustable").value(true));
+
+        mvc.perform(put("/api/orders/{id}/allocations",id).contentType("application/json")
+                        .content("{\"version\":0,\"items\":[{\"lineNo\":10000,\"lockedQuantity\":4}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].shippedQuantity").value(4))
+                .andExpect(jsonPath("$.data.items[0].lockedQuantity").value(4))
+                .andExpect(jsonPath("$.data.items[0].uncoveredQuantity").value(2));
+        org.junit.jupiter.api.Assertions.assertEquals(4,jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1",Integer.class));
+    }
     @Test void editsAnUnshippedLockedOrderAndReallocatesInventory() throws Exception {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
         String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"status\":\"PENDING_CUSTOMER_PAYMENT\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]}";

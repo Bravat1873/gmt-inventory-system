@@ -35,7 +35,7 @@ public class OrderAllocationService {
         result.put("id", orderId);
         result.put("version", number(order, "version"));
         result.put("status", value(order, "status"));
-        result.put("adjustable", items.stream().allMatch(item -> number(item, "shipped_quantity") == 0));
+        result.put("adjustable", items.stream().anyMatch(item -> number(item, "quantity") > number(item, "shipped_quantity")));
         result.put("items", items.stream().map(this::allocationItem).toList());
         return result;
     }
@@ -46,7 +46,6 @@ public class OrderAllocationService {
         Map<String, Object> order = jdbc.queryForMap("SELECT id,status,version FROM sales_order WHERE id=? FOR UPDATE", orderId);
         if (number(order, "version") != request.version()) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
         List<Map<String, Object>> lines = jdbc.queryForList("SELECT id,line_no,sku_id,quantity,shipped_quantity,locked_quantity FROM sales_order_item WHERE sales_order_id=? ORDER BY line_no FOR UPDATE", orderId);
-        if (lines.stream().anyMatch(line -> number(line, "shipped_quantity") > 0)) throw new IllegalStateException("订单已有发货记录，不能调整库存分配");
         Map<Integer, OrderAllocationRequest.Item> targets;
         try {
             targets = request.items().stream().collect(Collectors.toMap(OrderAllocationRequest.Item::lineNo, Function.identity()));
