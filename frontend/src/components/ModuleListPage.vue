@@ -4,14 +4,16 @@ import type { UserRole } from '../api/auth'
 import { loadModule, type PageResult, type SupplierQuote } from '../api/workbench'
 import type { ModuleDefinition } from '../modules/module-config'
 import OverflowText from './OverflowText.vue'
+import ProcurementConfigurationAlert from './ProcurementConfigurationAlert.vue'
 
 const props = defineProps<{ module: ModuleDefinition; currentUserRole?: UserRole }>()
-const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; funds: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesRefund: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; message: [text: string, kind?: 'success' | 'error'] }>()
+const emit = defineEmits<{ action: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; funds: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesRefund: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; navigateSupplier: []; message: [text: string, kind?: 'success' | 'error'] }>()
 const keyword = ref('')
 const loading = ref(false)
 const data = ref<PageResult>({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
 const sort = ref('updatedAt')
 const direction = ref<'asc' | 'desc'>('desc')
+const procurementAlert = ref<InstanceType<typeof ProcurementConfigurationAlert>>()
 const fullIdentifierFields = new Set(['productCode', 'orderNo', 'afterSalesNo', 'purchaseNo', 'businessNo'])
 
 function isFullIdentifier(field: string) { return fullIdentifierFields.has(field) }
@@ -78,7 +80,7 @@ const actionColumnWidth = computed(() => {
 const tableMinWidth = computed(() => Math.max(1050, props.module.fields.reduce((width, field) => width + columnWidth(field), 0) + actionColumnWidth.value))
 watch(() => props.module.key, () => { keyword.value = ''; sort.value = 'updatedAt'; direction.value = 'desc'; load(1) })
 onMounted(() => load())
-defineExpose({ reload: () => load(data.value.page) })
+defineExpose({ reload: async () => { await load(data.value.page); await procurementAlert.value?.reload() } })
 </script>
 
 <template>
@@ -86,6 +88,7 @@ defineExpose({ reload: () => load(data.value.page) })
     <header class="module-heading"><h1>{{ module.label }}</h1><div class="heading-actions"><button v-if="canManual && module.importType" class="secondary-action" @click="emit('manual')">手工新增</button><button v-if="canUsePrimary" data-test="primary-action" class="primary-action" @click="primary">{{ module.actionLabel }}</button></div></header>
     <div class="list-panel">
       <div class="list-toolbar"><input v-model="keyword" type="search" :placeholder="`搜索${module.label}`" @keyup.enter="search"><button class="secondary-action" @click="search">查询数据</button></div>
+      <ProcurementConfigurationAlert v-if="module.key === 'purchase'" ref="procurementAlert" @navigate-supplier="emit('navigateSupplier')" @message="(text, kind) => emit('message', text, kind)" />
       <div class="table-wrap">
         <table :style="{ minWidth: `${tableMinWidth}px` }">
           <colgroup><col v-for="field in module.fields" :key="field" :style="{ width: `${columnWidth(field)}px` }"><col :style="{ width: `${actionColumnWidth}px` }"></colgroup>

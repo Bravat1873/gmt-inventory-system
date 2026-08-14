@@ -323,6 +323,16 @@ export function receivePurchase(id: number, items: { purchaseOrderItemId: number
   })
 }
 
+export interface UnconfiguredProcurementShortage {
+  skuId: number
+  skuCode?: string | null
+  productName?: string | null
+  shortageQuantity: number
+  orderNumbers: string[]
+}
+export function loadUnconfiguredProcurementShortages() {
+  return request<UnconfiguredProcurementShortage[]>('/api/procurement/unconfigured-shortages')
+}
 export interface ProcurementSuggestionItem {
   id: number
   skuId: number

@@ -5,9 +5,22 @@ import { resolve } from 'node:path'
 import ModuleListPage from './ModuleListPage.vue'
 import { moduleDefinitions } from '../modules/module-config'
 
-const { loadModule } = vi.hoisted(() => ({ loadModule: vi.fn() }))
-vi.mock('../api/workbench', () => ({ loadModule }))
+const { loadModule, loadUnconfiguredProcurementShortages } = vi.hoisted(() => ({ loadModule: vi.fn(), loadUnconfiguredProcurementShortages: vi.fn() }))
+vi.mock('../api/workbench', () => ({ loadModule, loadUnconfiguredProcurementShortages }))
 
+it('shows supplier configuration alerts only in purchase management', async () => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  loadUnconfiguredProcurementShortages.mockResolvedValue([
+    { skuId: 70, skuCode: 'F70', productName: 'F70', shortageQuantity: 200, orderNumbers: ['DD20260800002'] }
+  ])
+  const purchase = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
+  await flushPromises()
+  expect(purchase.text()).toContain('1 个缺货产品尚未配置有效供应商采购信息')
+
+  const order = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')! } })
+  await flushPromises()
+  expect(order.text()).not.toContain('缺货产品尚未配置有效供应商采购信息')
+})
 it.each(['ADMIN', 'FINANCE'] as const)('shows the COST import action to %s users', async role => {
   loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')!, currentUserRole: role } })
