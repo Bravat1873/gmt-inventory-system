@@ -28,14 +28,14 @@ public class DocumentNumberService {
 
         try {
             jdbc.update("""
-                    INSERT INTO document_number_sequence(document_type, year_month, current_value)
+                    INSERT INTO document_number_sequence(document_type, `year_month`, current_value)
                     VALUES (?, ?, LAST_INSERT_ID(1))
                     ON DUPLICATE KEY UPDATE current_value=LAST_INSERT_ID(current_value + 1)
                     """, type.name(), yearMonth);
         } catch (DataIntegrityViolationException exception) {
             Integer current = jdbc.queryForObject("""
                     SELECT current_value FROM document_number_sequence
-                    WHERE document_type=? AND year_month=?
+                    WHERE document_type=? AND `year_month`=?
                     """, Integer.class, type.name(), yearMonth);
             if (current != null && current >= MONTHLY_LIMIT) {
                 throw new IllegalStateException("本月单号已达到 99999 上限", exception);
