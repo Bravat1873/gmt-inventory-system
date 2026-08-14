@@ -45,5 +45,6 @@ Thumbs.db
 Desktop.ini
 
 # Local agent workflow artifacts
+.worktrees/
 .superpowers/brainstorm/
 .superpowers/sdd/
