@@ -140,6 +140,86 @@ public class ProcurementWorkflowService {
         return Map.of("suggestionIds", suggestions, "count", suggestions.size());
     }
     @Transactional
+    public Map<String,Object> updateReview(long suggestionId,Map<String,Object> request) {
+        int version=((Number)request.getOrDefault("version",-1)).intValue();
+        List<Map<String,Object>> headers=jdbc.queryForList("SELECT status,version FROM procurement_suggestion WHERE id=? FOR UPDATE",suggestionId);
+        if(headers.isEmpty()) throw new IllegalArgumentException("待确认采购不存在");
+        if(!"DRAFT".equals(str(headers.get(0),"status"))) throw new IllegalStateException("当前采购建议不可修改");
+        if(num(headers.get(0),"version")!=version) throw new IllegalStateException("数据已变化，请刷新后重试");
+        Object rawItems=request.get("items");
+        if(!(rawItems instanceof List<?> items)||items.isEmpty()) throw new IllegalArgumentException("至少填写一条采购明细");
+        for(Object raw:items) {
+            if(!(raw instanceof Map<?,?> input)) throw new IllegalArgumentException("采购明细格式不正确");
+            long itemId=((Number)input.get("id")).longValue();
+            int quantity=((Number)input.get("quantity")).intValue();
+            List<Map<String,Object>> lines=jdbc.queryForList("""
+                    SELECT psi.id,pi.moq FROM procurement_suggestion_item psi
+                    JOIN sku_supplier_purchase_info pi ON pi.id=psi.supplier_purchase_info_id
+                    WHERE psi.id=? AND psi.suggestion_id=?
+                    """,itemId,suggestionId);
+            if(lines.isEmpty()) throw new IllegalArgumentException("采购明细不存在");
+            int moq=(int)num(lines.get(0),"moq");
+            if(quantity<moq) throw new IllegalArgumentException("采购数量不能低于最小起购量 "+moq);
+            LocalDate eta=input.get("expectedArrivalDate")==null?null:LocalDate.parse(String.valueOf(input.get("expectedArrivalDate")));
+            jdbc.update("UPDATE procurement_suggestion_item SET suggested_quantity=?,expected_arrival_date=? WHERE id=?",quantity,eta,itemId);
+        }
+        int changed=jdbc.update("UPDATE procurement_suggestion SET manually_edited=TRUE,version=version+1 WHERE id=? AND version=?",suggestionId,version);
+        if(changed==0) throw new IllegalStateException("数据已变化，请刷新后重试");
+        return Map.of("id",suggestionId,"status","DRAFT","version",version+1);
+    }
+    public Map<String,Object> review(long suggestionId) {
+        List<Map<String,Object>> headers = jdbc.queryForList("""
+                SELECT ps.id,ps.suggestion_no,ps.status,ps.version,ps.review_reason,
+                       psi.supplier_id,sp.supplier_name
+                FROM procurement_suggestion ps
+                JOIN procurement_suggestion_item psi ON psi.suggestion_id=ps.id
+                JOIN supplier sp ON sp.id=psi.supplier_id
+                WHERE ps.id=?
+                ORDER BY psi.id LIMIT 1
+                """, suggestionId);
+        if (headers.isEmpty()) throw new IllegalArgumentException("待确认采购不存在");
+        var header=headers.get(0);
+        List<Map<String,Object>> items=jdbc.query("""
+                SELECT psi.id,psi.sku_id,s.sku_code,s.product_name,psi.shortage_quantity,
+                       psi.suggested_quantity,psi.purchase_price,psi.expected_arrival_date,
+                       psi.supplier_purchase_info_id,pi.moq
+                FROM procurement_suggestion_item psi
+                JOIN sku s ON s.id=psi.sku_id
+                LEFT JOIN sku_supplier_purchase_info pi ON pi.id=psi.supplier_purchase_info_id
+                WHERE psi.suggestion_id=? ORDER BY psi.id
+                """,(rs,n)->{
+            Map<String,Object> item=new LinkedHashMap<>();
+            item.put("id",rs.getLong("id")); item.put("skuId",rs.getLong("sku_id"));
+            item.put("skuCode",rs.getString("sku_code")); item.put("productName",rs.getString("product_name"));
+            item.put("shortageQuantity",rs.getInt("shortage_quantity"));
+            item.put("minimumOrderQuantity",rs.getInt("moq"));
+            item.put("suggestedQuantity",rs.getInt("suggested_quantity"));
+            item.put("purchasePrice",rs.getBigDecimal("purchase_price"));
+            item.put("estimatedAmount",rs.getBigDecimal("purchase_price").multiply(BigDecimal.valueOf(rs.getInt("suggested_quantity"))).setScale(2,RoundingMode.HALF_UP));
+            item.put("expectedArrivalDate",rs.getObject("expected_arrival_date",LocalDate.class));
+            item.put("supplierPurchaseInfoId",rs.getLong("supplier_purchase_info_id"));
+            return item;
+        },suggestionId);
+        Map<String,Object> result=new LinkedHashMap<>();
+        result.put("id",num(header,"id")); result.put("suggestionNo",val(header,"suggestion_no"));
+        result.put("status",val(header,"status")); result.put("version",num(header,"version"));
+        result.put("supplierId",num(header,"supplier_id")); result.put("supplierName",val(header,"supplier_name"));
+        result.put("reviewReason",val(header,"review_reason")); result.put("items",items);
+        return result;
+    }
+
+    @Transactional
+    public Map<String,Object> reject(long suggestionId,int version,String reason) {
+        if(reason==null||reason.isBlank()) throw new IllegalArgumentException("驳回原因不能为空");
+        int changed=jdbc.update("""
+                UPDATE procurement_suggestion SET status='REJECTED',review_reason=?,version=version+1
+                WHERE id=? AND status='DRAFT' AND version=?
+                """,reason.trim(),suggestionId,version);
+        if(changed==0) throw new IllegalStateException("数据已变化，请刷新后重试");
+        jdbc.update("UPDATE shortage_coverage SET active=FALSE WHERE suggestion_item_id IN (SELECT id FROM procurement_suggestion_item WHERE suggestion_id=?)",suggestionId);
+        return Map.of("id",suggestionId,"status","REJECTED","version",version+1);
+    }
+    @Transactional
     public Map<String, Object> confirm(long suggestionId) {
         var suggestion = jdbc.queryForMap(
                 "SELECT suggestion_no,status FROM procurement_suggestion WHERE id=? FOR UPDATE", suggestionId);
