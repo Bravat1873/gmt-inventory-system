@@ -56,6 +56,7 @@ function hasOutstandingAmount(row: Record<string, unknown>) { return Number(row.
 const canManual = computed(() => ['customer', 'user', 'product', 'supplier', 'inventory'].includes(props.module.key))
 const canUsePrimary = computed(() => Boolean(props.module.actionLabel)
   && (props.module.key !== 'user' || props.currentUserRole === 'ADMIN')
+  && (props.module.importType !== 'PRODUCT' || props.currentUserRole === 'ADMIN')
   && (props.module.importType !== 'COST' || ['ADMIN', 'FINANCE'].includes(props.currentUserRole ?? 'USER')))
 function primary() { if (canUsePrimary.value) emit('action') }
 function canEditRow() { return props.module.key !== 'user' || props.currentUserRole === 'ADMIN' }

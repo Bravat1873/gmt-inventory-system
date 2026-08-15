@@ -169,7 +169,7 @@ describe('simple Excel import', () => {
     const wrapper = mount(ImportPanel, { props: { type: 'PRODUCT', title: '导入产品' } })
     await selectFile(wrapper, 'products.xlsx')
 
-    expect(wrapper.get('[data-test="product-conflict-skip-21"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="product-conflict-skip-21"]').exists()).toBe(true)
     await wrapper.get('[data-test="product-conflict-skip-21"]').trigger('click')
     await wrapper.get('[data-test="product-conflict-skip-22"]').trigger('click')
     expect(wrapper.get('[data-test="commit-product-replace"]').attributes('disabled')).toBeDefined()

@@ -53,7 +53,7 @@ describe('连续导航和浏览器地址状态', () => {
     expect(reopened.get('h1').text()).toBe('库存管理')
   })
 
-  it.each(['ADMIN', 'FINANCE'] as const)('%s 用户的产品资料支持导入与手工新增', async role => {
+  it.each(['ADMIN'] as const)('%s 用户的产品资料支持导入与手工新增', async role => {
     auth.currentUser.mockResolvedValue({ id: 1, username: role.toLowerCase(), displayName: role, role })
     const wrapper = mount(App)
     await flushPromises()
@@ -65,9 +65,9 @@ describe('连续导航和浏览器地址状态', () => {
     expect(wrapper.get('[aria-label="Excel 导入面板"]').text()).toContain('导入产品')
   })
 
-  it('普通用户看不到产品导入主操作', async () => {
+  it.each(['FINANCE', 'USER'] as const)('%s 用户看不到产品全量替换主操作', async role => {
     history.replaceState(null, '', '/?module=product&page=1')
-    auth.currentUser.mockResolvedValue({ id: 3, username: 'regular-user', displayName: '普通用户', role: 'USER' })
+    auth.currentUser.mockResolvedValue({ id: 3, username: role.toLowerCase(), displayName: role, role })
     const wrapper = mount(App)
     await flushPromises()
 
@@ -95,9 +95,9 @@ describe('连续导航和浏览器地址状态', () => {
     expect(rules.text()).toContain('2026-08-11 16:00:00')
     expect(rules.text()).not.toContain('状态')
   })
-  it('App guard rejects a programmatic COST import action from a regular user', async () => {
+  it.each(['FINANCE', 'USER'] as const)('App guard rejects a programmatic PRODUCT import action from %s', async role => {
     history.replaceState(null, '', '/?module=product&page=1')
-    auth.currentUser.mockResolvedValue({ id: 3, username: 'regular-user', displayName: '普通用户', role: 'USER' })
+    auth.currentUser.mockResolvedValue({ id: 3, username: role.toLowerCase(), displayName: role, role })
     const wrapper = mount(App)
     await flushPromises()
 

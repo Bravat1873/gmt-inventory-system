@@ -21,17 +21,17 @@ it('shows supplier configuration alerts only in purchase management', async () =
   await flushPromises()
   expect(order.text()).not.toContain('缺货产品尚未配置有效供应商采购信息')
 })
-it.each(['ADMIN', 'FINANCE'] as const)('shows the COST import action to %s users', async role => {
+it('shows the PRODUCT import action to administrators', async () => {
   loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
-  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')!, currentUserRole: role } })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')!, currentUserRole: 'ADMIN' } })
   await flushPromises()
 
   expect(wrapper.get('[data-test="primary-action"]').text()).toBe('导入产品')
 })
 
-it('hides the COST import action from regular users', async () => {
+it.each(['FINANCE', 'USER'] as const)('hides the PRODUCT replace action from %s users', async role => {
   loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
-  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')!, currentUserRole: 'USER' } })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')!, currentUserRole: role } })
   await flushPromises()
 
   expect(wrapper.find('[data-test="primary-action"]').exists()).toBe(false)

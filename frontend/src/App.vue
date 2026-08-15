@@ -71,6 +71,7 @@ useGlobalDialogCloseGuard()
 const currentModule = computed(() => moduleDefinitions.find(item => item.key === activeModule.value) ?? moduleDefinitions[0])
 const canUseCurrentModulePrimary = computed(() => {
   if (currentModule.value.key === 'user') return user.value?.role === 'ADMIN'
+  if (currentModule.value.importType === 'PRODUCT') return user.value?.role === 'ADMIN'
   return currentModule.value.importType !== 'COST'
     || user.value?.role === 'ADMIN' || user.value?.role === 'FINANCE'
 })
