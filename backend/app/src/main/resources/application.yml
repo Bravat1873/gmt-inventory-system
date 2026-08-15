@@ -35,3 +35,7 @@ springdoc:
 internal-ops:
   attachment-root: ${ATTACHMENT_ROOT:./data/attachments}
   product-image-root: ${PRODUCT_IMAGE_ROOT:./data/product-images}
+
+app:
+  import:
+    product-replace-enabled: ${PRODUCT_REPLACE_IMPORT_ENABLED:false}

@@ -60,7 +60,8 @@ public class ImportController {
         ImportCommitRequest.SupplierMode supplierMode = request == null
                 ? ImportCommitRequest.SupplierMode.OVERWRITE
                 : request.resolvedSupplierMode();
-        return ApiResponse.ok(commitService.commit(batchId, policy, supplierMode));
+        return ApiResponse.ok(commitService.commit(batchId, policy, supplierMode,
+                request == null ? java.util.Map.of() : request.productConflictActions()));
     }
 
     @GetMapping("/{batchId}/errors.xlsx")

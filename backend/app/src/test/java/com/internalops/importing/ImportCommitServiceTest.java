@@ -173,14 +173,14 @@ class ImportCommitServiceTest {
     }
 
     @Test
-    void rejectsProductBatchFromGenericCommitPath() {
+    void rejectsProductBatchFromGenericCommitPathWhenReplaceFeatureIsDisabledByDefault() {
         long batch = repository.create(ImportType.PRODUCT, "product.xlsx", "hash-product", List.of(
                 row(ImportRowStatus.VALID, Map.of("brand", "BR"), null)));
 
         IllegalStateException exception = assertThrows(IllegalStateException.class,
                 () -> commitService.commit(batch));
 
-        assertEquals("产品批次必须使用产品全量替换策略", exception.getMessage());
+        assertEquals("当前环境未启用产品全量替换", exception.getMessage());
     }
 
     private ParsedImportRow row(ImportRowStatus status, Map<String, Object> data, String error) {

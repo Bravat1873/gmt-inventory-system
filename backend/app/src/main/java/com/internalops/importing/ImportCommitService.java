@@ -1,6 +1,7 @@
 package com.internalops.importing;
 
 import com.internalops.auth.CurrentUser;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -26,10 +27,18 @@ public class ImportCommitService {
             "\u94ED\u7231\u94A7\u4E54", "\u535A\u4E50\u9F99\u7C73", "\u8001\u631D", "\u8D1D\u6717", "\u9A6C\u6765\u897F\u4E9A");
     private final JdbcTemplate jdbc;
     private final ImportBatchRepository repository;
+    private final ProductReplaceImportService productReplaceImportService;
 
     public ImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository) {
+        this(jdbc, repository, null);
+    }
+
+    @Autowired
+    public ImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository,
+                               ProductReplaceImportService productReplaceImportService) {
         this.jdbc = jdbc;
         this.repository = repository;
+        this.productReplaceImportService = productReplaceImportService;
     }
 
     @Transactional
@@ -45,12 +54,23 @@ public class ImportCommitService {
     @Transactional
     public ImportBatchView commit(long batchId, ImportConflictPolicy policy,
                                   ImportCommitRequest.SupplierMode supplierMode) {
+        return commit(batchId, policy, supplierMode, Map.of());
+    }
+
+    @Transactional
+    public ImportBatchView commit(long batchId, ImportConflictPolicy policy,
+                                  ImportCommitRequest.SupplierMode supplierMode,
+                                  Map<Long, ProductConflictAction> productConflictActions) {
         ImportBatchView batch = repository.findBatchForUpdate(batchId);
         if (batch.importType() == ImportType.COST
                 && !CurrentUser.required().role().canEditProductPrice()) {
             throw new IllegalArgumentException("仅财务或管理员可修改产品价格");
         }
         if ("COMMITTED".equals(batch.status())) return batch;
+        if (batch.importType() == ImportType.PRODUCT) {
+            if (productReplaceImportService == null) throw new IllegalStateException("产品全量替换服务未配置");
+            return productReplaceImportService.replace(batch, productConflictActions);
+        }
         if (repository.isAppendOnly(batchId)) {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("appended", batch.totalRows());
