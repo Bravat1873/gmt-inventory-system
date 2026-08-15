@@ -36,7 +36,9 @@ class ProductWorkbookExcelParserTest {
 
             assertThat(rows).hasSize(2);
             assertThat(rows).allSatisfy(row -> assertThat(row.data())
-                    .containsEntry("sourceProductCode", "")
+                    .containsEntry("sourceProductCode", null)
+                    .containsEntry("bodyColor", null)
+                    .containsEntry("brand", "BR")
                     .containsEntry("model", "D51-GEN2")
                     .containsEntry("materialSpecification", "7068锁体")
                     .containsEntry("salesMinimumOrderQuantity", java.math.BigDecimal.ONE)
@@ -56,5 +58,30 @@ class ProductWorkbookExcelParserTest {
         product.createCell(3).setCellValue("D51-GEN2");
         product.createCell(4).setCellValue("7068锁体");
         product.createCell(5).setCellValue("一字锁");
+    }
+
+    @Test
+    void skipsLeadingLegendRowsButImportsLaterRowsWithOnlyCodeElements() throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            addLegendAndCodeOnlyRows(workbook.createSheet("GMT库存产品清单"));
+            addLegendAndCodeOnlyRows(workbook.createSheet("贝朗库存产品清单"));
+            var output = new ByteArrayOutputStream();
+            workbook.write(output);
+
+            List<ParsedImportRow> rows = new ExcelImportParser().parse(
+                    ImportType.PRODUCT, new java.io.ByteArrayInputStream(output.toByteArray()));
+
+            assertThat(rows).hasSize(4);
+            assertThat(rows).extracting(ParsedImportRow::rowNumber).containsExactlyInAnyOrder(3, 4, 3, 4);
+        }
+    }
+
+    private void addLegendAndCodeOnlyRows(org.apache.poi.ss.usermodel.Sheet sheet) {
+        var header = sheet.createRow(0);
+        header.createCell(0).setCellValue("品牌");
+        header.createCell(1).setCellValue("客户料号");
+        sheet.createRow(1).createCell(0).setCellValue("BRAVAT（BR）");
+        sheet.createRow(2).createCell(1).setCellValue("DETAIL");
+        sheet.createRow(3).createCell(0).setCellValue("BR");
     }
 }

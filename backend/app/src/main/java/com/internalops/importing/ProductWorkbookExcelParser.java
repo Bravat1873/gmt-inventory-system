@@ -30,8 +30,12 @@ public final class ProductWorkbookExcelParser {
             Sheet sheet = workbook.getSheet(sheetName);
             if (sheet == null) throw new IllegalArgumentException("缺少产品工作表：" + sheetName);
             Map<String, Integer> headers = normalizedHeaders(sheet.getRow(0));
+            boolean passedLeadingLegends = false;
             for (int index = 1; index <= sheet.getLastRowNum(); index++) {
                 Map<String, Object> data = readProductRow(sheet.getRow(index), headers);
+                boolean hasDetails = hasValue(data, PRODUCT_DETAIL_FIELDS);
+                if (!passedLeadingLegends && !hasDetails) continue;
+                passedLeadingLegends = true;
                 if (!isBusinessRow(data)) continue;
                 result.add(new ParsedImportRow(sheetName, index + 1, ImportRowStatus.VALID, data, null));
             }
@@ -75,16 +79,14 @@ public final class ProductWorkbookExcelParser {
 
     private Map<String, Object> readProductRow(Row row, Map<String, Integer> headers) {
         Map<String, Object> data = new LinkedHashMap<>();
-        for (String field : TEXT_FIELDS) data.put(field, text(row, headers.get(field)));
+        for (String field : TEXT_FIELDS) data.put(field, nullableText(row, headers.get(field)));
         data.put("salesMinimumOrderQuantity", decimalOrDefault(row, headers.get("salesMinimumOrderQuantity"), BigDecimal.ONE));
         data.put("supplierTaxPrice", decimalOrDefault(row, headers.get("supplierTaxPrice"), BigDecimal.ZERO));
         return data;
     }
 
     private boolean isBusinessRow(Map<String, Object> data) {
-        if (hasValue(data, PRODUCT_DETAIL_FIELDS)) return true;
-        // The leading rows in both source sheets are coding-rule legends, not products.
-        return hasValue(data, CODE_FIELDS) && hasValue(data, PRODUCT_DETAIL_FIELDS);
+        return hasValue(data, PRODUCT_DETAIL_FIELDS) || hasValue(data, CODE_FIELDS);
     }
 
     private boolean hasValue(Map<String, Object> data, List<String> fields) {
@@ -100,8 +102,9 @@ public final class ProductWorkbookExcelParser {
         return value == null ? defaultValue : value;
     }
 
-    private String text(Row row, Integer column) {
-        return ExcelValueReader.text(cell(row, column));
+    private String nullableText(Row row, Integer column) {
+        String value = ExcelValueReader.text(cell(row, column));
+        return value.isBlank() ? null : value;
     }
 
     private Cell cell(Row row, Integer column) {

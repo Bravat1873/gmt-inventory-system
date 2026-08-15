@@ -1,6 +1,7 @@
 package com.internalops.importing;
 
 import java.util.LinkedHashMap;
+import java.util.Collections;
 import java.util.Map;
 
 public record ParsedImportRow(
@@ -11,6 +12,6 @@ public record ParsedImportRow(
         String errorMessage
 ) {
     public ParsedImportRow {
-        data = Map.copyOf(new LinkedHashMap<>(data));
+        data = Collections.unmodifiableMap(new LinkedHashMap<>(data));
     }
 }

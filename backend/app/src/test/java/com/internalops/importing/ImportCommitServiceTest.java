@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -169,6 +170,17 @@ class ImportCommitServiceTest {
         assertEquals(120, jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance", Integer.class));
         assertEquals(1, committed.committedRows());
         assertEquals(1, committed.ignoredRows());
+    }
+
+    @Test
+    void rejectsProductBatchFromGenericCommitPath() {
+        long batch = repository.create(ImportType.PRODUCT, "product.xlsx", "hash-product", List.of(
+                row(ImportRowStatus.VALID, Map.of("brand", "BR"), null)));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> commitService.commit(batch));
+
+        assertEquals("产品批次必须使用产品全量替换策略", exception.getMessage());
     }
 
     private ParsedImportRow row(ImportRowStatus status, Map<String, Object> data, String error) {
