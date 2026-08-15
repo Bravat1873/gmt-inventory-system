@@ -97,6 +97,10 @@ class ProductReplaceImportServiceTest {
         assertThat(result.status()).isEqualTo("COMMITTED");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class)).isOne();
         assertThat(jdbc.queryForObject("SELECT product_code FROM sku", String.class)).isEqualTo("BR_P90YZH70WPZC-A");
+        assertThat(jdbc.queryForObject("SELECT sku_code FROM sku", String.class)).isEqualTo("CUS-P90");
+        assertThat(jdbc.queryForObject("SELECT product_type FROM sku", String.class)).isEqualTo("SMART_LOCK");
+        assertThat(jdbc.queryForObject("SELECT configuration FROM sku", String.class)).isEqualTo("测试规格");
+        assertThat(jdbc.queryForObject("SELECT product_configuration FROM sku", String.class)).isEqualTo("测试配置");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_order", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_balance", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM customer", Integer.class)).isOne();
