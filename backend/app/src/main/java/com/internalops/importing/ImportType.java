@@ -4,5 +4,6 @@ public enum ImportType {
     CUSTOMER,
     COST,
     INVENTORY,
-    SUPPLIER
+    SUPPLIER,
+    PRODUCT
 }

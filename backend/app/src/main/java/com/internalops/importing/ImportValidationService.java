@@ -53,6 +53,7 @@ public class ImportValidationService {
             case COST -> validateCost(sheet, rowNumber, data);
             case INVENTORY -> validateInventory(sheet, rowNumber, data);
             case SUPPLIER -> validateSupplier(sheet, rowNumber, data);
+            case PRODUCT -> valid(sheet, rowNumber, data);
         };
     }
 
@@ -78,6 +79,7 @@ public class ImportValidationService {
                         text(data, "skuCode")) > 0;
                 case SUPPLIER -> jdbc.query("SELECT supplier_name FROM supplier", (rs, index) -> rs.getString(1))
                         .stream().map(this::normalizeCustomer).anyMatch(normalizeCustomer(text(data, "supplierName"))::equals);
+                case PRODUCT -> false;
             };
         } catch (RuntimeException exception) {
             return false;
