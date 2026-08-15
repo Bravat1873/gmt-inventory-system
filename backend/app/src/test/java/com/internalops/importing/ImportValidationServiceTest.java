@@ -81,7 +81,7 @@ class ImportValidationServiceTest {
     }
 
     @Test
-    void keepsProductRowsValidWithoutCheckingDatabaseConflicts() {
+    void rejectsProductRowsWithoutCompleteCurrentCodeRules() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ImportValidationService productService = new ImportValidationService(jdbc);
         ParsedImportRow parsed = new ParsedImportRow("GMT库存产品清单", 9, ImportRowStatus.VALID, Map.of(
@@ -92,11 +92,7 @@ class ImportValidationServiceTest {
         List<ParsedImportRow> rows = productService.validateAll(ImportType.PRODUCT, List.of(parsed));
 
         assertEquals(1, rows.size());
-        assertEquals(ImportRowStatus.VALID, rows.get(0).status());
-        assertEquals(parsed.sheetName(), rows.get(0).sheetName());
-        assertEquals(parsed.rowNumber(), rows.get(0).rowNumber());
-        assertEquals("BR", rows.get(0).data().get("brand"));
-        assertEquals("D1214K-P90", rows.get(0).data().get("customerMaterialCode"));
-        verifyNoInteractions(jdbc);
+        assertEquals(ImportRowStatus.ERROR, rows.get(0).status());
+        assertTrue(rows.get(0).errorMessage().contains("品牌"));
     }
 }

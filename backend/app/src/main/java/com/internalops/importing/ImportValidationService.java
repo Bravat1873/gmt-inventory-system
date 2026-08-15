@@ -1,7 +1,10 @@
 package com.internalops.importing;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+
+import com.internalops.productcode.ProductCodeGenerator;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -13,12 +16,21 @@ import java.util.Map;
 @Service
 public class ImportValidationService {
     private final JdbcTemplate jdbc;
+    private final ProductImportValidationService productValidation;
 
     public ImportValidationService(JdbcTemplate jdbc) {
+        this(jdbc, new ProductImportValidationService(
+                new ProductImportCodeResolver(jdbc, new ProductCodeGenerator(jdbc))));
+    }
+
+    @Autowired
+    public ImportValidationService(JdbcTemplate jdbc, ProductImportValidationService productValidation) {
         this.jdbc = jdbc;
+        this.productValidation = productValidation;
     }
 
     public List<ParsedImportRow> validateAll(ImportType type, List<ParsedImportRow> rows) {
+        if (type == ImportType.PRODUCT) return productValidation.validateAll(rows);
         Map<String, Integer> firstInventoryRows = new LinkedHashMap<>();
         List<ParsedImportRow> result = new ArrayList<>();
         for (ParsedImportRow row : rows) {
@@ -53,7 +65,7 @@ public class ImportValidationService {
             case COST -> validateCost(sheet, rowNumber, data);
             case INVENTORY -> validateInventory(sheet, rowNumber, data);
             case SUPPLIER -> validateSupplier(sheet, rowNumber, data);
-            case PRODUCT -> valid(sheet, rowNumber, data);
+            case PRODUCT -> productValidation.validate(0, sheet, rowNumber, data);
         };
     }
 
