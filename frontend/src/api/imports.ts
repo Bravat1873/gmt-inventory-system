@@ -1,4 +1,5 @@
-export type ImportType = 'CUSTOMER' | 'COST' | 'INVENTORY' | 'SUPPLIER'
+export type ImportType = 'CUSTOMER' | 'COST' | 'INVENTORY' | 'SUPPLIER' | 'PRODUCT'
+export type ProductConflictAction = 'KEEP' | 'SKIP'
 export type SupplierImportMode = 'OVERWRITE' | 'REPLACE_ALL'
 export type ImportRowStatus = 'VALID' | 'ERROR' | 'IGNORED'
 
@@ -66,6 +67,13 @@ export function commitImport(id: number, supplierMode?: SupplierImportMode): Pro
     ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ supplierMode }) }
     : { method: 'POST' }
   return request(`/api/imports/${id}/commit`, options)
+}
+export function commitProductReplace(id: number, actions: Record<number, ProductConflictAction>): Promise<ImportBatch> {
+  return request(`/api/imports/${id}/commit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productConflictActions: actions })
+  })
 }
 
 export async function downloadImportErrors(id: number): Promise<Blob> {

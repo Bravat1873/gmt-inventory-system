@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addImportRow,
   commitImport,
+  commitProductReplace,
   downloadImportErrors,
   getImportBatch,
   previewImport,
@@ -58,6 +59,20 @@ describe('导入接口客户端', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ supplierMode: 'REPLACE_ALL' })
+    }))
+  })
+
+  it('提交产品全量替换时发送每一行的明确保留或跳过决定', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      success: true, data: { ...batch, importType: 'PRODUCT' }, message: ''
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    await commitProductReplace(12, { 21: 'KEEP', 22: 'SKIP' })
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/imports/12/commit', expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productConflictActions: { 21: 'KEEP', 22: 'SKIP' } })
     }))
   })
 })
