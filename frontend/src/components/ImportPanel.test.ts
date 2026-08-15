@@ -34,6 +34,16 @@ const productConflictBatch = {
   ]
 }
 
+const productErrorBatch = {
+  ...batch,
+  importType: 'PRODUCT',
+  originalFilename: 'products-error.xlsx',
+  totalRows: 1,
+  validRows: 0,
+  errorRows: 1,
+  rows: [{ id: 23, sheetName: 'GMT库存产品清单', rowNumber: 10, status: 'ERROR', data: { sourceProductCode: '旧编号-C', productCode: 'NEW-C', model: '用于验证单行截断的超长型号文本', productConfiguration: '黑色', supplierName: '供应商甲', supplierTaxPrice: 10 }, errorMessage: '产品编号规则不存在，请检查产品分类', manualEntry: false }]
+}
+
 async function selectFile(wrapper: ReturnType<typeof mount>, filename = 'suppliers.xlsx') {
   const input = wrapper.get('input[type="file"]')
   Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['x'], filename)] })
@@ -154,20 +164,28 @@ describe('simple Excel import', () => {
 
     expect(commitProductReplace).toHaveBeenCalledWith(8, { 21: 'KEEP', 22: 'SKIP' })
   })
-  it('lets every conflict candidate be explicitly skipped', async () => {
+  it('allows every conflict candidate to be explicitly skipped while forbidding an empty replacement', async () => {
     previewImport.mockResolvedValue(structuredClone(productConflictBatch))
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = mount(ImportPanel, { props: { type: 'PRODUCT', title: '导入产品' } })
     await selectFile(wrapper, 'products.xlsx')
 
     expect(wrapper.get('[data-test="product-conflict-skip-21"]').exists()).toBe(true)
     await wrapper.get('[data-test="product-conflict-skip-21"]').trigger('click')
     await wrapper.get('[data-test="product-conflict-skip-22"]').trigger('click')
-    expect(wrapper.get('[data-test="commit-product-replace"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-test="commit-product-replace"]').attributes('disabled')).toBeDefined()
+    expect(commitProductReplace).not.toHaveBeenCalled()
+  })
+  it('shows the full product row error and keeps long product cells on one line', async () => {
+    previewImport.mockResolvedValue(structuredClone(productErrorBatch))
+    const wrapper = mount(ImportPanel, { props: { type: 'PRODUCT', title: '导入产品' } })
+    await selectFile(wrapper, 'products-error.xlsx')
 
-    await wrapper.get('[data-test="commit-product-replace"]').trigger('click')
-    await flushPromises()
-
-    expect(commitProductReplace).toHaveBeenCalledWith(8, { 21: 'SKIP', 22: 'SKIP' })
+    const error = wrapper.get('[data-test="product-row-error-23"]')
+    expect(error.text()).toBe('产品编号规则不存在，请检查产品分类')
+    expect(error.attributes('title')).toBe('产品编号规则不存在，请检查产品分类')
+    const model = wrapper.get('[data-test="product-model-23"]')
+    expect(model.attributes('title')).toBe('用于验证单行截断的超长型号文本')
+    expect(model.classes()).toContain('compact-cell')
+    expect(wrapper.get('[data-test="commit-product-replace"]').attributes('disabled')).toBeDefined()
   })
 })
