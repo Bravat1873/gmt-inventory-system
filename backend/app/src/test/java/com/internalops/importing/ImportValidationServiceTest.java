@@ -9,6 +9,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+
 class ImportValidationServiceTest {
     private final ImportValidationService service = new ImportValidationService(new JdbcTemplate());
 
@@ -75,5 +78,25 @@ class ImportValidationServiceTest {
                 "lockedQuantity", locked,
                 "inTransitQuantity", transit
         ), null);
+    }
+
+    @Test
+    void keepsProductRowsValidWithoutCheckingDatabaseConflicts() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ImportValidationService productService = new ImportValidationService(jdbc);
+        ParsedImportRow parsed = new ParsedImportRow("GMT库存产品清单", 9, ImportRowStatus.VALID, Map.of(
+                "brand", "BR",
+                "customerMaterialCode", "D1214K-P90"
+        ), null);
+
+        List<ParsedImportRow> rows = productService.validateAll(ImportType.PRODUCT, List.of(parsed));
+
+        assertEquals(1, rows.size());
+        assertEquals(ImportRowStatus.VALID, rows.get(0).status());
+        assertEquals(parsed.sheetName(), rows.get(0).sheetName());
+        assertEquals(parsed.rowNumber(), rows.get(0).rowNumber());
+        assertEquals("BR", rows.get(0).data().get("brand"));
+        assertEquals("D1214K-P90", rows.get(0).data().get("customerMaterialCode"));
+        verifyNoInteractions(jdbc);
     }
 }

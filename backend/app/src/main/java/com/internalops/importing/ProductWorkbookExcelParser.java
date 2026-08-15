@@ -7,6 +7,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,11 @@ public final class ProductWorkbookExcelParser {
             "codeSuffix");
     private static final List<String> PRODUCT_DETAIL_FIELDS = List.of(
             "customerMaterialCode", "model", "materialSpecification", "productConfiguration", "supplierName");
+    // These are the fixed coding-legend entries in rows 2-8 of both approved product sheets.
+    private static final Set<String> LEADING_LEGEND_VALUES = Set.of(
+            "BRAVAT（BR）", "STANLEY(SXSEL)", "GMT(G)",
+            "宇宙黑YZH", "红古铜HGT", "富贵金FGJ", "摩卡金MKJ", "瀑布银PBY", "星空黑XKH", "宝石蓝BSL");
+
 
     public List<ParsedImportRow> parse(Workbook workbook) {
         List<ParsedImportRow> result = new ArrayList<>();
@@ -30,12 +36,9 @@ public final class ProductWorkbookExcelParser {
             Sheet sheet = workbook.getSheet(sheetName);
             if (sheet == null) throw new IllegalArgumentException("缺少产品工作表：" + sheetName);
             Map<String, Integer> headers = normalizedHeaders(sheet.getRow(0));
-            boolean passedLeadingLegends = false;
             for (int index = 1; index <= sheet.getLastRowNum(); index++) {
                 Map<String, Object> data = readProductRow(sheet.getRow(index), headers);
-                boolean hasDetails = hasValue(data, PRODUCT_DETAIL_FIELDS);
-                if (!passedLeadingLegends && !hasDetails) continue;
-                passedLeadingLegends = true;
+                if (isLeadingLegend(data)) continue;
                 if (!isBusinessRow(data)) continue;
                 result.add(new ParsedImportRow(sheetName, index + 1, ImportRowStatus.VALID, data, null));
             }
@@ -93,6 +96,14 @@ public final class ProductWorkbookExcelParser {
         return fields.stream().map(data::get).anyMatch(this::hasText);
     }
 
+
+    private boolean isLeadingLegend(Map<String, Object> data) {
+        return CODE_FIELDS.stream()
+                .map(data::get)
+                .filter(this::hasText)
+                .map(Object::toString)
+                .anyMatch(LEADING_LEGEND_VALUES::contains);
+    }
     private boolean hasText(Object value) {
         return value != null && !value.toString().isBlank();
     }
