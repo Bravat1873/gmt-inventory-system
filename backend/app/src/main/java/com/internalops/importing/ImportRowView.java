@@ -1,5 +1,6 @@
 package com.internalops.importing;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -13,6 +14,6 @@ public record ImportRowView(
         boolean manualEntry
 ) {
     public ImportRowView {
-        data = Map.copyOf(new LinkedHashMap<>(data));
+        data = Collections.unmodifiableMap(new LinkedHashMap<>(data));
     }
 }
