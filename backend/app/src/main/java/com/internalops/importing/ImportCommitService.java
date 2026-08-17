@@ -1,6 +1,7 @@
 package com.internalops.importing;
 
 import com.internalops.auth.CurrentUser;
+import com.internalops.auth.UserRole;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -75,6 +76,10 @@ public class ImportCommitService {
             throw new IllegalArgumentException("仅财务或管理员可修改产品价格");
         }
         if (batch.importType() == ImportType.ORDER) {
+            UserRole role = CurrentUser.required().role();
+            if (role != UserRole.ADMIN && role != UserRole.USER) {
+                throw new SecurityException("财务用户不能导入销售订单");
+            }
             if (salesOrderImportCommitService == null) throw new IllegalStateException("订单分组提交服务未配置");
             return salesOrderImportCommitService.commit(batch);
         }

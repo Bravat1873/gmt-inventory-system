@@ -1,7 +1,11 @@
 package com.internalops.importing;
 
+import com.internalops.auth.CurrentUser;
+import com.internalops.auth.UserRole;
 import com.internalops.workbench.SalesOrderCommandService;
 import com.internalops.workbench.SalesOrderRequest;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,6 +35,29 @@ class SalesOrderImportCommitServiceTest {
     @Autowired ImportCommitService commitService;
     @Autowired JdbcTemplate jdbc;
     @SpyBean SalesOrderCommandService salesOrders;
+
+    @BeforeEach
+    void useAdministrator() {
+        CurrentUser.set(new CurrentUser(1, "admin", "管理员", UserRole.ADMIN));
+    }
+
+    @AfterEach
+    void clearUser() {
+        CurrentUser.clear();
+    }
+
+    @Test
+    void financeCannotProgrammaticallyCommitOrderBatch() {
+        long batch = batch("finance-forbidden", List.of(row(2,
+                order("EXT-FINANCE-FORBIDDEN", "DRAFT", 1, 1, "12.50"))));
+        CurrentUser.set(new CurrentUser(3, "finance", "财务", UserRole.FINANCE));
+
+        SecurityException failure = assertThrows(SecurityException.class, () -> commitService.commit(batch));
+
+        assertEquals("财务用户不能导入销售订单", failure.getMessage());
+        assertEquals(0, count("sales_order"));
+        assertEquals("PREVIEW", repository.status(batch));
+    }
 
     @Test
     void groupsRowsByTrimmedExternalOrderNumberAndUsesSourceRowsAsLineNumbers() {
@@ -272,11 +299,14 @@ class SalesOrderImportCommitServiceTest {
     }
 
     private Throwable commitFailure(long batch) {
+        CurrentUser.set(new CurrentUser(1, "admin", "管理员", UserRole.ADMIN));
         try {
             commitService.commit(batch);
             return null;
         } catch (Throwable failure) {
             return failure;
+        } finally {
+            CurrentUser.clear();
         }
     }
 }
