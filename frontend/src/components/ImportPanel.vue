@@ -71,6 +71,9 @@ const orderCommitResult = computed<OrderCommitResult | null>(() => {
   }
 })
 
+const orderCommitHasSuccess = computed(() => Boolean(orderCommitResult.value
+  && (orderCommitResult.value.createdOrders > 0 || orderCommitResult.value.committed > 0)))
+
 const productCanCommit = computed(() => {
   const batch = previewBatch.value
   if (!batch || batch.importType !== 'PRODUCT' || batch.errorRows > 0) return false
@@ -193,7 +196,8 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
     if (orderHasFailures) {
       previewBatch.value = committed
       importedRows.value = null
-      emit('message', `订单部分导入成功：成功 ${Number(detail?.createdOrders ?? 0)} 单，失败 ${Number(detail?.failedOrders ?? 0)} 单`, 'error')
+      const hasSuccess = Number(detail?.createdOrders ?? 0) > 0 || Number(detail?.committed ?? 0) > 0
+      emit('message', `${hasSuccess ? '订单部分导入成功' : '订单导入失败'}：成功 ${Number(detail?.createdOrders ?? 0)} 单，失败 ${Number(detail?.failedOrders ?? 0)} 单`, 'error')
       return
     }
     importedRows.value = committed.committedRows
@@ -261,7 +265,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
 
       <section v-else-if="previewBatch && importedRows === null && type === 'ORDER'" class="order-preview" aria-label="订单导入预览">
         <div v-if="orderCommitResult && (orderCommitResult.failedOrders > 0 || orderCommitResult.errors > 0 || orderCommitResult.orderErrors.length > 0)" data-test="order-partial-result" class="order-partial-result" role="status">
-          <strong>订单部分导入成功</strong>
+          <strong>{{ orderCommitHasSuccess ? '订单部分导入成功' : '订单导入失败' }}</strong>
           <span>成功订单 {{ orderCommitResult.createdOrders }}</span>
           <span>失败订单 {{ orderCommitResult.failedOrders }}</span>
           <span>成功行 {{ orderCommitResult.committed }}</span>

@@ -198,6 +198,30 @@ describe('simple Excel import', () => {
     expect(wrapper.find('[data-test^="order-preview-group-"]').exists()).toBe(false)
   })
 
+  it('labels an ORDER commit with zero successful orders as failed', async () => {
+    previewImport.mockResolvedValue(structuredClone(orderBatch))
+    const failed = structuredClone(orderBatch)
+    failed.status = 'COMMITTED'
+    failed.validRows = 0
+    failed.errorRows = 3
+    failed.committedRows = 0
+    for (const row of failed.rows) {
+      row.status = 'ERROR'
+      row.errorMessage = '外部订单号已存在，订单提交已取消'
+    }
+    failed.result = { createdOrders: 0, failedOrders: 2, committed: 0, errors: 3, orderErrors: [] }
+    commitImport.mockResolvedValue(failed)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(wrapper, 'orders.xlsx')
+
+    await wrapper.get('[data-test="commit-order-import"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="order-partial-result"] strong').text()).toBe('订单导入失败')
+    expect(wrapper.emitted('message')?.at(-1)).toEqual(['订单导入失败：成功 0 单，失败 2 单', 'error'])
+  })
+
   it('accepts both legacy and current Excel supplier files', () => {
     const wrapper = mount(ImportPanel, { props: { type: 'SUPPLIER', title: '导入供应商' } })
     expect(wrapper.get('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
