@@ -75,6 +75,9 @@ public class ProcurementWorkflowService {
                         ) ranked WHERE ranked.rn=1
                     ) pi ON pi.supplier_product_config_id=cfg.id
                     WHERE cfg.sku_id=? AND cfg.enabled=TRUE
+                      AND pi.purchase_price IS NOT NULL
+                      AND pi.moq IS NOT NULL
+                      AND pi.lead_time_days IS NOT NULL
                     """, skuEntry.getKey());
             var candidates = candidateRows.stream().map(row -> new ProcurementRecommendationService.Candidate(
                     num(row,"supplier_id"), num(row,"purchase_info_id"), (BigDecimal) val(row,"purchase_price"),
@@ -201,8 +204,16 @@ public class ProcurementWorkflowService {
                   AND NOT EXISTS (
                     SELECT 1 FROM sku_supplier_config cfg
                     JOIN supplier sp ON sp.id=cfg.supplier_id AND sp.enabled=TRUE
-                    JOIN sku_supplier_purchase_info pi ON pi.supplier_product_config_id=cfg.id AND pi.enabled=TRUE
+                    JOIN (
+                        SELECT ranked.* FROM (
+                            SELECT info.*,ROW_NUMBER() OVER(PARTITION BY info.supplier_product_config_id ORDER BY info.updated_at DESC,info.id DESC) rn
+                            FROM sku_supplier_purchase_info info WHERE info.enabled=TRUE
+                        ) ranked WHERE ranked.rn=1
+                    ) pi ON pi.supplier_product_config_id=cfg.id
                     WHERE cfg.sku_id=i.sku_id AND cfg.enabled=TRUE
+                      AND pi.purchase_price IS NOT NULL
+                      AND pi.moq IS NOT NULL
+                      AND pi.lead_time_days IS NOT NULL
                   )
                 ORDER BY s.id,o.order_no,i.id
                 """);

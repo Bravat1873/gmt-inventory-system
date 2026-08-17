@@ -348,6 +348,26 @@ class ProcurementWorkflowApiTest {
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion", Integer.class)).isZero();
     }
+    @ParameterizedTest
+    @ValueSource(strings = {"purchase_price", "moq", "lead_time_days"})
+    void treatsSupplierPurchaseInfoAsUnconfiguredWhenAnyRequiredFieldIsMissing(String missingField) throws Exception {
+        jdbc.update("UPDATE sku_supplier_purchase_info SET " + missingField + "=NULL WHERE supplier_product_config_id=1");
+        Cookie session = login();
+
+        mvc.perform(get("/api/procurement/unconfigured-shortages").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].skuId").value(101));
+
+        mvc.perform(post("/api/procurement/generate").cookie(session)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.count").value(0))
+                .andExpect(jsonPath("$.data.unconfiguredCount").value(1))
+                .andExpect(jsonPath("$.data.unconfiguredItems[0].skuId").value(101));
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion", Integer.class)).isZero();
+    }
     @Test
     void listsUnconfiguredShortagesGroupedBySku() throws Exception {
         jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity) VALUES(2,1,2,102,4,0,4)");
