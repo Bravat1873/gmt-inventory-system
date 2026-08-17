@@ -71,10 +71,12 @@ useGlobalDialogCloseGuard()
 const currentModule = computed(() => moduleDefinitions.find(item => item.key === activeModule.value) ?? moduleDefinitions[0])
 const canUseCurrentModulePrimary = computed(() => {
   if (currentModule.value.key === 'user') return user.value?.role === 'ADMIN'
+  if (currentModule.value.key === 'order') return ['ADMIN', 'USER'].includes(user.value?.role ?? 'USER')
   if (currentModule.value.importType === 'PRODUCT') return user.value?.role === 'ADMIN'
   return currentModule.value.importType !== 'COST'
     || user.value?.role === 'ADMIN' || user.value?.role === 'FINANCE'
 })
+const canUseCurrentModuleImport = computed(() => currentModule.value.importType !== undefined && canUseCurrentModulePrimary.value)
 
 onMounted(async () => {
   try { user.value = await currentUser() } catch {} finally { authReady.value = true }
@@ -126,12 +128,17 @@ function showMessage(text: string, kind: 'success' | 'error' = 'success') {
 
 function primary() {
   if (!canUseCurrentModulePrimary.value) return
-  if (currentModule.value.importType) { importOpen.value = true; return }
+  if (currentModule.value.importType && !currentModule.value.importActionLabel) { importOpen.value = true; return }
   if (activeModule.value === 'user') { editRow.value = undefined; entityOpen.value = true; return }
   if (activeModule.value === 'supplier') { editRow.value = undefined; supplierOpen.value = true; return }
   if (activeModule.value === 'order') { editRow.value = undefined; orderOpen.value = true; return }
   if (activeModule.value === 'afterSales') { afterSalesDetail.value = undefined; afterSalesOpen.value = true; return }
   if (activeModule.value === 'purchase') manualPurchaseOpen.value = true
+}
+
+function openImport() {
+  if (!canUseCurrentModuleImport.value) return
+  importOpen.value = true
 }
 
 
@@ -264,8 +271,8 @@ async function saved(closeDialog = true) {
     </aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><ProductCodeRulesDialog v-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
-    <div v-if="importOpen && currentModule.importType && canUseCurrentModulePrimary" class="dialog-mask import-dialog-mask"><ImportPanel :type="currentModule.importType" :title="currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
+    <main><div class="content"><ProductCodeRulesDialog v-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @import="openImport" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
+    <div v-if="importOpen && currentModule.importType && canUseCurrentModuleImport" class="dialog-mask import-dialog-mask"><ImportPanel :type="currentModule.importType" :title="currentModule.importActionLabel ?? currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <CustomerDialog v-if="entityOpen && activeModule === 'customer'" :row="editRow" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <CustomerFundsDialog v-if="customerFundsRow" :customer="customerFundsRow" :current-user-role="user.role" @close="customerFundsRow=undefined" @changed="list?.reload()" @message="showMessage" />

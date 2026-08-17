@@ -106,6 +106,33 @@ describe('连续导航和浏览器地址状态', () => {
     expect(wrapper.find('[aria-label="Excel 导入面板"]').exists()).toBe(false)
   })
 
+  it.each(['ADMIN', 'USER'] as const)('%s can open the dedicated order import panel without replacing manual creation', async role => {
+    history.replaceState(null, '', '/?module=order&page=1')
+    auth.currentUser.mockResolvedValue({ id: 3, username: role.toLowerCase(), displayName: role, role })
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="primary-action"]').text()).toBe('新增订单')
+    await wrapper.get('[data-test="import-action"]').trigger('click')
+    await flushPromises()
+
+    const panel = wrapper.getComponent((await import('./components/ImportPanel.vue')).default)
+    expect(panel.props('type')).toBe('ORDER')
+    expect(panel.props('title')).toBe('导入订单')
+  })
+
+  it('App guard rejects a programmatic ORDER import action from a finance user', async () => {
+    history.replaceState(null, '', '/?module=order&page=1')
+    auth.currentUser.mockResolvedValue({ id: 3, username: 'finance', displayName: 'FINANCE', role: 'FINANCE' })
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="import-action"]').exists()).toBe(false)
+    wrapper.getComponent(ModuleListPage).vm.$emit('import')
+    await flushPromises()
+    expect(wrapper.find('[aria-label="Excel 导入面板"]').exists()).toBe(false)
+  })
+
   it('opens SupplierDialog instead of EntityDialog for a supplier manual add', async () => {
     history.replaceState(null, '', '/?module=supplier&page=1')
     const wrapper = mount(App)

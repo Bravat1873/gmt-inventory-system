@@ -29,6 +29,26 @@ it('shows the PRODUCT import action to administrators', async () => {
   expect(wrapper.get('[data-test="primary-action"]').text()).toBe('导入产品')
 })
 
+it.each(['ADMIN', 'USER'] as const)('shows separate order creation and import actions to %s users', async role => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')!, currentUserRole: role } })
+  await flushPromises()
+
+  expect(wrapper.get('[data-test="primary-action"]').text()).toBe('新增订单')
+  expect(wrapper.get('[data-test="import-action"]').text()).toBe('导入订单')
+  await wrapper.get('[data-test="import-action"]').trigger('click')
+  expect(wrapper.emitted('import')).toHaveLength(1)
+})
+
+it('hides every order creation entry from finance users', async () => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')!, currentUserRole: 'FINANCE' } })
+  await flushPromises()
+
+  expect(wrapper.find('[data-test="primary-action"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="import-action"]').exists()).toBe(false)
+})
+
 it.each(['FINANCE', 'USER'] as const)('hides the PRODUCT replace action from %s users', async role => {
   loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'product')!, currentUserRole: role } })

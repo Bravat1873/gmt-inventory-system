@@ -44,6 +44,20 @@ const productErrorBatch = {
   rows: [{ id: 23, sheetName: 'GMT库存产品清单', rowNumber: 10, status: 'ERROR', data: { sourceProductCode: '旧编号-C', productCode: 'NEW-C', model: '用于验证单行截断的超长型号文本', productConfiguration: '黑色', supplierName: '供应商甲', supplierTaxPrice: 10 }, errorMessage: '产品编号规则不存在，请检查产品分类', manualEntry: false }]
 }
 
+const orderBatch = {
+  ...batch,
+  batchId: 18,
+  importType: 'ORDER',
+  originalFilename: 'orders.xlsx',
+  totalRows: 3,
+  validRows: 3,
+  rows: [
+    { id: 31, sheetName: '订单导入', rowNumber: 2, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', status: '正式订单', productCode: 'P001', customerMaterialCode: 'CM-01', quantity: 2, salePrice: 99.5 }, errorMessage: null, manualEntry: false },
+    { id: 32, sheetName: '订单导入', rowNumber: 3, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', status: '正式订单', productCode: 'P002', customerMaterialCode: 'CM-02', quantity: 3, salePrice: 120 }, errorMessage: null, manualEntry: false },
+    { id: 33, sheetName: '订单导入', rowNumber: 4, status: 'VALID', data: { externalOrderNo: 'EXT-002', customerCode: 'C002', orderDate: '2026-08-18', orderType: '零售订单', status: '草稿', productCode: 'P003', customerMaterialCode: 'CM-03', quantity: 1, salePrice: 80 }, errorMessage: null, manualEntry: false }
+  ]
+}
+
 async function selectFile(wrapper: ReturnType<typeof mount>, filename = 'suppliers.xlsx') {
   const input = wrapper.get('input[type="file"]')
   Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['x'], filename)] })
@@ -68,6 +82,49 @@ describe('simple Excel import', () => {
     expect(commitImport).toHaveBeenCalledWith(8)
     expect(wrapper.text()).toContain('成功导入 103 条数据')
     expect(wrapper.find('[data-test="commit-import"]').exists()).toBe(false)
+  })
+
+  it('groups ORDER preview rows by external order number and keeps the preview pending', async () => {
+    previewImport.mockResolvedValue(structuredClone(orderBatch))
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(wrapper, 'orders.xlsx')
+
+    expect(commitImport).not.toHaveBeenCalled()
+    expect(wrapper.findAll('[data-test^="order-preview-group-"]')).toHaveLength(2)
+    expect(wrapper.get('[data-test="order-preview-group-EXT-001"]').text()).toContain('EXT-001')
+    expect(wrapper.get('[data-test="order-preview-group-EXT-001"]').text()).toContain('C001')
+    expect(wrapper.get('[data-test="order-preview-group-EXT-001"]').text()).toContain('P001')
+    expect(wrapper.get('[data-test="order-preview-group-EXT-001"]').text()).toContain('CM-02')
+    expect(wrapper.get('[data-test="order-preview-group-EXT-002"]').text()).toContain('草稿')
+  })
+
+  it('disables ORDER commit for error rows and empty valid-order batches', async () => {
+    previewImport.mockResolvedValue({ ...structuredClone(orderBatch), validRows: 2, errorRows: 1, rows: [{ ...orderBatch.rows[0], status: 'ERROR', errorMessage: '产品不存在' }, orderBatch.rows[2]] })
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(wrapper, 'orders-error.xlsx')
+    expect(wrapper.get('[data-test="commit-order-import"]').attributes('disabled')).toBeDefined()
+
+    previewImport.mockResolvedValue({ ...structuredClone(orderBatch), validRows: 0, rows: [] })
+    const empty = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(empty, 'orders-empty.xlsx')
+    expect(empty.get('[data-test="commit-order-import"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('confirms ORDER inventory and customer-funds consequences before using commitImport', async () => {
+    previewImport.mockResolvedValue(structuredClone(orderBatch))
+    commitImport.mockResolvedValue({ ...structuredClone(orderBatch), status: 'COMMITTED', committedRows: 2 })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(wrapper, 'orders.xlsx')
+
+    await wrapper.get('[data-test="commit-order-import"]').trigger('click')
+    await flushPromises()
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('正式订单将按现有逻辑锁定库存'))
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('草稿不锁定'))
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('客户余额不会自动扣减'))
+    expect(commitImport).toHaveBeenCalledWith(18)
+    expect(commitProductReplace).not.toHaveBeenCalled()
   })
 
   it('accepts both legacy and current Excel supplier files', () => {
