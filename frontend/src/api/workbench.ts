@@ -206,9 +206,9 @@ export interface SupplierProductOption {
 
 export interface SupplierPurchaseInfoConfig {
   id?: number
-  purchasePrice: number
-  moq: number
-  leadTimeDays: number
+  purchasePrice: number | null
+  moq: number | null
+  leadTimeDays: number | null
   updatedAt?: string
   version?: number
 }

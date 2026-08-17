@@ -110,3 +110,54 @@ it('places the remove-product action in the operation column', async () => {
   expect(Array.from(remove.element.closest('tr')!.children).indexOf(remove.element.closest('td')!)).toBe(5)
   expect(wrapper.get('[data-test="supplier-product-name-101"]').element.parentElement?.textContent).not.toContain('移除产品')
 })
+
+it('renders an associated product with blank editable purchase fields when purchase infos are empty', async () => {
+  api.getSupplier.mockResolvedValueOnce({
+    id: 201,
+    supplierName: '待补填供应商',
+    version: 0,
+    products: [{ skuId: 101, skuCode: 'P90-001', productName: 'P90 智能锁', purchaseInfos: [] }]
+  })
+  const wrapper = mount(SupplierDialog, { props: { row: { id: 201 } } })
+  await flushPromises()
+
+  expect(wrapper.get('[data-test="supplier-product-name-101"]').text()).toContain('P90-001')
+  const row = wrapper.get('[data-test="purchase-info-row-101-0"]')
+  const inputs = row.findAll('input')
+  expect(inputs).toHaveLength(3)
+  expect(inputs.map(input => (input.element as HTMLInputElement).value)).toEqual(['', '', ''])
+
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.updateSupplier).toHaveBeenLastCalledWith(201, expect.objectContaining({
+    products: [{
+      skuId: 101,
+      purchaseInfos: [{ purchasePrice: null, moq: null, leadTimeDays: null }]
+    }]
+  }))
+})
+
+it('allows blank purchase fields to be completed later and submits numbers', async () => {
+  api.getSupplier.mockResolvedValueOnce({
+    id: 201,
+    supplierName: '待补填供应商',
+    version: 0,
+    products: [{ skuId: 101, skuCode: 'P90-001', purchaseInfos: [] }]
+  })
+  const wrapper = mount(SupplierDialog, { props: { row: { id: 201 } } })
+  await flushPromises()
+
+  const inputs = wrapper.get('[data-test="purchase-info-row-101-0"]').findAll('input')
+  await inputs[0].setValue('12.5')
+  await inputs[1].setValue('20')
+  await inputs[2].setValue('7')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.updateSupplier).toHaveBeenLastCalledWith(201, expect.objectContaining({
+    products: [{
+      skuId: 101,
+      purchaseInfos: [{ purchasePrice: 12.5, moq: 20, leadTimeDays: 7 }]
+    }]
+  }))
+})

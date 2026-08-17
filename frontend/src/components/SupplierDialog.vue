@@ -61,7 +61,7 @@ function addProduct() {
   if (skuId == null) return
   const sku = skus.value.find(item => item.id === skuId)
   if (!sku) return
-  products.value.push({ skuId, label: labelOf(sku), purchaseInfos: [{ purchasePrice: 0, moq: 1, leadTimeDays: 0 }] })
+  products.value.push({ skuId, label: labelOf(sku), purchaseInfos: [blankPurchaseInfo()] })
   pickedSku.value = null
 }
 
@@ -70,7 +70,7 @@ function removeProduct(index: number) {
 }
 
 function addPurchaseInfo(product: ProductRow) {
-  product.purchaseInfos.push({ purchasePrice: 0, moq: 1, leadTimeDays: 0 })
+  product.purchaseInfos.push(blankPurchaseInfo())
 }
 
 function removePurchaseInfo(product: ProductRow, index: number) {
@@ -83,6 +83,22 @@ function trimmedOrUndefined(value: string) {
 
 function preservedOrUndefined(value: string) {
   return value === '' ? undefined : value
+}
+
+function blankPurchaseInfo() {
+  return { purchasePrice: null, moq: null, leadTimeDays: null }
+}
+
+function numberOrNull(value: unknown) {
+  if (value == null || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function invalidOptionalNumber(value: unknown, integer: boolean, minimum: number) {
+  if (value == null || value === '') return false
+  const number = Number(value)
+  return !Number.isFinite(number) || (integer && !Number.isInteger(number)) || number < minimum
 }
 
 function payload(): SupplierCommand {
@@ -103,7 +119,7 @@ function payload(): SupplierCommand {
     bankAccount: preservedOrUndefined(form.bankAccount),
     products: products.value.map(({ skuId, purchaseInfos }) => ({
       skuId,
-      purchaseInfos: purchaseInfos.map(info => ({ ...info, purchasePrice: Number(info.purchasePrice), moq: Number(info.moq), leadTimeDays: Number(info.leadTimeDays) }))
+      purchaseInfos: purchaseInfos.map(info => ({ ...info, purchasePrice: numberOrNull(info.purchasePrice), moq: numberOrNull(info.moq), leadTimeDays: numberOrNull(info.leadTimeDays) }))
     })),
     version: version.value
   }
@@ -116,8 +132,8 @@ async function save() {
     error.value = '请填写供应商名称'
     return
   }
-  if (products.value.some(item => !item.purchaseInfos.length || item.purchaseInfos.some(info => !Number.isFinite(Number(info.purchasePrice)) || Number(info.purchasePrice) < 0 || !Number.isInteger(Number(info.moq)) || Number(info.moq) <= 0 || !Number.isInteger(Number(info.leadTimeDays)) || Number(info.leadTimeDays) < 0))) {
-    error.value = '请完整填写供应产品的采购单价、最小起订量和交货天数'
+  if (products.value.some(item => item.purchaseInfos.some(info => invalidOptionalNumber(info.purchasePrice, false, 0) || invalidOptionalNumber(info.moq, true, 1) || invalidOptionalNumber(info.leadTimeDays, true, 0)))) {
+    error.value = '采购单价不能为负数，最小起订量须为正整数，交货天数须为非负整数'
     return
   }
   saving.value = true
@@ -161,9 +177,9 @@ async function initialise() {
       return {
         skuId: Number(product.skuId),
         label: detailLabel || (sku ? labelOf(sku) : `产品 ${String(product.skuId)}`),
-        purchaseInfos: (Array.isArray(product.purchaseInfos) ? product.purchaseInfos : [{ purchasePrice: product.purchasePrice, moq: product.moq, leadTimeDays: product.leadTimeDays }]).map(value => {
+        purchaseInfos: ((Array.isArray(product.purchaseInfos) && product.purchaseInfos.length ? product.purchaseInfos : [{ purchasePrice: product.purchasePrice, moq: product.moq, leadTimeDays: product.leadTimeDays }])).map(value => {
           const info = value as Record<string, unknown>
-          return { id: info.id == null ? undefined : Number(info.id), purchasePrice: Number(info.purchasePrice ?? 0), moq: Number(info.moq ?? 1), leadTimeDays: Number(info.leadTimeDays ?? 0), updatedAt: info.updatedAt == null ? undefined : String(info.updatedAt), version: info.version == null ? undefined : Number(info.version) }
+          return { id: info.id == null ? undefined : Number(info.id), purchasePrice: numberOrNull(info.purchasePrice), moq: numberOrNull(info.moq), leadTimeDays: numberOrNull(info.leadTimeDays), updatedAt: info.updatedAt == null ? undefined : String(info.updatedAt), version: info.version == null ? undefined : Number(info.version) }
         })
       }
     })
