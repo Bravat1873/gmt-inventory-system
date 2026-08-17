@@ -143,6 +143,13 @@ async function confirmProductReplace() {
   await commitPreview(() => commitProductReplace(batch.batchId, productActions.value))
 }
 
+function orderStatusLabel(row: ImportRow) {
+  const normalized = String(row.data._normalizedStatus ?? '')
+  if (normalized === 'DRAFT') return '草稿'
+  if (normalized === 'PENDING_CUSTOMER_PAYMENT') return '正式订单'
+  return value(row, 'orderStatus')
+}
+
 async function confirmOrderImport() {
   const batch = previewBatch.value
   if (!batch || busy.value || !orderCanCommit.value) return
@@ -222,7 +229,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
       <section v-else-if="previewBatch && importedRows === null && type === 'ORDER'" class="order-preview" aria-label="订单导入预览">
         <div class="supplier-preview-summary"><span>订单数 <strong data-test="order-preview-count">{{ orderGroups.length }}</strong></span><span>总行数 <strong data-test="preview-total-count">{{ previewBatch.totalRows }}</strong></span><span>有效行 <strong data-test="preview-valid-count">{{ previewBatch.validRows }}</strong></span><span>错误行 <strong data-test="preview-error-count">{{ previewBatch.errorRows }}</strong></span></div>
         <section v-for="group in orderGroups" :key="group.externalOrderNo" class="order-preview-group" :data-test="`order-preview-group-${group.externalOrderNo}`">
-          <header><strong>外部订单号：{{ group.externalOrderNo }}</strong><span>客户编码：{{ value(group.header, 'customerCode') }}</span><span>订单日期：{{ value(group.header, 'orderDate') }}</span><span>订单类型：{{ value(group.header, 'orderType') }}</span><span>状态：{{ value(group.header, 'status') }}</span></header>
+          <header><strong>外部订单号：{{ group.externalOrderNo }}</strong><span>客户编码：{{ value(group.header, 'customerCode') }}</span><span>订单日期：{{ value(group.header, 'orderDate') }}</span><span>订单类型：{{ value(group.header, 'orderType') }}</span><span>状态：{{ orderStatusLabel(group.header) }}</span></header>
           <div class="supplier-preview-table-wrap"><table class="order-preview-table"><thead><tr><th>产品编号</th><th>客户料号</th><th>数量</th><th>含税单价</th><th>状态</th><th>错误</th></tr></thead><tbody><tr v-for="row in group.rows" :key="row.id" data-test="order-preview-row"><td>{{ value(row, 'productCode') }}</td><td>{{ value(row, 'customerMaterialCode') }}</td><td>{{ value(row, 'quantity') }}</td><td>{{ value(row, 'salePrice') }}</td><td>{{ row.status === 'VALID' ? '有效' : row.status === 'ERROR' ? '错误' : '忽略' }}</td><td>{{ row.errorMessage ?? '—' }}</td></tr></tbody></table></div>
         </section>
         <div class="supplier-preview-actions"><p v-if="!orderCanCommit">{{ previewBatch.errorRows > 0 ? '存在错误行，不能提交订单。' : '没有有效订单，不能提交。' }}</p><button data-test="commit-order-import" type="button" class="primary-action" :disabled="busy || !orderCanCommit" @click="confirmOrderImport">确认导入订单</button></div>

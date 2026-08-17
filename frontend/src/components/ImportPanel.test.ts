@@ -52,9 +52,9 @@ const orderBatch = {
   totalRows: 3,
   validRows: 3,
   rows: [
-    { id: 31, sheetName: '订单导入', rowNumber: 2, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', status: '正式订单', productCode: 'P001', customerMaterialCode: 'CM-01', quantity: 2, salePrice: 99.5 }, errorMessage: null, manualEntry: false },
-    { id: 32, sheetName: '订单导入', rowNumber: 3, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', status: '正式订单', productCode: 'P002', customerMaterialCode: 'CM-02', quantity: 3, salePrice: 120 }, errorMessage: null, manualEntry: false },
-    { id: 33, sheetName: '订单导入', rowNumber: 4, status: 'VALID', data: { externalOrderNo: 'EXT-002', customerCode: 'C002', orderDate: '2026-08-18', orderType: '零售订单', status: '草稿', productCode: 'P003', customerMaterialCode: 'CM-03', quantity: 1, salePrice: 80 }, errorMessage: null, manualEntry: false }
+    { id: 31, sheetName: '订单导入', rowNumber: 2, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P001', customerMaterialCode: 'CM-01', quantity: 2, salePrice: 99.5 }, errorMessage: null, manualEntry: false },
+    { id: 32, sheetName: '订单导入', rowNumber: 3, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P002', customerMaterialCode: 'CM-02', quantity: 3, salePrice: 120 }, errorMessage: null, manualEntry: false },
+    { id: 33, sheetName: '订单导入', rowNumber: 4, status: 'VALID', data: { externalOrderNo: 'EXT-002', customerCode: 'C002', orderDate: '2026-08-18', orderType: '零售订单', orderStatus: '草稿', productCode: 'P003', customerMaterialCode: 'CM-03', quantity: 1, salePrice: 80 }, errorMessage: null, manualEntry: false }
   ]
 }
 
@@ -107,6 +107,20 @@ describe('simple Excel import', () => {
     expect(wrapper.get('[data-test="order-preview-group-EXT-001"]').text()).toContain('P001')
     expect(wrapper.get('[data-test="order-preview-group-EXT-001"]').text()).toContain('CM-02')
     expect(wrapper.get('[data-test="order-preview-group-EXT-002"]').text()).toContain('草稿')
+  })
+
+  it('shows the normalized backend ORDER status before the imported status text', async () => {
+    const normalizedBatch = structuredClone(orderBatch)
+    Object.assign(normalizedBatch.rows[0].data, { orderStatus: '正式订单', _normalizedStatus: 'DRAFT' })
+    Object.assign(normalizedBatch.rows[1].data, { orderStatus: '正式订单', _normalizedStatus: 'DRAFT' })
+    Object.assign(normalizedBatch.rows[2].data, { orderStatus: '正式订单', _normalizedStatus: 'PENDING_CUSTOMER_PAYMENT' })
+    previewImport.mockResolvedValue(normalizedBatch)
+
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(wrapper, 'orders.xlsx')
+
+    expect(wrapper.get('[data-test="order-preview-group-EXT-001"]').text()).toContain('状态：草稿')
+    expect(wrapper.get('[data-test="order-preview-group-EXT-002"]').text()).toContain('状态：正式订单')
   })
 
   it('disables ORDER commit for error rows and empty valid-order batches', async () => {
