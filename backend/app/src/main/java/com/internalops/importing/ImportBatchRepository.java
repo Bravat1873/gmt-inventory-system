@@ -194,6 +194,10 @@ public class ImportBatchRepository {
                 committedRows, json(result), batchId);
     }
 
+    public void markCommitting(long batchId) {
+        jdbc.update("UPDATE import_batch SET status='COMMITTING' WHERE id=?", batchId);
+    }
+
     private String json(Object value) {
         try {
             return objectMapper.writeValueAsString(value);

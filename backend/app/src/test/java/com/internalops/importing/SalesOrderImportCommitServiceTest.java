@@ -22,7 +22,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -154,24 +153,26 @@ class SalesOrderImportCommitServiceTest {
     }
 
     @Test
-    void duplicateAppearingAfterPreviewRollsBackOrderItemsAndInventoryLocks() {
+    void duplicateAppearingAfterPreviewReportsFailedOrderWithoutInventoryLocks() {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
         long batch = batch("late-duplicate", List.of(row(2,
                 order("EXT-DUP", "PENDING_CUSTOMER_PAYMENT", 1, 4, "12.50"))));
         insertExistingOrder("EXT-DUP");
 
-        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> commitService.commit(batch));
+        ImportBatchView result = commitService.commit(batch);
 
-        assertEquals("外部订单号已存在，订单提交已取消", failure.getMessage());
         assertEquals(1, count("sales_order"));
         assertEquals(0, count("sales_order_item"));
         assertEquals(0, jdbc.queryForObject(
                 "SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
-        assertEquals("PREVIEW", repository.status(batch));
+        assertEquals("COMMITTED", repository.status(batch));
+        assertEquals(0, result.committedRows());
+        assertEquals(1, result.errorRows());
+        assertEquals("外部订单号已存在，订单提交已取消", result.rows().get(0).errorMessage());
     }
 
     @Test
-    void concurrentBatchesWithTheSameExternalOrderNumberCommitOnlyOneOrder() throws Exception {
+    void concurrentBatchesWithTheSameExternalOrderNumberReportOneSuccessAndOneFailure() throws Exception {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
         long firstBatch = batch("concurrent-first", List.of(row(2,
                 order("EXT-CONCURRENT", "PENDING_CUSTOMER_PAYMENT", 1, 4, "12.50"))));
@@ -196,34 +197,48 @@ class SalesOrderImportCommitServiceTest {
             reset(salesOrders);
         }
 
-        assertNotEquals(firstFailure == null, secondFailure == null);
+        assertEquals(null, firstFailure);
+        assertEquals(null, secondFailure);
         assertEquals(1, count("sales_order"));
         assertEquals(1, count("sales_order_item"));
         assertEquals(4, jdbc.queryForObject(
                 "SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
-        assertEquals(List.of("COMMITTED", "PREVIEW"), List.of(
+        assertEquals(List.of("COMMITTED", "COMMITTED"), List.of(
                 repository.status(firstBatch), repository.status(secondBatch)).stream().sorted().toList());
+        List<ImportBatchView> results = List.of(repository.findBatch(firstBatch), repository.findBatch(secondBatch));
+        assertEquals(List.of(0, 1), results.stream().map(ImportBatchView::committedRows).sorted().toList());
+        assertEquals(List.of(0, 1), results.stream()
+                .map(result -> ((Number) ((Map<?, ?>) result.result()).get("failedOrders")).intValue())
+                .sorted().toList());
     }
 
     @Test
-    void failureInSecondOrderRollsBackFirstOrderAndItsInventoryLock() {
+    void failureInSecondOrderKeepsFirstOrderAndReportsTheFailedOrder() {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
         long batch = batch("second-fails", List.of(
                 row(2, order("EXT-FIRST", "PENDING_CUSTOMER_PAYMENT", 1, 4, "12.50")),
                 row(3, order("EXT-SECOND", "DRAFT", 2, 1, "8.00"))));
         insertExistingOrder("EXT-SECOND");
 
-        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> commitService.commit(batch));
+        ImportBatchView result = commitService.commit(batch);
 
-        assertEquals("外部订单号已存在，订单提交已取消", failure.getMessage());
-        assertEquals(List.of("EXT-SECOND"), jdbc.queryForList(
+        assertEquals(List.of("EXT-SECOND", "EXT-FIRST"), jdbc.queryForList(
                 "SELECT external_order_no FROM sales_order ORDER BY id", String.class));
-        assertEquals(0, count("sales_order_item"));
-        assertEquals(0, jdbc.queryForObject(
+        assertEquals(1, count("sales_order_item"));
+        assertEquals(4, jdbc.queryForObject(
                 "SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
-        assertEquals(0, jdbc.queryForObject(
+        assertEquals(1, jdbc.queryForObject(
                 "SELECT COUNT(*) FROM inventory_transaction WHERE transaction_type='ALLOCATE'", Integer.class));
-        assertEquals("PREVIEW", repository.status(batch));
+        assertEquals("COMMITTED", repository.status(batch));
+        assertEquals(1, result.committedRows());
+        assertEquals(1, result.errorRows());
+        Map<?, ?> detail = (Map<?, ?>) result.result();
+        assertEquals(1, ((Number) detail.get("createdOrders")).intValue());
+        assertEquals(1, ((Number) detail.get("failedOrders")).intValue());
+        assertEquals(1, ((Number) detail.get("committed")).intValue());
+        assertEquals(1, ((Number) detail.get("errors")).intValue());
+        assertEquals(ImportRowStatus.ERROR, result.rows().get(1).status());
+        assertEquals("外部订单号已存在，订单提交已取消", result.rows().get(1).errorMessage());
     }
 
     @Test
