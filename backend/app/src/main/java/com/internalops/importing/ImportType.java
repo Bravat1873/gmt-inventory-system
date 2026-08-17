@@ -5,5 +5,6 @@ public enum ImportType {
     COST,
     INVENTORY,
     SUPPLIER,
-    PRODUCT
+    PRODUCT,
+    ORDER
 }

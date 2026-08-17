@@ -99,6 +99,7 @@ public class ImportCommitService {
             }
             boolean wasCreated = switch (batch.importType()) {
                 case PRODUCT -> throw new IllegalStateException("产品批次必须使用产品全量替换策略");
+                case ORDER -> throw new IllegalStateException("订单批次必须使用订单分组提交策略");
                 case CUSTOMER -> commitCustomer(row.data());
                 case INVENTORY -> commitInventory(batchId, row.data());
                 case COST -> commitCost(batchId, row.data());
