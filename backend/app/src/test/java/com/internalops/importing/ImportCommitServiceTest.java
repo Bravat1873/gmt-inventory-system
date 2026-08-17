@@ -173,6 +173,20 @@ class ImportCommitServiceTest {
     }
 
     @Test
+    void inventoryImportCreatesLegacyProductCodeWhenSkuIsNew() {
+        jdbc.execute("ALTER TABLE sku ALTER COLUMN product_code SET NOT NULL");
+        long batch = repository.create(ImportType.INVENTORY, "inventory.xlsx", "hash-product-code", List.of(
+                row(ImportRowStatus.VALID, Map.of(
+                        "skuCode", "G1TEST0001", "model", "测试配件",
+                        "actualQuantity", 8, "lockedQuantity", 0, "inTransitQuantity", 0), null)));
+
+        commitService.commit(batch, ImportConflictPolicy.UPSERT_KEEP_EXISTING_ON_BLANK);
+
+        assertEquals("OLD_000001", jdbc.queryForObject(
+                "SELECT product_code FROM sku WHERE sku_code='G1TEST0001'", String.class));
+    }
+
+    @Test
     void rejectsProductBatchFromGenericCommitPathWhenReplaceFeatureIsDisabledByDefault() {
         long batch = repository.create(ImportType.PRODUCT, "product.xlsx", "hash-product", List.of(
                 row(ImportRowStatus.VALID, Map.of("brand", "BR"), null)));

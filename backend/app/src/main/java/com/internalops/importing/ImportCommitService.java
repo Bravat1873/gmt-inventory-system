@@ -392,19 +392,21 @@ public class ImportCommitService {
             final Object persistedConfiguration = emptyToNull(configuration);
             final String persistedUnit = unit;
             final String persistedProductName = productName;
+            final String persistedProductCode = nextCode("sku", "product_code", "OLD_");
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbc.update(connection -> {
                 PreparedStatement statement = connection.prepareStatement(
-                        "INSERT INTO sku(sku_code,model,product_name,color,lock_body,product_version,configuration,unit,enabled) VALUES(?,?,?,?,?,?,?,?,TRUE)",
+                        "INSERT INTO sku(product_code,sku_code,model,product_name,color,lock_body,product_version,configuration,unit,enabled) VALUES(?,?,?,?,?,?,?,?,?,TRUE)",
                         Statement.RETURN_GENERATED_KEYS);
-                statement.setObject(1, persistedCode);
-                statement.setObject(2, persistedModel);
-                statement.setString(3, persistedProductName);
-                statement.setObject(4, persistedColor);
-                statement.setObject(5, persistedLockBody);
-                statement.setObject(6, persistedVersion);
-                statement.setObject(7, persistedConfiguration);
-                statement.setString(8, persistedUnit);
+                statement.setString(1, persistedProductCode);
+                statement.setObject(2, persistedCode);
+                statement.setObject(3, persistedModel);
+                statement.setString(4, persistedProductName);
+                statement.setObject(5, persistedColor);
+                statement.setObject(6, persistedLockBody);
+                statement.setObject(7, persistedVersion);
+                statement.setObject(8, persistedConfiguration);
+                statement.setString(9, persistedUnit);
                 return statement;
             }, keyHolder);
             Long id = keyHolder.getKey().longValue();
