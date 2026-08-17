@@ -80,7 +80,23 @@ public class SupplierManagementService {
         for (SupplierProductConfigRequest config : products) {
             List<SupplierPurchaseInfoRequest> infos = config.effectivePurchaseInfos();
             if (infos.isEmpty()) {
-                infos = List.of(new SupplierPurchaseInfoRequest(null, null, null, null, null));
+                int changed = jdbc.update("""
+                        UPDATE sku_supplier_config
+                        SET enabled=TRUE,version=version+1
+                        WHERE sku_id=? AND supplier_id=?
+                        """, config.skuId(), supplierId);
+                if (changed == 0) {
+                    jdbc.update("""
+                            INSERT INTO sku_supplier_config(sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled)
+                            VALUES(?,?,NULL,NULL,NULL,TRUE)
+                            """, config.skuId(), supplierId);
+                    Long relationId = jdbc.queryForObject(
+                            "SELECT id FROM sku_supplier_config WHERE sku_id=? AND supplier_id=?", Long.class,
+                            config.skuId(), supplierId);
+                    replacePurchaseInfos(relationId,
+                            List.of(new SupplierPurchaseInfoRequest(null, null, null, null, null)));
+                }
+                continue;
             }
             SupplierPurchaseInfoRequest latest = infos.get(0);
             int changed = jdbc.update("""

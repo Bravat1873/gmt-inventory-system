@@ -217,12 +217,25 @@ class SupplierManagementApiTest {
 
         long id = objectMapper.readTree(created).path("data").path("id").asLong();
         int version = objectMapper.readTree(created).path("data").path("version").asInt();
-        mvc.perform(put("/api/suppliers/{id}", id).cookie(session)
+        String completed = mvc.perform(put("/api/suppliers/{id}", id).cookie(session)
                         .contentType("application/json")
                         .content("""
                                 {"supplierName":"待补填供应商","version":%d,
                                  "products":[{"skuId":101,"purchasePrice":12.50,"moq":20,"leadTimeDays":7}]}
                                 """.formatted(version)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.products[0].purchasePrice").value(12.5))
+                .andExpect(jsonPath("$.data.products[0].moq").value(20))
+                .andExpect(jsonPath("$.data.products[0].leadTimeDays").value(7))
+                .andReturn().getResponse().getContentAsString();
+
+        int completedVersion = objectMapper.readTree(completed).path("data").path("version").asInt();
+        mvc.perform(put("/api/suppliers/{id}", id).cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"supplierName":"待补填供应商","version":%d,
+                                 "products":[{"skuId":101}]}
+                                """.formatted(completedVersion)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.products[0].purchasePrice").value(12.5))
                 .andExpect(jsonPath("$.data.products[0].moq").value(20))
