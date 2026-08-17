@@ -13,6 +13,16 @@ import java.util.Map;
 
 @Service
 public class SalesOrderImportValidationService {
+    private static final String[][] ORDER_LEVEL_FIELDS = {
+            {"customerCode", "客户编码"}, {"orderDate", "订单日期"}, {"orderType", "订单类型"},
+            {"orderStatus", "订单状态"}, {"salesperson", "销售员"},
+            {"businessContactName", "商务联系人"}, {"businessContactPhone", "商务联系人电话"},
+            {"orderContactName", "订单联系人"}, {"orderContactPhone", "订单联系人电话"},
+            {"financeContactName", "财务联系人"}, {"financeContactPhone", "财务联系人电话"},
+            {"deliveryAddress", "收货地址"}, {"deliveryContact", "收货联系人"},
+            {"deliveryPhone", "收货联系电话"}, {"shippingMethod", "运输方式"}, {"remark", "备注"}
+    };
+
     private final JdbcTemplate jdbc;
 
     public SalesOrderImportValidationService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
@@ -20,8 +30,57 @@ public class SalesOrderImportValidationService {
     public List<ParsedImportRow> validateAll(List<ParsedImportRow> rows) {
         List<ParsedImportRow> result = new ArrayList<>();
         for (ParsedImportRow row : rows) result.add(row.status() == ImportRowStatus.VALID ? validate(row) : row);
-        return result;
+        return validateOrderGroups(result);
     }
+
+    private List<ParsedImportRow> validateOrderGroups(List<ParsedImportRow> rows) {
+        Map<String, List<Integer>> groups = new LinkedHashMap<>();
+        for (int index = 0; index < rows.size(); index++) {
+            ParsedImportRow row = rows.get(index);
+            if (row.status() != ImportRowStatus.IGNORED) {
+                groups.computeIfAbsent(text(row.data(), "externalOrderNo"), ignored -> new ArrayList<>()).add(index);
+            }
+        }
+        for (Map.Entry<String, List<Integer>> group : groups.entrySet()) validateOrderGroup(rows, group.getKey(), group.getValue());
+        return rows;
+    }
+
+    private void validateOrderGroup(List<ParsedImportRow> rows, String externalOrderNo, List<Integer> indexes) {
+        if (indexes.stream().anyMatch(index -> rows.get(index).status() == ImportRowStatus.ERROR)) {
+            for (int index : indexes) {
+                ParsedImportRow row = rows.get(index);
+                if (row.status() == ImportRowStatus.VALID) rows.set(index, error(row, copyData(row), "该订单存在错误明细，整单不可提交"));
+            }
+            return;
+        }
+        if (!externalOrderNo.isBlank() && externalOrderNoExists(externalOrderNo)) {
+            markGroupError(rows, indexes, "外部订单号已存在");
+            return;
+        }
+        ParsedImportRow first = rows.get(indexes.get(0));
+        for (String[] field : ORDER_LEVEL_FIELDS) {
+            String expected = normalizedOrderField(first.data(), field[0]);
+            if (indexes.stream().map(rows::get).map(row -> normalizedOrderField(row.data(), field[0])).anyMatch(value -> !expected.equals(value))) {
+                markGroupError(rows, indexes, "同一外部订单号的订单级字段不一致：" + field[1]);
+                return;
+            }
+        }
+    }
+
+    private boolean externalOrderNoExists(String externalOrderNo) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM sales_order WHERE external_order_no=?", Integer.class, externalOrderNo);
+        return count != null && count > 0;
+    }
+
+    private void markGroupError(List<ParsedImportRow> rows, List<Integer> indexes, String message) {
+        for (int index : indexes) {
+            ParsedImportRow row = rows.get(index);
+            rows.set(index, error(row, copyData(row), message));
+        }
+    }
+
+    private Map<String, Object> copyData(ParsedImportRow row) { return new LinkedHashMap<>(row.data()); }
+    private String normalizedOrderField(Map<String, Object> data, String key) { return text(data, key).replaceAll("\\s+", " "); }
 
     private ParsedImportRow validate(ParsedImportRow row) {
         Map<String, Object> data = new LinkedHashMap<>(row.data());
