@@ -93,6 +93,7 @@ public class ImportPreviewService {
     private ImportBatchView editableBatch(long batchId) {
         ImportBatchView batch = repository.findBatchForUpdate(batchId);
         if ("COMMITTED".equals(batch.status())) throw new IllegalArgumentException("已提交批次不能修改");
+        if (!"PREVIEW".equals(batch.status())) throw new IllegalArgumentException("仅预览中的批次可以修改");
         return batch;
     }
 }

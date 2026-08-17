@@ -72,6 +72,9 @@ public class SalesOrderImportCommitService {
         if (batch.errorRows() > 0) {
             throw new IllegalStateException("订单导入批次存在错误行");
         }
+        if (batch.validRows() <= 0 || groupRows(batch).isEmpty()) {
+            throw new IllegalStateException("订单导入批次没有有效订单");
+        }
         repository.markCommitting(batchId);
         return batch;
     }

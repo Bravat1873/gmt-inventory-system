@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
@@ -77,6 +78,22 @@ class SalesOrderImportPreviewEditTest {
         assertEquals(0, batch.validRows());
         assertEquals(2, batch.errorRows());
         assertTrue(batch.rows().stream().allMatch(row -> row.errorMessage().contains("订单级字段不一致：订单类型")));
+    }
+
+    @Test
+    void serviceRejectsAddingAndUpdatingRowsAfterCommitHasStarted() {
+        long batchId = createTwoLineBatch();
+        ImportRowView existing = repository.findBatch(batchId).rows().get(0);
+        repository.markCommitting(batchId);
+
+        IllegalArgumentException addFailure = assertThrows(IllegalArgumentException.class,
+                () -> previewService.add(batchId, new ImportRowRequest(order("P1", 1))));
+        IllegalArgumentException updateFailure = assertThrows(IllegalArgumentException.class,
+                () -> previewService.update(batchId, existing.id(), new ImportRowRequest(order("P1", 1))));
+
+        assertEquals("仅预览中的批次可以修改", addFailure.getMessage());
+        assertEquals("仅预览中的批次可以修改", updateFailure.getMessage());
+        assertEquals(2, repository.findBatch(batchId).totalRows());
     }
 
     private long createTwoLineBatch() {

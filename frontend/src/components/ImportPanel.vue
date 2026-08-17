@@ -50,6 +50,27 @@ const orderGroups = computed(() => {
   return [...groups.entries()].map(([externalOrderNo, rows]) => ({ externalOrderNo, rows, header: rows[0] }))
 })
 
+interface OrderCommitResult {
+  createdOrders: number
+  failedOrders: number
+  committed: number
+  errors: number
+  orderErrors: Array<{ externalOrderNo: string; error: string }>
+}
+
+const orderCommitResult = computed<OrderCommitResult | null>(() => {
+  const result = previewBatch.value?.result
+  if (!result || typeof result !== 'object') return null
+  const detail = result as Partial<OrderCommitResult>
+  return {
+    createdOrders: Number(detail.createdOrders ?? 0),
+    failedOrders: Number(detail.failedOrders ?? 0),
+    committed: Number(detail.committed ?? 0),
+    errors: Number(detail.errors ?? 0),
+    orderErrors: Array.isArray(detail.orderErrors) ? detail.orderErrors : []
+  }
+})
+
 const productCanCommit = computed(() => {
   const batch = previewBatch.value
   if (!batch || batch.importType !== 'PRODUCT' || batch.errorRows > 0) return false
@@ -163,6 +184,18 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
   errorMessage.value = ''
   try {
     const committed = await action()
+    const detail = committed.importType === 'ORDER' && committed.result && typeof committed.result === 'object'
+      ? committed.result as Partial<OrderCommitResult>
+      : null
+    const orderHasFailures = committed.importType === 'ORDER'
+      && (committed.errorRows > 0 || Number(detail?.failedOrders ?? 0) > 0
+        || (Array.isArray(detail?.orderErrors) && detail.orderErrors.length > 0))
+    if (orderHasFailures) {
+      previewBatch.value = committed
+      importedRows.value = null
+      emit('message', `订单部分导入成功：成功 ${Number(detail?.createdOrders ?? 0)} 单，失败 ${Number(detail?.failedOrders ?? 0)} 单`, 'error')
+      return
+    }
     importedRows.value = committed.committedRows
     previewBatch.value = null
     emit('message', `成功导入 ${committed.committedRows} 条数据`, 'success')
@@ -227,6 +260,14 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
       </section>
 
       <section v-else-if="previewBatch && importedRows === null && type === 'ORDER'" class="order-preview" aria-label="订单导入预览">
+        <div v-if="orderCommitResult && (orderCommitResult.failedOrders > 0 || orderCommitResult.errors > 0 || orderCommitResult.orderErrors.length > 0)" data-test="order-partial-result" class="order-partial-result" role="status">
+          <strong>订单部分导入成功</strong>
+          <span>成功订单 {{ orderCommitResult.createdOrders }}</span>
+          <span>失败订单 {{ orderCommitResult.failedOrders }}</span>
+          <span>成功行 {{ orderCommitResult.committed }}</span>
+          <span>失败行 {{ orderCommitResult.errors }}</span>
+          <a data-test="download-import-errors" :href="`/api/imports/${previewBatch.batchId}/errors.xlsx`" download>下载错误清单</a>
+        </div>
         <div class="supplier-preview-summary"><span>订单数 <strong data-test="order-preview-count">{{ orderGroups.length }}</strong></span><span>总行数 <strong data-test="preview-total-count">{{ previewBatch.totalRows }}</strong></span><span>有效行 <strong data-test="preview-valid-count">{{ previewBatch.validRows }}</strong></span><span>错误行 <strong data-test="preview-error-count">{{ previewBatch.errorRows }}</strong></span></div>
         <section v-for="group in orderGroups" :key="group.externalOrderNo" class="order-preview-group" :data-test="`order-preview-group-${group.externalOrderNo}`">
           <header><strong>外部订单号：{{ group.externalOrderNo }}</strong><span>客户编码：{{ value(group.header, 'customerCode') }}</span><span>订单日期：{{ value(group.header, 'orderDate') }}</span><span>订单类型：{{ value(group.header, 'orderType') }}</span><span>状态：{{ orderStatusLabel(group.header) }}</span></header>
@@ -244,5 +285,5 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
 
 <style scoped>
 .order-template-download{display:inline-flex;align-self:flex-start;color:#315d82;text-decoration:underline;text-underline-offset:2px}
-.supplier-preview-panel{width:min(1120px,calc(100vw - 48px));max-height:min(820px,calc(100vh - 48px))}.supplier-preview-panel .simple-import-body{max-height:680px;overflow:auto}.supplier-preview,.product-preview,.order-preview{width:100%;border-top:1px solid #e5e7eb;padding-top:14px}.supplier-preview-summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.supplier-preview-summary span{padding:7px 10px;border:1px solid #e1e4e8;border-radius:3px;color:#555;background:#fafafa;font-size:13px}.supplier-preview-table-wrap{max-width:100%;overflow:auto;border:1px solid #e1e4e8;border-radius:4px}.supplier-preview-table,.product-preview-table,.order-preview-table{width:100%;min-width:760px;border-collapse:collapse}.product-preview-table{min-width:1280px;table-layout:fixed}.supplier-preview-table th,.supplier-preview-table td,.product-preview-table th,.product-preview-table td,.order-preview-table th,.order-preview-table td{height:auto;padding:10px;border-bottom:1px solid #eceff1;text-align:left;vertical-align:top;font-size:12px;white-space:normal}.supplier-preview-status{display:inline-flex;padding:3px 7px;border-radius:999px}.supplier-preview-status.valid{color:#17633c;background:#eaf6ee}.supplier-preview-status.error{color:#a13226;background:#fff0ee}.supplier-preview-status.ignored{color:#666;background:#f1f2f3}.supplier-preview-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;margin:0}.supplier-preview-fields div{min-width:0}.supplier-preview-fields dt{color:#777}.supplier-preview-fields dd{margin:2px 0 0;overflow-wrap:anywhere;color:#222}.supplier-preview-error{margin:8px 0 0;color:#a13226}.supplier-preview-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:12px}.supplier-preview-actions p{margin:0 auto 0 0;color:#a13226;font-size:12px}.compact-cell{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap!important}.code-cell{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.product-danger-note{padding:9px 11px;border-left:3px solid #c73c2f;background:#fff6f4;color:#842d25;font-size:13px}.decision-control{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}.skip-state{margin-left:8px;color:#666}.unresolved-state{margin-left:8px;color:#a13226}.conflict-groups{display:grid;gap:7px;margin-top:10px}.conflict-groups>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;background:#fafafa;border:1px solid #e7e7e7}.compact-action{padding:5px 9px}.danger-action{background:#9f271e;border-color:#9f271e}.order-preview-group{margin:12px 0;border:1px solid #e1e4e8;border-radius:4px;overflow:hidden}.order-preview-group>header{display:flex;flex-wrap:wrap;gap:8px 16px;padding:10px;background:#fafafa;color:#444;font-size:12px}.order-preview-group>header strong{color:#222}
+.supplier-preview-panel{width:min(1120px,calc(100vw - 48px));max-height:min(820px,calc(100vh - 48px))}.supplier-preview-panel .simple-import-body{max-height:680px;overflow:auto}.supplier-preview,.product-preview,.order-preview{width:100%;border-top:1px solid #e5e7eb;padding-top:14px}.supplier-preview-summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.supplier-preview-summary span{padding:7px 10px;border:1px solid #e1e4e8;border-radius:3px;color:#555;background:#fafafa;font-size:13px}.supplier-preview-table-wrap{max-width:100%;overflow:auto;border:1px solid #e1e4e8;border-radius:4px}.supplier-preview-table,.product-preview-table,.order-preview-table{width:100%;min-width:760px;border-collapse:collapse}.product-preview-table{min-width:1280px;table-layout:fixed}.supplier-preview-table th,.supplier-preview-table td,.product-preview-table th,.product-preview-table td,.order-preview-table th,.order-preview-table td{height:auto;padding:10px;border-bottom:1px solid #eceff1;text-align:left;vertical-align:top;font-size:12px;white-space:normal}.supplier-preview-status{display:inline-flex;padding:3px 7px;border-radius:999px}.supplier-preview-status.valid{color:#17633c;background:#eaf6ee}.supplier-preview-status.error{color:#a13226;background:#fff0ee}.supplier-preview-status.ignored{color:#666;background:#f1f2f3}.supplier-preview-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;margin:0}.supplier-preview-fields div{min-width:0}.supplier-preview-fields dt{color:#777}.supplier-preview-fields dd{margin:2px 0 0;overflow-wrap:anywhere;color:#222}.supplier-preview-error{margin:8px 0 0;color:#a13226}.supplier-preview-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:12px}.supplier-preview-actions p{margin:0 auto 0 0;color:#a13226;font-size:12px}.compact-cell{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap!important}.code-cell{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.product-danger-note{padding:9px 11px;border-left:3px solid #c73c2f;background:#fff6f4;color:#842d25;font-size:13px}.decision-control{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}.skip-state{margin-left:8px;color:#666}.unresolved-state{margin-left:8px;color:#a13226}.conflict-groups{display:grid;gap:7px;margin-top:10px}.conflict-groups>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;background:#fafafa;border:1px solid #e7e7e7}.compact-action{padding:5px 9px}.danger-action{background:#9f271e;border-color:#9f271e}.order-preview-group{margin:12px 0;border:1px solid #e1e4e8;border-radius:4px;overflow:hidden}.order-preview-group>header{display:flex;flex-wrap:wrap;gap:8px 16px;padding:10px;background:#fafafa;color:#444;font-size:12px}.order-preview-group>header strong{color:#222}.order-partial-result{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-bottom:12px;padding:12px;border:1px solid #e3b45b;border-radius:4px;background:#fff9ec;color:#6f4b0b}.order-partial-result strong{width:100%;color:#7d3d12}.order-partial-result a{margin-left:auto;color:#315d82;text-decoration:underline;text-underline-offset:2px}
 </style>

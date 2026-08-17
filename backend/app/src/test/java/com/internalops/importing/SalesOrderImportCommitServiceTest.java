@@ -256,6 +256,29 @@ class SalesOrderImportCommitServiceTest {
     }
 
     @Test
+    void rejectsOrderBatchWithNoRowsAndKeepsItInPreview() {
+        long batch = batch("empty", List.of());
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> commitService.commit(batch));
+
+        assertEquals("订单导入批次没有有效订单", failure.getMessage());
+        assertEquals("PREVIEW", repository.status(batch));
+        assertEquals(0, count("sales_order"));
+    }
+
+    @Test
+    void rejectsOrderBatchWithNoValidRowsAndKeepsItInPreview() {
+        long batch = repository.create(ImportType.ORDER, "orders.xlsx", "order-ignored", List.of(
+                new ParsedImportRow("订单导入", 2, ImportRowStatus.IGNORED, Map.of(), null)));
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> commitService.commit(batch));
+
+        assertEquals("订单导入批次没有有效订单", failure.getMessage());
+        assertEquals("PREVIEW", repository.status(batch));
+        assertEquals(0, count("sales_order"));
+    }
+
+    @Test
     void rejectsRepeatedCommitOfTheSameOrderBatch() {
         long batch = batch("repeat", List.of(row(2, order("EXT-REPEAT", "DRAFT", 1, 1, "12.50"))));
         commitService.commit(batch);

@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ImportPanel from './ImportPanel.vue'
+import type { ImportBatch } from '../api/imports'
 
 const { previewImport, commitImport, commitProductReplace } = vi.hoisted(() => ({ previewImport: vi.fn(), commitImport: vi.fn(), commitProductReplace: vi.fn() }))
 vi.mock('../api/imports', () => ({ previewImport, commitImport, commitProductReplace }))
@@ -44,7 +45,7 @@ const productErrorBatch = {
   rows: [{ id: 23, sheetName: 'GMT库存产品清单', rowNumber: 10, status: 'ERROR', data: { sourceProductCode: '旧编号-C', productCode: 'NEW-C', model: '用于验证单行截断的超长型号文本', productConfiguration: '黑色', supplierName: '供应商甲', supplierTaxPrice: 10 }, errorMessage: '产品编号规则不存在，请检查产品分类', manualEntry: false }]
 }
 
-const orderBatch = {
+const orderBatch: ImportBatch = {
   ...batch,
   batchId: 18,
   importType: 'ORDER',
@@ -150,6 +151,51 @@ describe('simple Excel import', () => {
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('客户余额不会自动扣减'))
     expect(commitImport).toHaveBeenCalledWith(18)
     expect(commitProductReplace).not.toHaveBeenCalled()
+  })
+
+  it('keeps failed ORDER groups visible and reports a partial commit', async () => {
+    previewImport.mockResolvedValue(structuredClone(orderBatch))
+    const partial = structuredClone(orderBatch)
+    partial.status = 'COMMITTED'
+    partial.validRows = 2
+    partial.errorRows = 1
+    partial.committedRows = 2
+    partial.rows[2].status = 'ERROR'
+    partial.rows[2].errorMessage = '外部订单号已存在，订单提交已取消'
+    partial.result = { createdOrders: 1, failedOrders: 1, committed: 2, errors: 1, orderErrors: [{ externalOrderNo: 'EXT-002', error: '外部订单号已存在，订单提交已取消' }] }
+    commitImport.mockResolvedValue(partial)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(wrapper, 'orders.xlsx')
+
+    await wrapper.get('[data-test="commit-order-import"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="order-partial-result"]').text()).toContain('成功订单 1')
+    expect(wrapper.get('[data-test="order-partial-result"]').text()).toContain('失败订单 1')
+    expect(wrapper.get('[data-test="order-partial-result"]').text()).toContain('成功行 2')
+    expect(wrapper.get('[data-test="order-partial-result"]').text()).toContain('失败行 1')
+    expect(wrapper.get('[data-test="order-preview-group-EXT-002"]').text()).toContain('外部订单号已存在')
+    expect(wrapper.get('[data-test="download-import-errors"]').attributes('href')).toBe('/api/imports/18/errors.xlsx')
+    expect(wrapper.find('[data-test="import-success"]').exists()).toBe(false)
+  })
+
+  it('clears the ORDER preview after every order commits successfully', async () => {
+    previewImport.mockResolvedValue(structuredClone(orderBatch))
+    commitImport.mockResolvedValue({
+      ...structuredClone(orderBatch), status: 'COMMITTED', committedRows: 3,
+      result: { createdOrders: 2, failedOrders: 0, committed: 3, errors: 0, orderErrors: [] }
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(wrapper, 'orders.xlsx')
+
+    await wrapper.get('[data-test="commit-order-import"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="import-success"]').text()).toContain('成功导入 3 条数据')
+    expect(wrapper.find('[data-test="order-partial-result"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test^="order-preview-group-"]').exists()).toBe(false)
   })
 
   it('accepts both legacy and current Excel supplier files', () => {
