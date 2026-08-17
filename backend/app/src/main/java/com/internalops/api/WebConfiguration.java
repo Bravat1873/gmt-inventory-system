@@ -12,7 +12,7 @@ public class WebConfiguration implements WebMvcConfigurer {
                 .allowedOriginPatterns(
                         "http://localhost:*",
                         "http://127.0.0.1:*",
-                        "https://testit.bravat.com")
+                        "https://gmt-erp.bravat.com")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true)
