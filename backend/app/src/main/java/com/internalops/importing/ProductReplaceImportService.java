@@ -20,6 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -183,8 +184,25 @@ public class ProductReplaceImportService {
         List<Long> suppliers = jdbc.query("SELECT id FROM supplier WHERE supplier_name=? AND enabled=TRUE",
                 (rs, index) -> rs.getLong(1), supplierName);
         if (suppliers.size() != 1) throw new IllegalArgumentException("供应商不存在或名称不唯一：" + supplierName);
-        jdbc.update("INSERT INTO sku_supplier_config(sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled) VALUES(?,?,?,?,0,TRUE)",
-                skuId, suppliers.get(0), decimalOrZero(data.get("supplierTaxPrice")), 1);
+        BigDecimal purchasePrice = nullableDecimal(data.get("supplierTaxPrice"));
+        KeyHolder relationKeys = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO sku_supplier_config(
+                        sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled)
+                    VALUES(?,?,?,NULL,NULL,TRUE)
+                    """, new String[]{"id"});
+            statement.setLong(1, skuId);
+            statement.setLong(2, suppliers.get(0));
+            statement.setObject(3, purchasePrice);
+            return statement;
+        }, relationKeys);
+        long relationId = Objects.requireNonNull(relationKeys.getKey()).longValue();
+        jdbc.update("""
+                INSERT INTO sku_supplier_purchase_info(
+                    supplier_product_config_id,purchase_price,moq,lead_time_days,enabled)
+                VALUES(?,?,NULL,NULL,TRUE)
+                """, relationId, purchasePrice);
     }
 
     private String text(Map<String, Object> data, String key) {
@@ -209,10 +227,9 @@ public class ProductReplaceImportService {
         return parsed;
     }
 
-    private BigDecimal decimalOrZero(Object value) {
-        BigDecimal price = value == null || value.toString().isBlank()
-                ? BigDecimal.ZERO
-                : new BigDecimal(value.toString());
+    private BigDecimal nullableDecimal(Object value) {
+        if (value == null || value.toString().isBlank()) return null;
+        BigDecimal price = new BigDecimal(value.toString());
         if (price.signum() < 0) throw new IllegalArgumentException("供应商含税价不能为负数");
         return price;
     }

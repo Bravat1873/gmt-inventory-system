@@ -133,6 +133,24 @@ class ProductReplaceImportServiceTest {
         assertThat(repository.findBatch(batchId).status()).isEqualTo("PREVIEW");
     }
 
+    @Test
+    void importsSupplierRelationWithoutPriceAsNullPurchaseFields() {
+        Map<String, Object> row = validData("A");
+        row.remove("supplierTaxPrice");
+
+        service.replace(repository.findBatchForUpdate(batch(List.of(
+                new ParsedImportRow("GMT库存产品清单", 9, ImportRowStatus.VALID, row, null)))), Map.of());
+
+        assertThat(jdbc.queryForMap("SELECT purchase_price,moq,lead_time_days FROM sku_supplier_config"))
+                .containsEntry("PURCHASE_PRICE", null)
+                .containsEntry("MOQ", null)
+                .containsEntry("LEAD_TIME_DAYS", null);
+        assertThat(jdbc.queryForMap("SELECT purchase_price,moq,lead_time_days FROM sku_supplier_purchase_info"))
+                .containsEntry("PURCHASE_PRICE", null)
+                .containsEntry("MOQ", null)
+                .containsEntry("LEAD_TIME_DAYS", null);
+    }
+
     private long batch(List<ParsedImportRow> rows) {
         return repository.create(ImportType.PRODUCT, "products.xlsx", "hash-" + System.nanoTime(), rows);
     }

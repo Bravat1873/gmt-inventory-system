@@ -79,6 +79,9 @@ public class SupplierManagementService {
         if (products == null || products.isEmpty()) return;
         for (SupplierProductConfigRequest config : products) {
             List<SupplierPurchaseInfoRequest> infos = config.effectivePurchaseInfos();
+            if (infos.isEmpty()) {
+                infos = List.of(new SupplierPurchaseInfoRequest(null, null, null, null, null));
+            }
             SupplierPurchaseInfoRequest latest = infos.get(0);
             int changed = jdbc.update("""
                     UPDATE sku_supplier_config
@@ -145,20 +148,20 @@ public class SupplierManagementService {
                 throw new IllegalArgumentException("供应产品不存在或已停用");
             }
             List<SupplierPurchaseInfoRequest> infos = config.effectivePurchaseInfos();
-            if (infos.isEmpty()) throw new IllegalArgumentException("每个供应产品至少需要一条采购信息");
             Set<Long> infoIds = new HashSet<>();
             for (SupplierPurchaseInfoRequest info : infos) {
-                if (info == null || info.purchasePrice() == null || info.purchasePrice().signum() < 0 || info.purchasePrice().scale() > 4) {
+                if (info == null) throw new IllegalArgumentException("采购信息不能为空");
+                if (info.purchasePrice() != null && (info.purchasePrice().signum() < 0 || info.purchasePrice().scale() > 4)) {
                     throw new IllegalArgumentException("采购单价必须是最多四位小数的非负数");
                 }
-                if (info.moq() == null || info.moq() <= 0) throw new IllegalArgumentException("最小起订量必须大于零");
-                if (info.leadTimeDays() == null || info.leadTimeDays() < 0) throw new IllegalArgumentException("交货天数不能为负数");
+                if (info.moq() != null && info.moq() <= 0) throw new IllegalArgumentException("最小起订量必须大于零");
+                if (info.leadTimeDays() != null && info.leadTimeDays() < 0) throw new IllegalArgumentException("交货天数不能为负数");
                 if (info.id() != null && !infoIds.add(info.id())) throw new IllegalArgumentException("同一采购信息不能重复维护");
             }        }
     }
 
     private BigDecimal price(SupplierPurchaseInfoRequest info) {
-        return info.purchasePrice().setScale(4, RoundingMode.UNNECESSARY);
+        return info.purchasePrice() == null ? null : info.purchasePrice().setScale(4, RoundingMode.UNNECESSARY);
     }
 
     private String trim(String value) {

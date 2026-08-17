@@ -198,7 +198,38 @@ class SupplierManagementApiTest {
                 JOIN sku_supplier_config cfg ON cfg.id=pi.supplier_product_config_id
                 WHERE cfg.sku_id=101 AND pi.enabled=TRUE
                 """, Integer.class)).isEqualTo(3);
-    }    private Cookie login() throws Exception {
+    }
+
+    @Test
+    void savesAConfiguredProductWithoutPurchaseValuesThenAllowsLaterCompletion() throws Exception {
+        Cookie session = login();
+        String created = mvc.perform(post("/api/suppliers").cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"supplierName":"待补填供应商","products":[{"skuId":101}]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.products[0].skuId").value(101))
+                .andExpect(jsonPath("$.data.products[0].purchasePrice").doesNotExist())
+                .andExpect(jsonPath("$.data.products[0].moq").doesNotExist())
+                .andExpect(jsonPath("$.data.products[0].leadTimeDays").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+
+        long id = objectMapper.readTree(created).path("data").path("id").asLong();
+        int version = objectMapper.readTree(created).path("data").path("version").asInt();
+        mvc.perform(put("/api/suppliers/{id}", id).cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"supplierName":"待补填供应商","version":%d,
+                                 "products":[{"skuId":101,"purchasePrice":12.50,"moq":20,"leadTimeDays":7}]}
+                                """.formatted(version)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.products[0].purchasePrice").value(12.5))
+                .andExpect(jsonPath("$.data.products[0].moq").value(20))
+                .andExpect(jsonPath("$.data.products[0].leadTimeDays").value(7));
+    }
+
+    private Cookie login() throws Exception {
         return mvc.perform(post("/api/auth/login").contentType("application/json")
                         .content("{\"username\":\"admin\",\"password\":\"123\"}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getCookie("OPS_SESSION");
