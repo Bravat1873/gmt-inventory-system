@@ -4,7 +4,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkbenchSchemaTest {
@@ -92,4 +100,59 @@ class WorkbenchSchemaTest {
         }) {
             assertTrue(sql.contains(fragment), "采购信息历史迁移缺少 " + fragment);
         }
-    }}
+    }
+
+    @Test
+    void supplierPurchaseFieldsAreNullableInAllWorkflowSchemas() throws Exception {
+        for (String schema : new String[]{
+                "supplier-management-schema.sql",
+                "procurement-workflow-schema.sql",
+                "product-replace-import-schema.sql"
+        }) {
+            try (Connection connection = DriverManager.getConnection(
+                    "jdbc:h2:mem:" + schema.replace('-', '_').replace(".sql", "") + ";MODE=MySQL")) {
+                executeSchema(connection, schema);
+                assertPurchaseFieldsNullable(connection, "SKU_SUPPLIER_CONFIG");
+                assertPurchaseFieldsNullable(connection, "SKU_SUPPLIER_PURCHASE_INFO");
+            }
+        }
+    }
+
+    private void executeSchema(Connection connection, String schema) throws Exception {
+        String sql = new ClassPathResource(schema).getContentAsString(StandardCharsets.UTF_8);
+        try (Statement statement = connection.createStatement()) {
+            for (String command : sql.split(";")) {
+                if (!command.isBlank()) {
+                    statement.execute(command);
+                }
+            }
+        }
+    }
+
+    private void assertPurchaseFieldsNullable(Connection connection, String tableName) throws Exception {
+        Map<String, String[]> metadataByColumn = new HashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT column_name, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_name = ?
+                  AND column_name IN ('PURCHASE_PRICE', 'MOQ', 'LEAD_TIME_DAYS')
+                """)) {
+            statement.setString(1, tableName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    metadataByColumn.put(resultSet.getString("column_name"), new String[]{
+                            resultSet.getString("is_nullable"),
+                            resultSet.getString("column_default")
+                    });
+                }
+            }
+        }
+
+        for (String columnName : new String[]{"PURCHASE_PRICE", "MOQ", "LEAD_TIME_DAYS"}) {
+            assertEquals("YES", metadataByColumn.get(columnName)[0],
+                    tableName + "." + columnName + " 应允许为空");
+        }
+        assertEquals(null, metadataByColumn.get("LEAD_TIME_DAYS")[1],
+                tableName + ".LEAD_TIME_DAYS 不应有默认值");
+    }
+}
