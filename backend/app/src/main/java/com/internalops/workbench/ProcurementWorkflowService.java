@@ -399,6 +399,9 @@ public class ProcurementWorkflowService {
                 WHERE pi.id=? AND pi.enabled=TRUE AND cfg.enabled=TRUE
                   AND sp.enabled=TRUE AND s.enabled=TRUE
                   AND cfg.supplier_id=? AND cfg.sku_id=?
+                  AND pi.purchase_price IS NOT NULL
+                  AND pi.moq IS NOT NULL
+                  AND pi.lead_time_days IS NOT NULL
                 """, request.supplierPurchaseInfoId(), request.supplierId(), request.skuId());
         if (matches.isEmpty()) throw new IllegalArgumentException("所选采购信息不属于该供应商和产品，或已停用");
         Map<String, Object> quote = matches.get(0);

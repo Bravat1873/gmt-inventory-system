@@ -271,6 +271,9 @@ public class WorkbenchQueryService {
                                    lead_time_days AS `leadTimeDays`,updated_at AS `updatedAt`
                             FROM sku_supplier_purchase_info
                             WHERE supplier_product_config_id=? AND enabled=TRUE
+                              AND purchase_price IS NOT NULL
+                              AND moq IS NOT NULL
+                              AND lead_time_days IS NOT NULL
                             ORDER BY updated_at DESC,id DESC
                             """, relationId).stream().map(this::normalizeKeys).toList();
                     result.put("purchaseInfos", infos);
