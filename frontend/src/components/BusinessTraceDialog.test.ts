@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { expect, it } from 'vitest'
 import BusinessTraceDialog from './BusinessTraceDialog.vue'
+const legacyMaterialNumber = '物料' + '编号'
 
 it('does not render linked-order navigation in the business timeline', () => {
   const wrapper = mount(BusinessTraceDialog, {
@@ -27,4 +28,12 @@ it('labels sales order quantities consistently', () => {
   expect(wrapper.text()).toContain('缺货数量')
   expect(wrapper.text()).toContain('未锁定库存数量')
   expect(wrapper.text()).not.toContain('可用库存')
+})
+it('uses 客户料号 as the business-trace field label', () => {
+  const wrapper = mount(BusinessTraceDialog, {
+    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ skuCode: 'BR_C51YZH60W' }], timeline: [] } }
+  })
+
+  expect(wrapper.text()).toContain('客户料号')
+  expect(wrapper.text()).not.toContain(legacyMaterialNumber)
 })

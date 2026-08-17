@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('../api/workbench', () => api)
+const legacyMaterialNumber = '物料' + '编号'
 
 it('renders product suggestions above the scrollable supplier dialog', async () => {
   const wrapper = mount(SupplierDialog, { attachTo: document.body })
@@ -33,6 +34,15 @@ it('renders product suggestions above the scrollable supplier dialog', async () 
   expect(wrapper.text()).toContain('P90-001')
   expect(wrapper.text()).not.toContain('供应商 ID')
   expect(wrapper.text()).not.toContain('产品 ID')
+  wrapper.unmount()
+})
+
+it('uses 客户料号 in its product search prompt', async () => {
+  const wrapper = mount(SupplierDialog)
+  await flushPromises()
+
+  expect((wrapper.get('[data-test="supplier-product-picker"] input').element as HTMLInputElement).placeholder).toContain('客户料号')
+  expect(wrapper.text()).not.toContain(legacyMaterialNumber)
   wrapper.unmount()
 })
 it('submits the complete supplier profile fields without losing text formatting', async () => {

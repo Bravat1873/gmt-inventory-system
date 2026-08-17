@@ -362,9 +362,9 @@ public class MasterDataCommandService {
 
     private long inventorySkuId(EntityCommandRequest r) {
         if (r.skuId() != null) return r.skuId();
-        requireText(r.skuCode(), "请选择物料编号 SKU");
+        requireText(r.skuCode(), "请选择客户料号 SKU");
         List<Long> ids = jdbc.queryForList("SELECT id FROM sku WHERE sku_code=?", Long.class, r.skuCode().trim());
-        if (ids.isEmpty()) throw new IllegalArgumentException("物料编号不存在，请先新增产品");
+        if (ids.isEmpty()) throw new IllegalArgumentException("客户料号不存在，请先新增产品");
         return ids.get(0);
     }
 

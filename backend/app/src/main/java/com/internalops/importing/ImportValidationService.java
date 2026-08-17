@@ -142,15 +142,15 @@ public class ImportValidationService {
             data.remove("_autoSku");
             return valid(sheet, row, data);
         }
-        // 成本表常常不带物料编号。无法唯一反查库存时仍保留这一行，
-        // 提交时以空物料编号保存，避免把有效的成本数据静默丢弃。
+        // 成本表常常不带客户料号。无法唯一反查库存时仍保留这一行，
+        // 提交时以空客户料号保存，避免把有效的成本数据静默丢弃。
         data.put("_autoSku", true);
         return valid(sheet, row, data);
     }
 
     private ParsedImportRow validateInventory(String sheet, int row, Map<String, Object> data) {
         String sku = text(data, "skuCode");
-        if (sku.isBlank()) return error(sheet, row, data, "物料编号 SKU 不能为空");
+        if (sku.isBlank()) return error(sheet, row, data, "客户料号 SKU 不能为空");
         try {
             int actual = integer(data, "actualQuantity");
             int locked = integer(data, "lockedQuantity");
