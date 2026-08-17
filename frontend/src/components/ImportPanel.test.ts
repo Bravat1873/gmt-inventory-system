@@ -74,6 +74,17 @@ describe('simple Excel import', () => {
     commitProductReplace.mockResolvedValue({ ...structuredClone(productConflictBatch), status: 'COMMITTED', committedRows: 1 })
   })
 
+  it('shows the ORDER template download link only for ORDER imports', () => {
+    const order = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    const download = order.get('[data-test="download-order-template"]')
+    expect(download.text()).toBe('下载模板')
+    expect(download.attributes('href')).toBe('/api/imports/templates/ORDER.xlsx')
+    expect(download.attributes('download')).toBeDefined()
+
+    const customer = mount(ImportPanel, { props: { type: 'CUSTOMER', title: '导入客户' } })
+    expect(customer.find('[data-test="download-order-template"]').exists()).toBe(false)
+  })
+
   it('keeps the existing immediate flow for non-supplier imports', async () => {
     const wrapper = mount(ImportPanel, { props: { type: 'CUSTOMER', title: '导入客户' } })
     await selectFile(wrapper, 'customers.xlsx')
