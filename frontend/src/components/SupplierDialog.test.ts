@@ -97,6 +97,34 @@ it('shows full product name on hover and edits multiple purchase infos', async (
   await wrapper.get('[data-test="add-purchase-info-101"]').trigger('click')
   expect(wrapper.findAll('[data-test^="purchase-info-row-"]')).toHaveLength(3)
 })
+
+it('shows purchase-info deletion only when the same product has multiple records', async () => {
+  api.getSupplier.mockResolvedValueOnce({
+    id: 201,
+    supplierName: '供应商',
+    version: 0,
+    products: [{
+      skuId: 101,
+      skuCode: 'P90-001',
+      productName: 'P90 智能锁',
+      purchaseInfos: [
+        { id: 11, purchasePrice: 220, moq: 5, leadTimeDays: 7, updatedAt: '2026-08-14T10:30:00', version: 0 },
+        { id: 10, purchasePrice: 210, moq: 10, leadTimeDays: 9, updatedAt: '2026-08-13T10:30:00', version: 0 }
+      ]
+    }]
+  })
+  const wrapper = mount(SupplierDialog, { props: { row: { id: 201 } } })
+  await flushPromises()
+
+  const deleteActions = wrapper.findAll('[data-test^="remove-purchase-info-"]')
+  expect(deleteActions).toHaveLength(2)
+  expect(deleteActions.every(action => action.text() === '删除采购信息')).toBe(true)
+
+  await deleteActions[1].trigger('click')
+  expect(wrapper.findAll('[data-test^="remove-purchase-info-"]')).toHaveLength(0)
+  expect(wrapper.get('[data-test="remove-supplier-product-101"]').text()).toBe('移除产品')
+})
+
 it('places the remove-product action in the operation column', async () => {
   const wrapper = mount(SupplierDialog)
   await flushPromises()
