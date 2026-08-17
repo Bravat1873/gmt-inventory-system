@@ -28,17 +28,25 @@ public class ImportCommitService {
     private final JdbcTemplate jdbc;
     private final ImportBatchRepository repository;
     private final ProductReplaceImportService productReplaceImportService;
+    private final SalesOrderImportCommitService salesOrderImportCommitService;
 
     public ImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository) {
-        this(jdbc, repository, null);
+        this(jdbc, repository, null, null);
+    }
+
+    public ImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository,
+                               ProductReplaceImportService productReplaceImportService) {
+        this(jdbc, repository, productReplaceImportService, null);
     }
 
     @Autowired
     public ImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository,
-                               ProductReplaceImportService productReplaceImportService) {
+                               ProductReplaceImportService productReplaceImportService,
+                               SalesOrderImportCommitService salesOrderImportCommitService) {
         this.jdbc = jdbc;
         this.repository = repository;
         this.productReplaceImportService = productReplaceImportService;
+        this.salesOrderImportCommitService = salesOrderImportCommitService;
     }
 
     @Transactional
@@ -65,6 +73,10 @@ public class ImportCommitService {
         if (batch.importType() == ImportType.COST
                 && !CurrentUser.required().role().canEditProductPrice()) {
             throw new IllegalArgumentException("仅财务或管理员可修改产品价格");
+        }
+        if (batch.importType() == ImportType.ORDER) {
+            if (salesOrderImportCommitService == null) throw new IllegalStateException("订单分组提交服务未配置");
+            return salesOrderImportCommitService.commit(batch);
         }
         if ("COMMITTED".equals(batch.status())) return batch;
         if (batch.importType() == ImportType.PRODUCT) {
