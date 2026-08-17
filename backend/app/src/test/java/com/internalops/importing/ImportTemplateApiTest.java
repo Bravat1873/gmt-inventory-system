@@ -54,9 +54,12 @@ class ImportTemplateApiTest {
                         .isEqualTo(expectedHeaders.get(column));
             }
 
-            assertThat(orderSheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("DEMO-ORDER-001");
-            assertThat(orderSheet.getRow(2).getCell(0).getStringCellValue()).isEqualTo("DEMO-ORDER-001");
-            assertThat(orderSheet.getRow(3).getCell(0).getStringCellValue()).isEqualTo("DEMO-ORDER-002");
+            assertThat(orderSheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("SAMPLE-ORDER-001");
+            assertThat(orderSheet.getRow(2).getCell(0).getStringCellValue()).isEqualTo("SAMPLE-ORDER-001");
+            assertThat(orderSheet.getRow(3).getCell(0).getStringCellValue()).isEqualTo("SAMPLE-ORDER-002");
+            assertThat(orderSheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("CUS000001");
+            assertThat(orderSheet.getRow(1).getCell(6).getStringCellValue()).isEqualTo("G_T5YZH60WPSC-M");
+            assertThat(orderSheet.getRow(1).getCell(7).getStringCellValue()).isEqualTo("G8T5VMHS02");
             assertThat(orderSheet.getRow(1).getCell(4).getStringCellValue()).isEqualTo("正式订单");
             assertThat(orderSheet.getRow(3).getCell(4).getStringCellValue()).isEqualTo("草稿");
             assertThat(orderSheet.getPaneInformation()).isNotNull();
