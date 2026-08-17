@@ -42,7 +42,7 @@ defineExpose({ reload: load })
 </template>
 
 <style scoped>
-.procurement-configuration-alert{margin:0 20px 16px;border:1px solid #f1c27d;border-radius:8px;background:#fffaf0;color:#3b2f1f;overflow:hidden}
+.procurement-configuration-alert{flex:0 0 auto;margin:0 20px 16px;border:1px solid #f1c27d;border-radius:8px;background:#fffaf0;color:#3b2f1f;overflow:hidden}
 .procurement-alert-summary{min-height:58px;padding:10px 14px;display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:10px}
 .procurement-alert-icon{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#b54708;color:white;font-weight:700}
 .procurement-alert-summary div{display:flex;flex-direction:column;gap:3px;min-width:0}.procurement-alert-summary small{color:#7a5a2b}

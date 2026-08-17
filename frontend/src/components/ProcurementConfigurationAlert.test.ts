@@ -1,5 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import ProcurementConfigurationAlert from './ProcurementConfigurationAlert.vue'
 
 const { loadUnconfiguredProcurementShortages } = vi.hoisted(() => ({
@@ -8,6 +10,15 @@ const { loadUnconfiguredProcurementShortages } = vi.hoisted(() => ({
 vi.mock('../api/workbench', () => ({ loadUnconfiguredProcurementShortages }))
 
 beforeEach(() => loadUnconfiguredProcurementShortages.mockReset())
+
+it('does not let the expanded alert be compressed by the purchase page flex layout', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/components/ProcurementConfigurationAlert.vue'), 'utf8')
+  const rootStyles = source.match(/\.procurement-configuration-alert\s*\{([^}]*)\}/s)?.[1] ?? ''
+  const detailStyles = source.match(/\.procurement-alert-details\s*\{([^}]*)\}/s)?.[1] ?? ''
+
+  expect(rootStyles).toMatch(/flex:\s*0\s+0\s+auto/)
+  expect(detailStyles).toMatch(/overflow:\s*auto/)
+})
 
 it('summarizes and expands unconfigured shortages without changing table rows', async () => {
   loadUnconfiguredProcurementShortages.mockResolvedValue([
