@@ -73,6 +73,7 @@ class ImportTemplateApiTest {
             assertThat(orderSheet.getRow(1).getCell(8).getCellStyle().getDataFormatString()).isEqualTo("#,##0");
             assertThat(orderSheet.getRow(1).getCell(9).getCellStyle().getDataFormatString()).isEqualTo("#,##0.00");
             assertThat(orderSheet.getLastRowNum()).isLessThanOrEqualTo(100);
+            assertThat(new SalesOrderExcelParser().parse(workbook)).hasSize(3);
         }
     }
 }

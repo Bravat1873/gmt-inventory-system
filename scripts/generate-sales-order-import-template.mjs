@@ -71,7 +71,6 @@ const exampleRows = [
 ];
 
 orderSheet.getRange("A1:U4").values = [headers, ...exampleRows];
-orderSheet.getRange("E5").values = [["正式订单"]];
 orderSheet.showGridLines = false;
 
 const orderTable = orderSheet.tables.add("A1:U101", true, "SalesOrderImportTable");
