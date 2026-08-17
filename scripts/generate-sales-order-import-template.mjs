@@ -31,6 +31,16 @@ async function preserveFrozenHeaderInExportedXlsx(xlsxPath) {
   if (!sheetXml.includes(emptyView)) throw new Error("Unexpected sheetView XML; cannot preserve frozen header safely");
 
   zip.file("xl/worksheets/sheet1.xml", sheetXml.replace(emptyView, frozenView));
+  const tableEntry = zip.file("xl/tables/table1.xml");
+  if (!tableEntry) throw new Error("Missing xl/tables/table1.xml");
+  const tableXml = await tableEntry.async("string");
+  zip.file(
+    "xl/tables/table1.xml",
+    tableXml.replace(
+      /<x:tableStyleInfo[^>]*\/>/,
+      '<x:tableStyleInfo showFirstColumn="0" showLastColumn="0" showRowStripes="0" showColumnStripes="0" />',
+    ),
+  );
   const patched = await zip.generateAsync({
     type: "uint8array",
     compression: "DEFLATE",
@@ -74,16 +84,15 @@ orderSheet.getRange("A1:U4").values = [headers, ...exampleRows];
 orderSheet.showGridLines = false;
 
 const orderTable = orderSheet.tables.add("A1:U101", true, "SalesOrderImportTable");
-orderTable.style = "TableStyleMedium2";
-orderTable.showBandedRows = true;
+orderTable.style = "TableStyleLight1";
+orderTable.showBandedRows = false;
 orderTable.showFilterButton = true;
 
-const requiredColumns = new Set([0, 1, 2, 3, 5, 6, 8, 9]);
 for (let column = 0; column < headers.length; column += 1) {
   const headerCell = orderSheet.getCell(0, column);
   headerCell.format = {
-    fill: requiredColumns.has(column) ? "#F2C94C" : "#DCE6F1",
-    font: { bold: true, color: "#1F2937" },
+    fill: "#FFFFFF",
+    font: { bold: true, color: "#000000" },
     horizontalAlignment: "center",
     verticalAlignment: "center",
     wrapText: true,
@@ -123,7 +132,7 @@ orderSheet.getRange("E2:E101").dataValidation = {
 
 const guideRows = [
   ["销售订单批量导入模板 · 填写说明", null, null, null],
-  ["颜色图例", "必填列", "订单导入页黄色表头为必填；蓝色表头为可选。", "请保留表头文字和顺序"],
+  ["填写提示", "必填字段", "必填或可选请以本页字段说明为准。", "请保留表头文字和顺序"],
   ["提交方式", "预览后提交", "上传文件只会生成预览；核对订单分组与错误后，再确认提交。", "预览不会自动写入订单"],
   ["分组规则", "同单分组一致性", "同一外部订单号的客户编码、订单日期、订单类型、销售员、订单状态、联系人、收货信息、发货方式和备注必须一致。", "DEMO-ORDER-001 的两行应填写相同订单级字段"],
   ["唯一匹配", "客户编码", "客户编码必须唯一匹配一个已启用客户。", "DEMO-CUSTOMER-001 仅为占位示例"],
@@ -158,21 +167,21 @@ guideSheet.getRange("A1:D1").merge();
 guideSheet.showGridLines = false;
 guideSheet.freezePanes.freezeRows(1);
 guideSheet.getRange("A1:D1").format = {
-  fill: "#1F4E78",
-  font: { bold: true, color: "#FFFFFF", size: 16 },
+  fill: "#FFFFFF",
+  font: { bold: true, color: "#000000", size: 16 },
   horizontalAlignment: "left",
   verticalAlignment: "center",
 };
 guideSheet.getRange("A1:D1").format.rowHeight = 36;
 guideSheet.getRange("A2:D12").format = {
-  fill: "#F7FAFC",
+  fill: "#FFFFFF",
   wrapText: true,
   verticalAlignment: "top",
   borders: { preset: "all", style: "thin", color: "#D9E1E8" },
 };
 guideSheet.getRange("A13:D13").format = {
-  fill: "#DCE6F1",
-  font: { bold: true, color: "#1F2937" },
+  fill: "#FFFFFF",
+  font: { bold: true, color: "#000000" },
   horizontalAlignment: "center",
   verticalAlignment: "center",
   borders: { preset: "all", style: "thin", color: "#AAB7C4" },
@@ -182,11 +191,6 @@ guideSheet.getRange(`A14:D${guideRows.length}`).format = {
   verticalAlignment: "top",
   borders: { preset: "all", style: "thin", color: "#D9E1E8" },
 };
-guideSheet.getRange("B2:B2").format.fill = "#F2C94C";
-guideSheet.getRange(`B14:B${guideRows.length}`).conditionalFormats.addCustom('=B14="必填"', {
-  fill: "#FFF4CC",
-  font: { bold: true, color: "#7A4E00" },
-});
 guideSheet.getRange(`A2:D${guideRows.length}`).format.autofitRows();
 guideSheet.getRange(`A2:D${guideRows.length}`).format.rowHeight = 36;
 guideSheet.getRange("A:A").format.columnWidth = 24;
