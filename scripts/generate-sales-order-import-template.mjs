@@ -7,7 +7,7 @@ import JSZip from "jszip";
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const outputDir = path.join(projectRoot, "outputs", "order-import-template");
 const previewDir = path.join(outputDir, "previews");
-const outputPath = path.join(outputDir, "销售订单批量导入模板.xlsx");
+const outputPath = path.join(outputDir, "销售订单批量导入模板-库存表风格.xlsx");
 const classpathPath = path.join(
   projectRoot,
   "backend",
@@ -92,17 +92,19 @@ for (let column = 0; column < headers.length; column += 1) {
   const headerCell = orderSheet.getCell(0, column);
   headerCell.format = {
     fill: "#FFFFFF",
-    font: { bold: true, color: "#000000" },
+    font: { bold: false, color: "#000000", size: 11 },
     horizontalAlignment: "center",
     verticalAlignment: "center",
     wrapText: true,
-    borders: { preset: "all", style: "thin", color: "#AAB7C4" },
+    borders: { preset: "all", style: "thin", color: "#000000" },
   };
 }
 
-orderSheet.getRange("A2:U4").format = {
+orderSheet.getRange("A2:U101").format = {
+  horizontalAlignment: "center",
   verticalAlignment: "center",
-  borders: { preset: "all", style: "thin", color: "#D9E1E8" },
+  wrapText: true,
+  borders: { preset: "all", style: "thin", color: "#000000" },
 };
 orderSheet.getRange("A2:U4").format.rowHeight = 28;
 orderSheet.getRange("A2:B101").format.numberFormat = "@";
@@ -115,8 +117,7 @@ orderSheet.getRange("C2:C101").format.numberFormat = "yyyy-mm-dd";
 orderSheet.getRange("I2:I101").format.numberFormat = "#,##0";
 orderSheet.getRange("J2:J101").format.numberFormat = "#,##0.00";
 orderSheet.getRange("I2:J101").format.horizontalAlignment = "right";
-orderSheet.getRange("Q2:U101").format.wrapText = true;
-orderSheet.getRange("A1:U1").format.rowHeight = 34;
+orderSheet.getRange("A1:U1").format.rowHeight = 30;
 
 const widths = [18, 18, 13, 14, 14, 14, 21, 20, 12, 14, 16, 16, 16, 16, 16, 16, 30, 16, 16, 16, 36];
 for (let column = 0; column < widths.length; column += 1) {
@@ -168,28 +169,31 @@ guideSheet.showGridLines = false;
 guideSheet.freezePanes.freezeRows(1);
 guideSheet.getRange("A1:D1").format = {
   fill: "#FFFFFF",
-  font: { bold: true, color: "#000000", size: 16 },
-  horizontalAlignment: "left",
+  font: { bold: false, color: "#000000", size: 11 },
+  horizontalAlignment: "center",
   verticalAlignment: "center",
+  borders: { preset: "all", style: "thin", color: "#000000" },
 };
-guideSheet.getRange("A1:D1").format.rowHeight = 36;
+guideSheet.getRange("A1:D1").format.rowHeight = 30;
 guideSheet.getRange("A2:D12").format = {
   fill: "#FFFFFF",
   wrapText: true,
-  verticalAlignment: "top",
-  borders: { preset: "all", style: "thin", color: "#D9E1E8" },
+  horizontalAlignment: "center",
+  verticalAlignment: "center",
+  borders: { preset: "all", style: "thin", color: "#000000" },
 };
 guideSheet.getRange("A13:D13").format = {
   fill: "#FFFFFF",
-  font: { bold: true, color: "#000000" },
+  font: { bold: false, color: "#000000", size: 11 },
   horizontalAlignment: "center",
   verticalAlignment: "center",
-  borders: { preset: "all", style: "thin", color: "#AAB7C4" },
+  borders: { preset: "all", style: "thin", color: "#000000" },
 };
 guideSheet.getRange(`A14:D${guideRows.length}`).format = {
   wrapText: true,
-  verticalAlignment: "top",
-  borders: { preset: "all", style: "thin", color: "#D9E1E8" },
+  horizontalAlignment: "center",
+  verticalAlignment: "center",
+  borders: { preset: "all", style: "thin", color: "#000000" },
 };
 guideSheet.getRange(`A2:D${guideRows.length}`).format.autofitRows();
 guideSheet.getRange(`A2:D${guideRows.length}`).format.rowHeight = 36;
