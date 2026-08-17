@@ -47,6 +47,42 @@ class ExcelImportParserTest {
     }
 
     @Test
+    void parsesCostWorkbookWithCustomerMaterialNumberHeader() throws Exception {
+        try (var workbook = new XSSFWorkbook()) {
+            var sheet = workbook.createSheet("成本明细");
+            var header = sheet.createRow(0);
+            header.createCell(0).setCellValue("客户料号");
+            header.createCell(1).setCellValue("成本单价（含税）");
+            var row = sheet.createRow(1);
+            row.createCell(0).setCellValue("CUSTOMER-SKU-1");
+            row.createCell(1).setCellValue(88);
+
+            ParsedImportRow parsed = parser.parse(ImportType.COST, input(workbook)).get(0);
+
+            assertEquals("CUSTOMER-SKU-1", parsed.data().get("skuCode"));
+            assertEquals(ImportRowStatus.VALID, parsed.status());
+        }
+    }
+
+    @Test
+    void continuesToParseCostWorkbookWithLegacyMaterialNumberHeader() throws Exception {
+        try (var workbook = new XSSFWorkbook()) {
+            var sheet = workbook.createSheet("历史成本明细");
+            var header = sheet.createRow(0);
+            header.createCell(0).setCellValue("物料编号");
+            header.createCell(1).setCellValue("成本单价（含税）");
+            var row = sheet.createRow(1);
+            row.createCell(0).setCellValue("LEGACY-SKU-1");
+            row.createCell(1).setCellValue(99);
+
+            ParsedImportRow parsed = parser.parse(ImportType.COST, input(workbook)).get(0);
+
+            assertEquals("LEGACY-SKU-1", parsed.data().get("skuCode"));
+            assertEquals(ImportRowStatus.VALID, parsed.status());
+        }
+    }
+
+    @Test
     void findsCostHeaderInAnySheetAndDoesNotRequireSerialNumber() throws Exception {
         try (var workbook = new XSSFWorkbook()) {
             var sheet = workbook.createSheet("成本明细");
@@ -116,6 +152,51 @@ class ExcelImportParserTest {
             assertEquals("U:0622出库", movement.get("sourceColumn"));
             assertEquals(ImportRowStatus.IGNORED, rows.get(1).status());
             assertEquals(ImportRowStatus.ERROR, rows.get(2).status());
+            assertEquals("实际库存行缺少客户料号 SKU；请根据来源行标识补齐 SKU 后再导入", rows.get(2).errorMessage());
+        }
+    }
+
+    @Test
+    void parsesInventoryWorkbookWithCustomerMaterialNumberSkuHeaders() throws Exception {
+        for (String skuHeader : List.of("客户料号 SKU", "客户料号SKU")) {
+            try (var workbook = new XSSFWorkbook()) {
+                var sheet = workbook.createSheet("库存");
+                var header = sheet.createRow(0);
+                header.createCell(0).setCellValue(skuHeader);
+                header.createCell(1).setCellValue("实际库存数量");
+                header.createCell(2).setCellValue("已锁定数量");
+                header.createCell(7).setCellValue("在途数量");
+                var row = sheet.createRow(1);
+                row.createCell(0).setCellValue("CUSTOMER-SKU-1");
+                row.createCell(1).setCellValue(3);
+                row.createCell(7).setCellValue(0);
+
+                ParsedImportRow parsed = parser.parse(ImportType.INVENTORY, input(workbook)).get(0);
+
+                assertEquals("CUSTOMER-SKU-1", parsed.data().get("skuCode"), skuHeader);
+                assertEquals(ImportRowStatus.VALID, parsed.status(), skuHeader);
+            }
+        }
+    }
+
+    @Test
+    void continuesToParseInventoryWorkbookWithLegacyMaterialNumberSkuHeader() throws Exception {
+        try (var workbook = new XSSFWorkbook()) {
+            var sheet = workbook.createSheet("历史库存");
+            var header = sheet.createRow(0);
+            header.createCell(0).setCellValue("物料编号 SKU");
+            header.createCell(1).setCellValue("实际库存数量");
+            header.createCell(2).setCellValue("已锁定数量");
+            header.createCell(7).setCellValue("在途数量");
+            var row = sheet.createRow(1);
+            row.createCell(0).setCellValue("LEGACY-SKU-1");
+            row.createCell(1).setCellValue(3);
+            row.createCell(7).setCellValue(0);
+
+            ParsedImportRow parsed = parser.parse(ImportType.INVENTORY, input(workbook)).get(0);
+
+            assertEquals("LEGACY-SKU-1", parsed.data().get("skuCode"));
+            assertEquals(ImportRowStatus.VALID, parsed.status());
         }
     }
 

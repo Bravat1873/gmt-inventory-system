@@ -5,7 +5,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -47,7 +50,10 @@ public class ImportPreviewService {
         ImportBatchView batch = editableBatch(batchId);
         ParsedImportRow row = validation.withConflict(batch.importType(),
                 validation.validate(batch.importType(), "手工录入", repository.nextManualRow(batchId), request.data()));
-        return repository.insertManual(batchId, row);
+        ImportRowView inserted = repository.insertManual(batchId, row);
+        return batch.importType() == ImportType.ORDER
+                ? revalidateOrderBatch(batchId, inserted.id())
+                : inserted;
     }
 
     @Transactional
@@ -59,12 +65,35 @@ public class ImportPreviewService {
                 .orElseThrow(() -> new IllegalArgumentException("导入行不存在"));
         ParsedImportRow row = validation.withConflict(batch.importType(),
                 validation.validate(batch.importType(), original.sheetName(), original.rowNumber(), request.data()));
-        return repository.updateRow(batchId, rowId, row);
+        ImportRowView updated = repository.updateRow(batchId, rowId, row);
+        return batch.importType() == ImportType.ORDER
+                ? revalidateOrderBatch(batchId, updated.id())
+                : updated;
+    }
+
+    private ImportRowView revalidateOrderBatch(long batchId, long requestedRowId) {
+        List<ImportRowView> existing = repository.findRows(batchId);
+        List<ParsedImportRow> candidates = new ArrayList<>(existing.size());
+        for (ImportRowView row : existing) {
+            Map<String, Object> data = new LinkedHashMap<>(row.data());
+            data.remove("_customerId");
+            data.remove("_skuId");
+            data.remove("_normalizedStatus");
+            candidates.add(new ParsedImportRow(row.sheetName(), row.rowNumber(),
+                    row.status() == ImportRowStatus.IGNORED ? ImportRowStatus.IGNORED : ImportRowStatus.VALID,
+                    data, null));
+        }
+        List<ParsedImportRow> validated = validation.validateAll(ImportType.ORDER, candidates);
+        for (int index = 0; index < existing.size(); index++) {
+            repository.updateRow(batchId, existing.get(index).id(), validated.get(index));
+        }
+        return repository.findRow(batchId, requestedRowId);
     }
 
     private ImportBatchView editableBatch(long batchId) {
         ImportBatchView batch = repository.findBatchForUpdate(batchId);
         if ("COMMITTED".equals(batch.status())) throw new IllegalArgumentException("已提交批次不能修改");
+        if (!"PREVIEW".equals(batch.status())) throw new IllegalArgumentException("仅预览中的批次可以修改");
         return batch;
     }
 }

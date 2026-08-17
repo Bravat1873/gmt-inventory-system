@@ -41,6 +41,39 @@ const productConflictGroups = computed(() => {
   return [...groups.entries()].map(([code, rows]) => ({ code, rows }))
 })
 
+const orderGroups = computed(() => {
+  const groups = new Map<string, ImportRow[]>()
+  for (const row of previewBatch.value?.rows ?? []) {
+    const orderNo = String(row.data.externalOrderNo ?? '未填写外部订单号')
+    groups.set(orderNo, [...(groups.get(orderNo) ?? []), row])
+  }
+  return [...groups.entries()].map(([externalOrderNo, rows]) => ({ externalOrderNo, rows, header: rows[0] }))
+})
+
+interface OrderCommitResult {
+  createdOrders: number
+  failedOrders: number
+  committed: number
+  errors: number
+  orderErrors: Array<{ externalOrderNo: string; error: string }>
+}
+
+const orderCommitResult = computed<OrderCommitResult | null>(() => {
+  const result = previewBatch.value?.result
+  if (!result || typeof result !== 'object') return null
+  const detail = result as Partial<OrderCommitResult>
+  return {
+    createdOrders: Number(detail.createdOrders ?? 0),
+    failedOrders: Number(detail.failedOrders ?? 0),
+    committed: Number(detail.committed ?? 0),
+    errors: Number(detail.errors ?? 0),
+    orderErrors: Array.isArray(detail.orderErrors) ? detail.orderErrors : []
+  }
+})
+
+const orderCommitHasSuccess = computed(() => Boolean(orderCommitResult.value
+  && (orderCommitResult.value.createdOrders > 0 || orderCommitResult.value.committed > 0)))
+
 const productCanCommit = computed(() => {
   const batch = previewBatch.value
   if (!batch || batch.importType !== 'PRODUCT' || batch.errorRows > 0) return false
@@ -52,6 +85,17 @@ const productCanCommit = computed(() => {
   const nonConflicts = batch.rows.filter(row => row.status === 'VALID' && !row.data._conflictGroup).length
   const keptConflicts = Object.values(productActions.value).filter(action => action === 'KEEP').length
   return nonConflicts + keptConflicts > 0
+})
+
+const orderCanCommit = computed(() => {
+  const batch = previewBatch.value
+  return Boolean(batch
+    && batch.importType === 'ORDER'
+    && batch.status === 'PREVIEW'
+    && batch.errorRows === 0
+    && batch.validRows > 0
+    && orderGroups.value.length > 0
+    && !batch.rows.some(row => row.status === 'ERROR'))
 })
 
 function displayedFields(row: ImportRow) {
@@ -92,7 +136,7 @@ async function onFileChange(event: Event) {
   errorMessage.value = ''
   try {
     const batch = await previewImport(props.type, file)
-    if (props.type === 'SUPPLIER' || props.type === 'PRODUCT') {
+    if (props.type === 'SUPPLIER' || props.type === 'PRODUCT' || props.type === 'ORDER') {
       previewBatch.value = batch
       return
     }
@@ -123,11 +167,39 @@ async function confirmProductReplace() {
   await commitPreview(() => commitProductReplace(batch.batchId, productActions.value))
 }
 
+function orderStatusLabel(row: ImportRow) {
+  const normalized = String(row.data._normalizedStatus ?? '')
+  if (normalized === 'DRAFT') return '草稿'
+  if (normalized === 'PENDING_CUSTOMER_PAYMENT') return '正式订单'
+  return value(row, 'orderStatus')
+}
+
+async function confirmOrderImport() {
+  const batch = previewBatch.value
+  if (!batch || busy.value || !orderCanCommit.value) return
+  const warning = '确认提交订单导入？正式订单将按现有逻辑锁定库存，草稿不锁定，客户余额不会自动扣减。'
+  if (!window.confirm(warning)) return
+  await commitPreview(() => commitImport(batch.batchId))
+}
+
 async function commitPreview(action: () => Promise<ImportBatch>) {
   busy.value = true
   errorMessage.value = ''
   try {
     const committed = await action()
+    const detail = committed.importType === 'ORDER' && committed.result && typeof committed.result === 'object'
+      ? committed.result as Partial<OrderCommitResult>
+      : null
+    const orderHasFailures = committed.importType === 'ORDER'
+      && (committed.errorRows > 0 || Number(detail?.failedOrders ?? 0) > 0
+        || (Array.isArray(detail?.orderErrors) && detail.orderErrors.length > 0))
+    if (orderHasFailures) {
+      previewBatch.value = committed
+      importedRows.value = null
+      const hasSuccess = Number(detail?.createdOrders ?? 0) > 0 || Number(detail?.committed ?? 0) > 0
+      emit('message', `${hasSuccess ? '订单部分导入成功' : '订单导入失败'}：成功 ${Number(detail?.createdOrders ?? 0)} 单，失败 ${Number(detail?.failedOrders ?? 0)} 单`, 'error')
+      return
+    }
     importedRows.value = committed.committedRows
     previewBatch.value = null
     emit('message', `成功导入 ${committed.committedRows} 条数据`, 'success')
@@ -147,6 +219,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
         <h2>{{ title }}</h2>
         <p v-if="type === 'PRODUCT'">选择文件后先核对两张产品表、计算编号与冲突，再确认全量替换。</p>
         <p v-else-if="type === 'SUPPLIER'">选择文件后先核对预览，再确认写入供应商资料。</p>
+        <p v-else-if="type === 'ORDER'">选择文件后先按外部订单号核对分组预览，再确认提交订单。</p>
         <p v-else>选择 Excel 文件后，系统会自动解析并导入当前页面的数据。</p>
       </div>
       <button data-test="close-panel" type="button" class="dialog-close" @click="emit('close')">关闭</button>
@@ -166,6 +239,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
         <span>{{ busy ? '正在处理…' : '选择 Excel 文件' }}</span>
         <input type="file" :accept="type === 'SUPPLIER' ? '.xls,.xlsx' : '.xlsx'" :disabled="busy" @change="onFileChange">
       </label>
+      <a v-if="type === 'ORDER'" data-test="download-order-template" class="order-template-download" href="/api/imports/templates/ORDER.xlsx" download>下载模板</a>
       <OverflowText v-if="selectedFilename" class="filename" :value="selectedFilename" />
       <p v-else class="simple-import-hint">{{ type === 'SUPPLIER' ? '支持 .xls 和 .xlsx 文件' : '支持 .xlsx 文件' }}</p>
       <p v-if="busy" class="simple-import-status">{{ previewBatch ? '正在提交数据，请稍候…' : '正在解析文件，请稍候…' }}</p>
@@ -189,6 +263,23 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
         <div class="supplier-preview-actions"><p v-if="previewBatch.errorRows > 0">存在错误行，不能执行全量替换。</p><p v-else-if="!productCanCommit">请完成所有冲突组的保留或跳过决定。</p><button data-test="commit-product-replace" type="button" class="primary-action danger-action" :disabled="busy || !productCanCommit" @click="confirmProductReplace">确认全量替换</button></div>
       </section>
 
+      <section v-else-if="previewBatch && importedRows === null && type === 'ORDER'" class="order-preview" aria-label="订单导入预览">
+        <div v-if="orderCommitResult && (orderCommitResult.failedOrders > 0 || orderCommitResult.errors > 0 || orderCommitResult.orderErrors.length > 0)" data-test="order-partial-result" class="order-partial-result" role="status">
+          <strong>{{ orderCommitHasSuccess ? '订单部分导入成功' : '订单导入失败' }}</strong>
+          <span>成功订单 {{ orderCommitResult.createdOrders }}</span>
+          <span>失败订单 {{ orderCommitResult.failedOrders }}</span>
+          <span>成功行 {{ orderCommitResult.committed }}</span>
+          <span>失败行 {{ orderCommitResult.errors }}</span>
+          <a data-test="download-import-errors" :href="`/api/imports/${previewBatch.batchId}/errors.xlsx`" download>下载错误清单</a>
+        </div>
+        <div class="supplier-preview-summary"><span>订单数 <strong data-test="order-preview-count">{{ orderGroups.length }}</strong></span><span>总行数 <strong data-test="preview-total-count">{{ previewBatch.totalRows }}</strong></span><span>有效行 <strong data-test="preview-valid-count">{{ previewBatch.validRows }}</strong></span><span>错误行 <strong data-test="preview-error-count">{{ previewBatch.errorRows }}</strong></span></div>
+        <section v-for="group in orderGroups" :key="group.externalOrderNo" class="order-preview-group" :data-test="`order-preview-group-${group.externalOrderNo}`">
+          <header><strong>外部订单号：{{ group.externalOrderNo }}</strong><span>客户编码：{{ value(group.header, 'customerCode') }}</span><span>订单日期：{{ value(group.header, 'orderDate') }}</span><span>订单类型：{{ value(group.header, 'orderType') }}</span><span>状态：{{ orderStatusLabel(group.header) }}</span></header>
+          <div class="supplier-preview-table-wrap"><table class="order-preview-table"><thead><tr><th>产品编号</th><th>客户料号</th><th>数量</th><th>含税单价</th><th>状态</th><th>错误</th></tr></thead><tbody><tr v-for="row in group.rows" :key="row.id" data-test="order-preview-row"><td>{{ value(row, 'productCode') }}</td><td>{{ value(row, 'customerMaterialCode') }}</td><td>{{ value(row, 'quantity') }}</td><td>{{ value(row, 'salePrice') }}</td><td>{{ row.status === 'VALID' ? '有效' : row.status === 'ERROR' ? '错误' : '忽略' }}</td><td>{{ row.errorMessage ?? '—' }}</td></tr></tbody></table></div>
+        </section>
+        <div class="supplier-preview-actions"><p v-if="!orderCanCommit">{{ previewBatch.errorRows > 0 ? '存在错误行，不能提交订单。' : '没有有效订单，不能提交。' }}</p><button data-test="commit-order-import" type="button" class="primary-action" :disabled="busy || !orderCanCommit" @click="confirmOrderImport">确认导入订单</button></div>
+      </section>
+
       <p v-else-if="importedRows !== null" data-test="import-success" class="simple-import-success">成功导入 {{ importedRows }} 条数据。关闭窗口后，列表会自动刷新。</p>
       <p v-else-if="errorMessage" class="simple-import-error">导入失败：{{ errorMessage }}</p>
     </div>
@@ -197,5 +288,6 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
 </template>
 
 <style scoped>
-.supplier-preview-panel{width:min(1120px,calc(100vw - 48px));max-height:min(820px,calc(100vh - 48px))}.supplier-preview-panel .simple-import-body{max-height:680px;overflow:auto}.supplier-preview,.product-preview{width:100%;border-top:1px solid #e5e7eb;padding-top:14px}.supplier-preview-summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.supplier-preview-summary span{padding:7px 10px;border:1px solid #e1e4e8;border-radius:3px;color:#555;background:#fafafa;font-size:13px}.supplier-preview-table-wrap{max-width:100%;overflow:auto;border:1px solid #e1e4e8;border-radius:4px}.supplier-preview-table,.product-preview-table{width:100%;min-width:760px;border-collapse:collapse}.product-preview-table{min-width:1280px;table-layout:fixed}.supplier-preview-table th,.supplier-preview-table td,.product-preview-table th,.product-preview-table td{height:auto;padding:10px;border-bottom:1px solid #eceff1;text-align:left;vertical-align:top;font-size:12px;white-space:normal}.supplier-preview-status{display:inline-flex;padding:3px 7px;border-radius:999px}.supplier-preview-status.valid{color:#17633c;background:#eaf6ee}.supplier-preview-status.error{color:#a13226;background:#fff0ee}.supplier-preview-status.ignored{color:#666;background:#f1f2f3}.supplier-preview-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;margin:0}.supplier-preview-fields div{min-width:0}.supplier-preview-fields dt{color:#777}.supplier-preview-fields dd{margin:2px 0 0;overflow-wrap:anywhere;color:#222}.supplier-preview-error{margin:8px 0 0;color:#a13226}.supplier-preview-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:12px}.supplier-preview-actions p{margin:0 auto 0 0;color:#a13226;font-size:12px}.compact-cell{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap!important}.code-cell{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.product-danger-note{padding:9px 11px;border-left:3px solid #c73c2f;background:#fff6f4;color:#842d25;font-size:13px}.decision-control{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}.skip-state{margin-left:8px;color:#666}.unresolved-state{margin-left:8px;color:#a13226}.conflict-groups{display:grid;gap:7px;margin-top:10px}.conflict-groups>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;background:#fafafa;border:1px solid #e7e7e7}.compact-action{padding:5px 9px}.danger-action{background:#9f271e;border-color:#9f271e}
+.order-template-download{display:inline-flex;align-self:flex-start;color:#315d82;text-decoration:underline;text-underline-offset:2px}
+.supplier-preview-panel{width:min(1120px,calc(100vw - 48px));max-height:min(820px,calc(100vh - 48px))}.supplier-preview-panel .simple-import-body{max-height:680px;overflow:auto}.supplier-preview,.product-preview,.order-preview{width:100%;border-top:1px solid #e5e7eb;padding-top:14px}.supplier-preview-summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.supplier-preview-summary span{padding:7px 10px;border:1px solid #e1e4e8;border-radius:3px;color:#555;background:#fafafa;font-size:13px}.supplier-preview-table-wrap{max-width:100%;overflow:auto;border:1px solid #e1e4e8;border-radius:4px}.supplier-preview-table,.product-preview-table,.order-preview-table{width:100%;min-width:760px;border-collapse:collapse}.product-preview-table{min-width:1280px;table-layout:fixed}.supplier-preview-table th,.supplier-preview-table td,.product-preview-table th,.product-preview-table td,.order-preview-table th,.order-preview-table td{height:auto;padding:10px;border-bottom:1px solid #eceff1;text-align:left;vertical-align:top;font-size:12px;white-space:normal}.supplier-preview-status{display:inline-flex;padding:3px 7px;border-radius:999px}.supplier-preview-status.valid{color:#17633c;background:#eaf6ee}.supplier-preview-status.error{color:#a13226;background:#fff0ee}.supplier-preview-status.ignored{color:#666;background:#f1f2f3}.supplier-preview-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;margin:0}.supplier-preview-fields div{min-width:0}.supplier-preview-fields dt{color:#777}.supplier-preview-fields dd{margin:2px 0 0;overflow-wrap:anywhere;color:#222}.supplier-preview-error{margin:8px 0 0;color:#a13226}.supplier-preview-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:12px}.supplier-preview-actions p{margin:0 auto 0 0;color:#a13226;font-size:12px}.compact-cell{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap!important}.code-cell{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.product-danger-note{padding:9px 11px;border-left:3px solid #c73c2f;background:#fff6f4;color:#842d25;font-size:13px}.decision-control{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}.skip-state{margin-left:8px;color:#666}.unresolved-state{margin-left:8px;color:#a13226}.conflict-groups{display:grid;gap:7px;margin-top:10px}.conflict-groups>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;background:#fafafa;border:1px solid #e7e7e7}.compact-action{padding:5px 9px}.danger-action{background:#9f271e;border-color:#9f271e}.order-preview-group{margin:12px 0;border:1px solid #e1e4e8;border-radius:4px;overflow:hidden}.order-preview-group>header{display:flex;flex-wrap:wrap;gap:8px 16px;padding:10px;background:#fafafa;color:#444;font-size:12px}.order-preview-group>header strong{color:#222}.order-partial-result{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-bottom:12px;padding:12px;border:1px solid #e3b45b;border-radius:4px;background:#fff9ec;color:#6f4b0b}.order-partial-result strong{width:100%;color:#7d3d12}.order-partial-result a{margin-left:auto;color:#315d82;text-decoration:underline;text-underline-offset:2px}
 </style>

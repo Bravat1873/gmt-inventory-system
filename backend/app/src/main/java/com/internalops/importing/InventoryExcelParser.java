@@ -15,6 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class InventoryExcelParser {
+    private static final List<String> SKU_HEADERS = List.of("客户料号SKU", "物料编号SKU");
     private static final Pattern MMDD = Pattern.compile("^(\\d{2})(\\d{2})$");
     private static final Pattern YEAR = Pattern.compile(".*?(20\\d{2}).*");
     private static final List<String> LOCKED_SOURCES = List.of("铭爱钧乔", "博乐龙米", "老挝", "贝朗", "马来西亚");
@@ -41,7 +42,7 @@ final class InventoryExcelParser {
                             "分组、标题或无库存汇总行"));
                 } else if (hasActualInventory(data)) {
                     result.add(new ParsedImportRow(sheet.getSheetName(), rowIndex + 1, ImportRowStatus.ERROR, data,
-                            "实际库存行缺少物料编号 SKU；请根据来源行标识补齐 SKU 后再导入"));
+                            "实际库存行缺少客户料号 SKU；请根据来源行标识补齐 SKU 后再导入"));
                 } else {
                     result.add(new ParsedImportRow(sheet.getSheetName(), rowIndex + 1, ImportRowStatus.IGNORED, data,
                             "分组、标题或无库存汇总行"));
@@ -165,20 +166,22 @@ final class InventoryExcelParser {
             Sheet candidate = workbook.getSheetAt(index);
             try { findHeaderRow(candidate); return candidate; } catch (IllegalArgumentException ignored) { }
         }
-        throw new IllegalArgumentException("缺少包含物料编号 SKU 的库存工作表");
+        throw new IllegalArgumentException("缺少包含客户料号 SKU 的库存工作表");
     }
 
     private int findHeaderRow(Sheet sheet) {
         for (int rowIndex = 0; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
             Row row = sheet.getRow(rowIndex);
-            if (row != null && columnOf(row, "物料编号SKU") >= 0) return rowIndex;
+            if (row != null && skuColumn(row) >= 0) return rowIndex;
         }
-        throw new IllegalArgumentException("缺少表头：物料编号 SKU");
+        throw new IllegalArgumentException("缺少表头：客户料号 SKU");
     }
 
     private ColumnMap resolveColumns(Sheet sheet, int headerRowIndex) {
         Row header = sheet.getRow(headerRowIndex);
-        return new ColumnMap(requiredColumn(header, "物料编号SKU"), optionalColumn(header, "型号"),
+        int skuColumn = skuColumn(header);
+        if (skuColumn < 0) throw new IllegalArgumentException("缺少表头：客户料号 SKU");
+        return new ColumnMap(skuColumn, optionalColumn(header, "型号"),
                 optionalColumn(header, "产品配置"), optionalColumn(header, "版本"), optionalColumn(header, "颜色"),
                 optionalColumn(header, "锁体"), optionalColumn(header, "单位"), requiredColumn(header, "实际库存数量"),
                 optionalColumn(header, "可用库存数量"), List.of(), requiredColumn(header, "在途数量"), -1, -1);
@@ -199,6 +202,11 @@ final class InventoryExcelParser {
         return new ColumnMap(base.skuCode(), base.model(), base.configuration(), base.version(), base.color(), base.lockBody(),
                 base.unit(), base.actualQuantity(), base.sourceAvailableQuantity(), lockedColumns, base.inTransitQuantity(),
                 supplierColumn, remarkColumn);
+    }
+
+    private int skuColumn(Row header) {
+        return SKU_HEADERS.stream().mapToInt(label -> columnOf(header, label)).filter(column -> column >= 0)
+                .findFirst().orElse(-1);
     }
 
     private Integer findWorkbookYear(Sheet sheet, HeaderRange headers) {

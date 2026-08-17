@@ -1,12 +1,14 @@
 package com.internalops.importing;
 
 import com.internalops.auth.CurrentUser;
+import com.internalops.auth.UserRole;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
@@ -28,39 +30,70 @@ public class ImportCommitService {
     private final JdbcTemplate jdbc;
     private final ImportBatchRepository repository;
     private final ProductReplaceImportService productReplaceImportService;
+    private final SalesOrderImportCommitService salesOrderImportCommitService;
+    private final TransactionTemplate transactions;
 
     public ImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository) {
-        this(jdbc, repository, null);
+        this(jdbc, repository, null, null, null);
+    }
+
+    public ImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository,
+                               ProductReplaceImportService productReplaceImportService) {
+        this(jdbc, repository, productReplaceImportService, null, null);
+    }
+
+    public ImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository,
+                               ProductReplaceImportService productReplaceImportService,
+                               SalesOrderImportCommitService salesOrderImportCommitService) {
+        this(jdbc, repository, productReplaceImportService, salesOrderImportCommitService, null);
     }
 
     @Autowired
     public ImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository,
-                               ProductReplaceImportService productReplaceImportService) {
+                               ProductReplaceImportService productReplaceImportService,
+                               SalesOrderImportCommitService salesOrderImportCommitService,
+                               PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
         this.repository = repository;
         this.productReplaceImportService = productReplaceImportService;
+        this.salesOrderImportCommitService = salesOrderImportCommitService;
+        this.transactions = transactionManager == null ? null : new TransactionTemplate(transactionManager);
     }
 
-    @Transactional
     public ImportBatchView commit(long batchId) {
         return commit(batchId, null, ImportCommitRequest.SupplierMode.OVERWRITE);
     }
 
-    @Transactional
     public ImportBatchView commit(long batchId, ImportConflictPolicy policy) {
         return commit(batchId, policy, ImportCommitRequest.SupplierMode.OVERWRITE);
     }
 
-    @Transactional
     public ImportBatchView commit(long batchId, ImportConflictPolicy policy,
                                   ImportCommitRequest.SupplierMode supplierMode) {
         return commit(batchId, policy, supplierMode, Map.of());
     }
 
-    @Transactional
     public ImportBatchView commit(long batchId, ImportConflictPolicy policy,
                                   ImportCommitRequest.SupplierMode supplierMode,
                                   Map<Long, ProductConflictAction> productConflictActions) {
+        if (repository.type(batchId) == ImportType.ORDER) {
+            UserRole role = CurrentUser.required().role();
+            if (role != UserRole.ADMIN && role != UserRole.USER) {
+                throw new SecurityException("财务用户不能导入销售订单");
+            }
+            if (salesOrderImportCommitService == null) throw new IllegalStateException("订单分组提交服务未配置");
+            return salesOrderImportCommitService.commit(batchId);
+        }
+        if (transactions == null) {
+            return commitInSingleTransaction(batchId, policy, supplierMode, productConflictActions);
+        }
+        return transactions.execute(status ->
+                commitInSingleTransaction(batchId, policy, supplierMode, productConflictActions));
+    }
+
+    private ImportBatchView commitInSingleTransaction(long batchId, ImportConflictPolicy policy,
+                                                       ImportCommitRequest.SupplierMode supplierMode,
+                                                       Map<Long, ProductConflictAction> productConflictActions) {
         ImportBatchView batch = repository.findBatchForUpdate(batchId);
         if (batch.importType() == ImportType.COST
                 && !CurrentUser.required().role().canEditProductPrice()) {
@@ -99,6 +132,7 @@ public class ImportCommitService {
             }
             boolean wasCreated = switch (batch.importType()) {
                 case PRODUCT -> throw new IllegalStateException("产品批次必须使用产品全量替换策略");
+                case ORDER -> throw new IllegalStateException("订单批次必须使用订单分组提交策略");
                 case CUSTOMER -> commitCustomer(row.data());
                 case INVENTORY -> commitInventory(batchId, row.data());
                 case COST -> commitCost(batchId, row.data());

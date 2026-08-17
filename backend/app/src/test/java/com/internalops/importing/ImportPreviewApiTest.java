@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.ByteArrayOutputStream;
 import java.util.Map;
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -29,6 +30,26 @@ class ImportPreviewApiTest {
     MockMvc mvc;
     @Autowired
     ImportBatchRepository repository;
+
+    @Test
+    void rejectsRowChangesWhileBatchIsCommitting() throws Exception {
+        long batchId = repository.create(ImportType.CUSTOMER, "customers.xlsx", "committing-edit", List.of(
+                new ParsedImportRow("客户", 2, ImportRowStatus.VALID, Map.of("customerName", "原客户"), null)));
+        long rowId = repository.findBatch(batchId).rows().get(0).id();
+        repository.markCommitting(batchId);
+
+        mvc.perform(post("/api/imports/{batchId}/rows", batchId)
+                        .contentType("application/json").content("{\"data\":{\"customerName\":\"新增客户\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅预览中的批次可以修改"));
+        mvc.perform(put("/api/imports/{batchId}/rows/{rowId}", batchId, rowId)
+                        .contentType("application/json").content("{\"data\":{\"customerName\":\"修改客户\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("仅预览中的批次可以修改"));
+
+        mvc.perform(get("/api/imports/{batchId}", batchId))
+                .andExpect(jsonPath("$.data.rows[0].data.customerName").value("原客户"));
+    }
 
     @Test
     void previewsLegacyXlsSupplierWorkbook() throws Exception {

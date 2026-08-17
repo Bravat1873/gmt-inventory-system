@@ -1,6 +1,9 @@
 package com.internalops.importing;
 
 import com.internalops.api.ApiResponse;
+import com.internalops.auth.CurrentUser;
+import com.internalops.auth.UserRole;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -32,28 +35,32 @@ public class ImportController {
 
     @PostMapping("/preview")
     public ApiResponse<ImportBatchView> preview(@RequestParam ImportType type, @RequestPart MultipartFile file) {
+        authorizeOrderImport(type);
         return ApiResponse.ok(previewService.preview(type, file));
     }
 
     @GetMapping("/{batchId}")
     public ApiResponse<ImportBatchView> get(@PathVariable long batchId) {
-        return ApiResponse.ok(previewService.get(batchId));
+        return ApiResponse.ok(authorizedBatch(batchId));
     }
 
     @PostMapping("/{batchId}/rows")
     public ApiResponse<ImportRowView> add(@PathVariable long batchId, @RequestBody ImportRowRequest request) {
+        authorizedBatch(batchId);
         return ApiResponse.ok(previewService.add(batchId, request));
     }
 
     @PutMapping("/{batchId}/rows/{rowId}")
     public ApiResponse<ImportRowView> update(@PathVariable long batchId, @PathVariable long rowId,
                                              @RequestBody ImportRowRequest request) {
+        authorizedBatch(batchId);
         return ApiResponse.ok(previewService.update(batchId, rowId, request));
     }
 
     @PostMapping("/{batchId}/commit")
     public ApiResponse<ImportBatchView> commit(@PathVariable long batchId,
                                                 @RequestBody(required = false) ImportCommitRequest request) {
+        authorizedBatch(batchId);
         ImportConflictPolicy policy = request == null
                 ? ImportConflictPolicy.UPSERT_KEEP_EXISTING_ON_BLANK
                 : request.resolvedPolicy();
@@ -66,6 +73,7 @@ public class ImportController {
 
     @GetMapping("/{batchId}/errors.xlsx")
     public ResponseEntity<byte[]> errors(@PathVariable long batchId) {
+        authorizedBatch(batchId);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=import-errors-" + batchId + ".xlsx")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
@@ -75,5 +83,25 @@ public class ImportController {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Object>> invalid(IllegalArgumentException exception) {
         return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, exception.getMessage()));
+    }
+
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<ApiResponse<Object>> forbidden(SecurityException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ApiResponse<>(false, null, exception.getMessage()));
+    }
+
+    private ImportBatchView authorizedBatch(long batchId) {
+        ImportBatchView batch = previewService.get(batchId);
+        authorizeOrderImport(batch.importType());
+        return batch;
+    }
+
+    private void authorizeOrderImport(ImportType type) {
+        if (type != ImportType.ORDER) return;
+        UserRole role = CurrentUser.required().role();
+        if (role != UserRole.ADMIN && role != UserRole.USER) {
+            throw new SecurityException("财务用户不能导入销售订单");
+        }
     }
 }

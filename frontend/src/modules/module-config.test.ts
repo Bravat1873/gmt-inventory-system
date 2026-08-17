@@ -1,6 +1,14 @@
 import { expect, it } from 'vitest'
 import { moduleDefinitions } from './module-config'
 
+it('keeps manual order creation and configures a separate ORDER import action', () => {
+  const order = moduleDefinitions.find(item => item.key === 'order')!
+
+  expect(order.actionLabel).toBe('新增订单')
+  expect(order.importType).toBe('ORDER')
+  expect(order.importActionLabel).toBe('导入订单')
+})
+
 it('shows supplier and product names in the purchase list without identifiers', () => {
   const purchase = moduleDefinitions.find(item => item.key === 'purchase')!
   expect(purchase.fields).toContain('supplierName')

@@ -1,4 +1,4 @@
-export type ImportType = 'CUSTOMER' | 'COST' | 'INVENTORY' | 'SUPPLIER' | 'PRODUCT'
+export type ImportType = 'CUSTOMER' | 'COST' | 'INVENTORY' | 'SUPPLIER' | 'PRODUCT' | 'ORDER'
 export type ProductConflictAction = 'KEEP' | 'SKIP'
 export type SupplierImportMode = 'OVERWRITE' | 'REPLACE_ALL'
 export type ImportRowStatus = 'VALID' | 'ERROR' | 'IGNORED'

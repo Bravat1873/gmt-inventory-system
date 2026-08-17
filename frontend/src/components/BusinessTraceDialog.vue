@@ -6,7 +6,7 @@ const props = defineProps<{ trace: BusinessTrace }>()
 const emit = defineEmits<{ close: [] }>()
 
 const labels: Record<string, string> = {
-  skuCode: '物料编号', productName: '物料名称', model: '型号', configuration: '规格型号', unit: '单位',
+  skuCode: '客户料号', productName: '物料名称', model: '型号', configuration: '规格型号', unit: '单位',
   quantity: '数量', shippedQuantity: '已发货数量', remainingQuantity: '剩余数量', availableQuantity: '可用库存', lockedQuantity: '锁定数量', uncoveredQuantity: '缺货数量',
   salePrice: '含税单价', receivedQuantity: '已入库数量', purchasePrice: '采购单价'
 }

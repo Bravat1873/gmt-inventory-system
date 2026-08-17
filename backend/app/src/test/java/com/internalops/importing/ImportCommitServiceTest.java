@@ -76,11 +76,11 @@ class ImportCommitServiceTest {
     @Test
     void errorWorkbookContainsChineseReason() throws Exception {
         long batch = repository.create(ImportType.INVENTORY, "bad.xlsx", "hash-error", List.of(
-                row(ImportRowStatus.ERROR, Map.of("skuCode", ""), "物料编号 SKU 不能为空")));
+                row(ImportRowStatus.ERROR, Map.of("skuCode", ""), "客户料号 SKU 不能为空")));
         byte[] content = errorWorkbookService.create(batch);
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(content))) {
             assertEquals("异常数据", workbook.getSheetAt(0).getSheetName());
-            assertTrue(workbook.getSheetAt(0).getRow(1).getCell(3).getStringCellValue().contains("SKU"));
+            assertEquals("客户料号 SKU 不能为空", workbook.getSheetAt(0).getRow(1).getCell(3).getStringCellValue());
         }
     }
 

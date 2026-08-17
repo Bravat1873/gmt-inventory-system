@@ -10,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 final class CostExcelParser {
+    private static final List<String> SKU_HEADERS = List.of("客户料号", "物料编号");
+
     List<ParsedImportRow> parse(Workbook workbook) {
         Sheet sheet = findCostSheet(workbook);
         int headerRowIndex = findHeaderRow(sheet);
@@ -48,20 +50,20 @@ final class CostExcelParser {
                 // Try the next worksheet. Product workbooks often rename Sheet1.
             }
         }
-        throw new IllegalArgumentException("缺少表头：物料编号和成本单价（含税）");
+        throw new IllegalArgumentException("缺少表头：客户料号和成本单价（含税）");
     }
 
     private int findHeaderRow(Sheet sheet) {
         for (int index = 0; index <= sheet.getLastRowNum(); index++) {
             Row row = sheet.getRow(index);
-            if (row != null && columnOf(row, "物料编号") >= 0 && columnOf(row, "成本单价") >= 0) return index;
+            if (row != null && skuColumn(row) >= 0 && columnOf(row, "成本单价") >= 0) return index;
         }
-        throw new IllegalArgumentException("缺少表头：物料编号和成本单价（含税）");
+        throw new IllegalArgumentException("缺少表头：客户料号和成本单价（含税）");
     }
 
     private ColumnMap resolveColumns(Row header) {
         return new ColumnMap(
-                optionalColumn(header, "物料编号"),
+                skuColumn(header),
                 optionalColumn(header, "型号"),
                 optionalColumn(header, "颜色"),
                 optionalColumn(header, "锁体"),
@@ -80,6 +82,11 @@ final class CostExcelParser {
 
     private int optionalColumn(Row header, String label) {
         return columnOf(header, label);
+    }
+
+    private int skuColumn(Row header) {
+        return SKU_HEADERS.stream().mapToInt(label -> columnOf(header, label)).filter(column -> column >= 0)
+                .findFirst().orElse(-1);
     }
 
     private int columnOf(Row header, String label) {

@@ -11,6 +11,7 @@ vi.mock('../api/workbench', () => ({ createOrder, updateOrder, loadOrderCustomer
 const validOrder = () => ({ customerId: 1, orderDate: '2026-08-07', orderType: '工程订单', salesperson: 'Admin', items: [{ skuId: 1, quantity: 1, salePrice: 1 }] })
 const sku = (id: number) => ({ id, skuCode: `SKU-${id}`, productName: `Product ${id}`, model: 'M1', configuration: 'Standard', unit: 'PCS', primaryImageId: null as number | null, actualQuantity: 0, availableQuantity: 0, inTransitQuantity: 0, pendingDeliveryQuantity: 0, supplyDemandBalance: 0, purchaseShortageQuantity: 0 })
 const priceInput = (wrapper: VueWrapper) => wrapper.findAll('input[type="number"]')[1]
+const legacyMaterialNumber = '物料' + '编号'
 function deferred<T>() { let resolve!: (value: T) => void; return { promise: new Promise<T>(done => { resolve = done }), resolve } }
 async function choose(wrapper: VueWrapper, picker: string, text: string, optionId: number) {
   await wrapper.get(`${picker} input`).setValue(text)
@@ -26,6 +27,18 @@ it('does not submit without a customer', async () => {
   await wrapper.get('form').trigger('submit')
   expect(createOrder).not.toHaveBeenCalled()
   expect(wrapper.get('[data-test="customer-error"]').text()).toBe('请选择客户')
+  wrapper.unmount()
+})
+
+it('uses 客户料号 for its visible material-number labels and prompts', async () => {
+  loadOrderSkus.mockResolvedValue([sku(1)])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { props: { defaultSalesperson: 'Admin' } })
+  await flushPromises()
+
+  expect(wrapper.text()).toContain('客户料号')
+  expect(wrapper.text()).not.toContain(legacyMaterialNumber)
+  expect((wrapper.get('[data-test="order-sku-picker-0"] input').element as HTMLInputElement).placeholder).toContain('客户料号')
   wrapper.unmount()
 })
 

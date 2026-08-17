@@ -31,6 +31,7 @@ public class ImportValidationService {
 
     public List<ParsedImportRow> validateAll(ImportType type, List<ParsedImportRow> rows) {
         if (type == ImportType.PRODUCT) return productValidation.validateAll(rows);
+        if (type == ImportType.ORDER) return new SalesOrderImportValidationService(jdbc).validateAll(rows);
         Map<String, Integer> firstInventoryRows = new LinkedHashMap<>();
         List<ParsedImportRow> result = new ArrayList<>();
         for (ParsedImportRow row : rows) {
@@ -66,6 +67,7 @@ public class ImportValidationService {
             case INVENTORY -> validateInventory(sheet, rowNumber, data);
             case SUPPLIER -> validateSupplier(sheet, rowNumber, data);
             case PRODUCT -> productValidation.validate(0, sheet, rowNumber, data);
+            case ORDER -> new SalesOrderImportValidationService(jdbc).validateAll(List.of(new ParsedImportRow(sheet, rowNumber, ImportRowStatus.VALID, data, null))).get(0);
         };
     }
 
@@ -92,6 +94,7 @@ public class ImportValidationService {
                 case SUPPLIER -> jdbc.query("SELECT supplier_name FROM supplier", (rs, index) -> rs.getString(1))
                         .stream().map(this::normalizeCustomer).anyMatch(normalizeCustomer(text(data, "supplierName"))::equals);
                 case PRODUCT -> false;
+                case ORDER -> false;
             };
         } catch (RuntimeException exception) {
             return false;
@@ -139,15 +142,15 @@ public class ImportValidationService {
             data.remove("_autoSku");
             return valid(sheet, row, data);
         }
-        // 成本表常常不带物料编号。无法唯一反查库存时仍保留这一行，
-        // 提交时以空物料编号保存，避免把有效的成本数据静默丢弃。
+        // 成本表常常不带客户料号。无法唯一反查库存时仍保留这一行，
+        // 提交时以空客户料号保存，避免把有效的成本数据静默丢弃。
         data.put("_autoSku", true);
         return valid(sheet, row, data);
     }
 
     private ParsedImportRow validateInventory(String sheet, int row, Map<String, Object> data) {
         String sku = text(data, "skuCode");
-        if (sku.isBlank()) return error(sheet, row, data, "物料编号 SKU 不能为空");
+        if (sku.isBlank()) return error(sheet, row, data, "客户料号 SKU 不能为空");
         try {
             int actual = integer(data, "actualQuantity");
             int locked = integer(data, "lockedQuantity");

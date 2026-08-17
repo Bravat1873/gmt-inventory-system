@@ -4,6 +4,7 @@ import CustomerDialog from './CustomerDialog.vue'
 
 const api = vi.hoisted(() => ({ getCustomer: vi.fn(), createCustomer: vi.fn(), updateCustomer: vi.fn(), loadOrderSkus: vi.fn() }))
 vi.mock('../api/workbench', () => api)
+const legacyMaterialNumber = '物料' + '编号'
 
 it('maintains contract dates and per-product prices', async () => {
   api.loadOrderSkus.mockResolvedValue([{ id: 1, skuCode: 'SKU-1', productName: '产品一' }])
@@ -36,5 +37,16 @@ it('maintains contract dates and per-product prices', async () => {
     customerName: '合同客户',
     contracts: [expect.objectContaining({ contractNo: 'HT-2026', startDate: '2026-08-01', endDate: '2027-07-31', prices: [{ skuId: 1, salePrice: 500 }] })]
   }))
+  wrapper.unmount()
+})
+
+it('uses 客户料号 in its contract-product search prompt', async () => {
+  api.loadOrderSkus.mockResolvedValue([])
+  const wrapper = mount(CustomerDialog)
+  await flushPromises()
+  await wrapper.get('[data-test="add-contract"]').trigger('click')
+
+  expect((wrapper.get('[data-test="contract-product-picker-0"] input').element as HTMLInputElement).placeholder).toContain('客户料号')
+  expect(wrapper.text()).not.toContain(legacyMaterialNumber)
   wrapper.unmount()
 })
