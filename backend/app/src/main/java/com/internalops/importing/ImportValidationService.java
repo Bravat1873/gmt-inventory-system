@@ -78,7 +78,8 @@ public class ImportValidationService {
             data.remove("_conflictAction");
             return new ParsedImportRow(row.sheetName(), row.rowNumber(), row.status(), data, row.errorMessage());
         }
-        boolean conflict = hasConflict(type, data);
+        ConflictMatch match = findConflict(type, data);
+        boolean conflict = match != null;
         data.put("_conflict", conflict);
         if (conflict) {
             String field = type == ImportType.CUSTOMER ? "customerName" : type == ImportType.SUPPLIER ? "supplierName" : "customerPartNumber";
@@ -86,30 +87,64 @@ public class ImportValidationService {
             data.put("_conflictField", field);
             data.put("_conflictGroup", normalizeCustomer(text(data, field)));
             data.put("_conflictLabel", label + text(data, field));
+            data.put("_existingRecordId", match.id());
+            data.put("_existingValues", match.values());
         } else {
             data.remove("_conflictField");
             data.remove("_conflictGroup");
             data.remove("_conflictLabel");
+            data.remove("_existingRecordId");
+            data.remove("_existingValues");
         }
         data.put("_conflictAction", conflict && "OVERWRITE".equals(text(data, "_conflictAction")) ? "OVERWRITE" : "SKIP");
         return new ParsedImportRow(row.sheetName(), row.rowNumber(), row.status(), data, row.errorMessage());
     }
 
     public boolean hasConflict(ImportType type, Map<String, Object> data) {
+        return findConflict(type, data) != null;
+    }
+
+    private ConflictMatch findConflict(ImportType type, Map<String, Object> data) {
         try {
             return switch (type) {
-                case CUSTOMER -> jdbc.query("SELECT customer_name FROM customer", (rs, index) -> rs.getString(1))
-                        .stream().map(this::normalizeCustomer).anyMatch(normalizeCustomer(text(data, "customerName"))::equals);
-                case COST, INVENTORY -> jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE customer_part_number=?", Integer.class,
-                        text(data, "customerPartNumber")) > 0;
-                case SUPPLIER -> jdbc.query("SELECT supplier_name FROM supplier", (rs, index) -> rs.getString(1))
-                        .stream().map(this::normalizeCustomer).anyMatch(normalizeCustomer(text(data, "supplierName"))::equals);
-                case PRODUCT -> false;
-                case ORDER -> false;
+                case CUSTOMER -> customerMatch(text(data, "customerName"));
+                case SUPPLIER -> supplierMatch(text(data, "supplierName"));
+                case COST, INVENTORY, PRODUCT, ORDER -> null;
             };
         } catch (RuntimeException exception) {
-            return false;
+            return null;
         }
+    }
+
+    private ConflictMatch customerMatch(String name) {
+        String target = normalizeCustomer(name);
+        return jdbc.query("SELECT id,customer_name,contact_name,phone,address,bank_name,bank_account FROM customer",
+                (rs, index) -> {
+                    Map<String, Object> values = new LinkedHashMap<>();
+                    values.put("customerName", rs.getString("customer_name"));
+                    values.put("contactName", rs.getString("contact_name"));
+                    values.put("phone", rs.getString("phone"));
+                    values.put("address", rs.getString("address"));
+                    values.put("bankName", rs.getString("bank_name"));
+                    values.put("bankAccount", rs.getString("bank_account"));
+                    return new ConflictMatch(rs.getLong("id"), values);
+                }).stream().filter(match -> normalizeCustomer(String.valueOf(match.values().get("customerName"))).equals(target))
+                .findFirst().orElse(null);
+    }
+
+    private ConflictMatch supplierMatch(String name) {
+        String target = normalizeCustomer(name);
+        return jdbc.query("SELECT id,supplier_name,contact_name,phone,address,bank_account FROM supplier",
+                (rs, index) -> {
+                    Map<String, Object> values = new LinkedHashMap<>();
+                    values.put("supplierName", rs.getString("supplier_name"));
+                    values.put("contactName", rs.getString("contact_name"));
+                    values.put("phone", rs.getString("phone"));
+                    values.put("address", rs.getString("address"));
+                    values.put("bankAccount", rs.getString("bank_account"));
+                    return new ConflictMatch(rs.getLong("id"), values);
+                }).stream().filter(match -> normalizeCustomer(String.valueOf(match.values().get("supplierName"))).equals(target))
+                .findFirst().orElse(null);
     }
 
     private ParsedImportRow validateCustomer(String sheet, int row, Map<String, Object> data) {
@@ -211,4 +246,6 @@ public class ImportValidationService {
         if (value == null || value.toString().isBlank()) return 0;
         return new BigDecimal(value.toString()).intValueExact();
     }
+
+    private record ConflictMatch(long id, Map<String, Object> values) { }
 }

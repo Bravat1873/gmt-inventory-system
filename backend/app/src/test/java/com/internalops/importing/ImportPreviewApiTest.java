@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.io.ByteArrayOutputStream;
 import java.util.Map;
@@ -24,12 +25,29 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 @SpringBootTest
 @AutoConfigureMockMvc(addFilters = false)
-@Sql(scripts = "/import-schema.sql")
+@Sql(scripts = {"/import-schema.sql", "/import-commit-schema.sql"})
 class ImportPreviewApiTest {
     @Autowired
     MockMvc mvc;
     @Autowired
     ImportBatchRepository repository;
+    @Autowired
+    JdbcTemplate jdbc;
+
+    @Test
+    void includesExistingCustomerSnapshotForNameConflicts() throws Exception {
+        jdbc.update("INSERT INTO customer(customer_code,customer_name,contact_name,phone,enabled) VALUES(?,?,?,?,TRUE)",
+                "C-CONFLICT", "同名客户", "旧联系人", "13800000000");
+        var file = new MockMultipartFile("file", "客户.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", customerWorkbook("同名客户"));
+
+        mvc.perform(multipart("/api/imports/preview").file(file).param("type", "CUSTOMER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].data._conflict").value(true))
+                .andExpect(jsonPath("$.data.rows[0].data._existingRecordId").isNumber())
+                .andExpect(jsonPath("$.data.rows[0].data._existingValues.customerName").value("同名客户"))
+                .andExpect(jsonPath("$.data.rows[0].data._existingValues.phone").value("13800000000"));
+    }
 
     @Test
     void rejectsRowChangesWhileBatchIsCommitting() throws Exception {
@@ -141,8 +159,12 @@ class ImportPreviewApiTest {
     }
 
     private byte[] customerWorkbook() throws Exception {
+        return customerWorkbook("测试客户");
+    }
+
+    private byte[] customerWorkbook(String name) throws Exception {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
-            workbook.createSheet("Sheet1").createRow(0).createCell(0).setCellValue("测试客户");
+            workbook.createSheet("Sheet1").createRow(0).createCell(0).setCellValue(name);
             workbook.write(output);
             return output.toByteArray();
         }

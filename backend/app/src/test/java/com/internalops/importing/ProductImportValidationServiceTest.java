@@ -1,6 +1,7 @@
 package com.internalops.importing;
 
 import com.internalops.productcode.ProductCodeGenerator;
+import com.internalops.productcode.ProductUniqueId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
@@ -53,7 +54,23 @@ class ProductImportValidationServiceTest {
         assertThat(rows).allSatisfy(row -> assertThat(row.data())
                 .containsEntry("_conflict", true)
                 .containsEntry("_conflictAction", "UNRESOLVED")
-                .containsEntry("_conflictGroup", "G_T7PBY10WPSC"));
+                .containsEntry("_conflictGroup", ProductUniqueId.from("G_T7PBY10WPSC", "PART-001")));
+    }
+
+    @Test
+    void doesNotTreatDifferentCustomerPartNumbersAsTheSameProductConflict() {
+        Map<String, Object> first = row("参考编号1", "G", "T7", "PBY", "10", "Wifi", "P", "S", "C");
+        Map<String, Object> second = row("参考编号2", "G", "T7", "PBY", "10", "Wifi", "P", "S", "C");
+        first.put("customerPartNumber", "PART-001");
+        second.put("customerPartNumber", "PART-002");
+
+        List<ParsedImportRow> rows = service.validateAll(List.of(parsed(9, first), parsed(10, second)));
+
+        assertThat(rows).allSatisfy(row -> assertThat(row.data())
+                .containsEntry("_conflict", false)
+                .containsEntry("_businessUniqueId", ProductUniqueId.from(
+                        String.valueOf(row.data().get("productCode")),
+                        String.valueOf(row.data().get("customerPartNumber")))));
     }
 
     @Test
@@ -82,6 +99,7 @@ class ProductImportValidationServiceTest {
         row.put("salesChannel", salesChannel);
         row.put("operatingEntity", operatingEntity);
         row.put("language", language);
+        row.put("customerPartNumber", "PART-001");
         return row;
     }
 
