@@ -53,9 +53,9 @@ const orderBatch: ImportBatch = {
   totalRows: 3,
   validRows: 3,
   rows: [
-    { id: 31, sheetName: '订单导入', rowNumber: 2, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P001', customerMaterialCode: 'CM-01', quantity: 2, salePrice: 99.5 }, errorMessage: null, manualEntry: false },
-    { id: 32, sheetName: '订单导入', rowNumber: 3, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P002', customerMaterialCode: 'CM-02', quantity: 3, salePrice: 120 }, errorMessage: null, manualEntry: false },
-    { id: 33, sheetName: '订单导入', rowNumber: 4, status: 'VALID', data: { externalOrderNo: 'EXT-002', customerCode: 'C002', orderDate: '2026-08-18', orderType: '零售订单', orderStatus: '草稿', productCode: 'P003', customerMaterialCode: 'CM-03', quantity: 1, salePrice: 80 }, errorMessage: null, manualEntry: false }
+    { id: 31, sheetName: '订单导入', rowNumber: 2, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P001', customerPartNumber: 'CM-01', quantity: 2, salePrice: 99.5 }, errorMessage: null, manualEntry: false },
+    { id: 32, sheetName: '订单导入', rowNumber: 3, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P002', customerPartNumber: 'CM-02', quantity: 3, salePrice: 120 }, errorMessage: null, manualEntry: false },
+    { id: 33, sheetName: '订单导入', rowNumber: 4, status: 'VALID', data: { externalOrderNo: 'EXT-002', customerCode: 'C002', orderDate: '2026-08-18', orderType: '零售订单', orderStatus: '草稿', productCode: 'P003', customerPartNumber: 'CM-03', quantity: 1, salePrice: 80 }, errorMessage: null, manualEntry: false }
   ]
 }
 
@@ -77,13 +77,13 @@ describe('simple Excel import', () => {
 
   it('shows the ORDER template download link only for ORDER imports', () => {
     const order = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
-    const download = order.get('[data-test="download-order-template"]')
-    expect(download.text()).toBe('下载模板')
+    const download = order.get('[data-test="download-import-template"]')
+    expect(download.text()).toBe('下载 XLSX 模板')
     expect(download.attributes('href')).toBe('/api/imports/templates/ORDER.xlsx')
     expect(download.attributes('download')).toBeDefined()
 
     const customer = mount(ImportPanel, { props: { type: 'CUSTOMER', title: '导入客户' } })
-    expect(customer.find('[data-test="download-order-template"]').exists()).toBe(false)
+    expect(customer.find('[data-test="download-import-template"]').exists()).toBe(true)
   })
 
   it('keeps the existing immediate flow for non-supplier imports', async () => {

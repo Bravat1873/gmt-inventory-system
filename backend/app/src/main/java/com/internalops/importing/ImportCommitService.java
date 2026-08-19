@@ -307,13 +307,54 @@ public class ImportCommitService {
 
     private boolean commitCustomer(Map<String, Object> data) {
         String name = text(data, "customerName");
+        String type = text(data, "customerType");
+        String taxpayerId = text(data, "taxpayerId");
+        String code = text(data, "customerCode");
+        if (code.isBlank()) {
+            String normalizedTaxpayerId = taxpayerId.toUpperCase(Locale.ROOT);
+            if (normalizedTaxpayerId.length() < 10) throw new IllegalArgumentException("纳税人识别号至少需要10位");
+            code = ("DOMESTIC".equals(type) ? "A." : "B.")
+                    + normalizedTaxpayerId.substring(normalizedTaxpayerId.length() - 10);
+        }
         Long existing = findByNormalizedName("customer", "customer_name", name);
+        Object[] fields = {
+                code, type, name, nullableText(data, "businessContactName"),
+                nullableText(data, "businessContactPhone"), nullableText(data, "address"),
+                nullableText(data, "businessContactName"), nullableText(data, "businessContactPhone"),
+                nullableText(data, "orderContactName"), nullableText(data, "orderContactPhone"),
+                nullableText(data, "financeContactName"), nullableText(data, "financeContactPhone"),
+                nullableText(data, "invoiceTitle"), nullableText(data, "taxpayerId"),
+                nullableText(data, "invoiceAddress"), nullableText(data, "invoicePhone")
+        };
         if (existing != null) {
-            jdbc.update("UPDATE customer SET customer_name=?,enabled=TRUE WHERE id=?", name, existing);
+            jdbc.update("""
+                    UPDATE customer SET customer_code=?,customer_type=?,customer_name=?,contact_name=?,phone=?,address=?,
+                        business_contact_name=?,business_contact_phone=?,order_contact_name=?,order_contact_phone=?,
+                        finance_contact_name=?,finance_contact_phone=?,invoice_title=?,taxpayer_id=?,invoice_address=?,
+                        invoice_phone=?,enabled=TRUE,version=version+1 WHERE id=?
+                    """, append(fields, existing));
             return false;
         }
-        jdbc.update("INSERT INTO customer(customer_code,customer_name,enabled) VALUES(?,?,TRUE)", nextCode("customer", "customer_code", "CUS"), name);
+        KeyHolder keys = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO customer(customer_code,customer_type,customer_name,contact_name,phone,address,
+                        business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,
+                        finance_contact_name,finance_contact_phone,invoice_title,taxpayer_id,invoice_address,
+                        invoice_phone,enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
+                    """, Statement.RETURN_GENERATED_KEYS);
+            for (int index = 0; index < fields.length; index++) statement.setObject(index + 1, fields[index]);
+            return statement;
+        }, keys);
+        if (keys.getKey() == null) throw new IllegalStateException("新增客户失败，未生成数据编号");
+        jdbc.update("INSERT INTO customer_fund_account(customer_id,balance,version) VALUES(?,0,0)", keys.getKey().longValue());
         return true;
+    }
+
+    private Object[] append(Object[] values, Object last) {
+        Object[] result = java.util.Arrays.copyOf(values, values.length + 1);
+        result[values.length] = last;
+        return result;
     }
 
     private boolean commitInventory(long batchId, Map<String, Object> data) {
@@ -407,8 +448,8 @@ public class ImportCommitService {
     }
 
     private SkuResult upsertSku(Map<String, Object> data) {
-        String code = text(data, "skuCode");
-        List<Long> ids = code.isBlank() ? List.of() : jdbc.query("SELECT id FROM sku WHERE sku_code=?", (rs, index) -> rs.getLong(1), code);
+        String code = text(data, "customerPartNumber");
+        List<Long> ids = code.isBlank() ? List.of() : jdbc.query("SELECT id FROM sku WHERE customer_part_number=?", (rs, index) -> rs.getLong(1), code);
         String model = text(data, "model");
         String configuration = text(data, "configuration");
         String productName = !model.isBlank() ? model : (!configuration.isBlank() ? truncate(configuration, 200) : code);
@@ -430,7 +471,7 @@ public class ImportCommitService {
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbc.update(connection -> {
                 PreparedStatement statement = connection.prepareStatement(
-                        "INSERT INTO sku(product_code,sku_code,model,product_name,color,lock_body,product_version,configuration,unit,enabled) VALUES(?,?,?,?,?,?,?,?,?,TRUE)",
+                        "INSERT INTO sku(product_code,customer_part_number,model,product_name,color,lock_body,product_version,configuration,unit,enabled) VALUES(?,?,?,?,?,?,?,?,?,TRUE)",
                         Statement.RETURN_GENERATED_KEYS);
                 statement.setString(1, persistedProductCode);
                 statement.setObject(2, persistedCode);

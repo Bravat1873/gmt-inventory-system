@@ -38,7 +38,7 @@ class SupplierManagementApiTest {
 
         mvc.perform(get("/api/suppliers/201/products").cookie(session).param("keyword", "P90"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].skuCode").value("P90-001"))
+                .andExpect(jsonPath("$.data[0].customerPartNumber").value("P90-001"))
                 .andExpect(jsonPath("$.data[0].purchasePrice").value(220))
                 .andExpect(jsonPath("$.data[0].moq").value(5))
                 .andExpect(jsonPath("$.data[0].leadTimeDays").value(7));

@@ -40,12 +40,12 @@ public class ImportValidationService {
                 continue;
             }
             if (type == ImportType.INVENTORY) {
-                String sku = text(row.data(), "skuCode");
+                String sku = text(row.data(), "customerPartNumber");
                 if (!sku.isBlank()) {
                     Integer firstRow = firstInventoryRows.putIfAbsent(sku.toUpperCase(Locale.ROOT), row.rowNumber());
                     if (firstRow != null) {
                         Map<String, Object> data = new LinkedHashMap<>(row.data());
-                        data.put("skuCode", sku);
+                        data.put("customerPartNumber", sku);
                         result.add(new ParsedImportRow(row.sheetName(), row.rowNumber(),
                                 ImportRowStatus.IGNORED, data,
                                 "重复 SKU，已采用第 " + firstRow + " 行数据"));
@@ -89,8 +89,8 @@ public class ImportValidationService {
             return switch (type) {
                 case CUSTOMER -> jdbc.query("SELECT customer_name FROM customer", (rs, index) -> rs.getString(1))
                         .stream().map(this::normalizeCustomer).anyMatch(normalizeCustomer(text(data, "customerName"))::equals);
-                case COST, INVENTORY -> jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE sku_code=?", Integer.class,
-                        text(data, "skuCode")) > 0;
+                case COST, INVENTORY -> jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE customer_part_number=?", Integer.class,
+                        text(data, "customerPartNumber")) > 0;
                 case SUPPLIER -> jdbc.query("SELECT supplier_name FROM supplier", (rs, index) -> rs.getString(1))
                         .stream().map(this::normalizeCustomer).anyMatch(normalizeCustomer(text(data, "supplierName"))::equals);
                 case PRODUCT -> false;
@@ -122,15 +122,15 @@ public class ImportValidationService {
         }
         if (cost == null || cost.signum() <= 0) return error(sheet, row, data, "成本单价必须大于 0");
         data.put("cost", cost);
-        String sku = text(data, "skuCode");
+        String sku = text(data, "customerPartNumber");
         if (!sku.isBlank()) {
-            data.put("skuCode", sku);
+            data.put("customerPartNumber", sku);
             data.remove("_autoSku");
             return valid(sheet, row, data);
         }
         List<String> matches;
         try {
-            matches = jdbc.query("SELECT DISTINCT s.sku_code FROM inventory_balance b JOIN sku s ON s.id=b.sku_id WHERE LOWER(TRIM(COALESCE(s.model,'')))=? " +
+            matches = jdbc.query("SELECT DISTINCT s.customer_part_number FROM inventory_balance b JOIN sku s ON s.id=b.sku_id WHERE LOWER(TRIM(COALESCE(s.model,'')))=? " +
                             "AND LOWER(TRIM(COALESCE(color,'')))=? AND LOWER(TRIM(COALESCE(lock_body,'')))=?",
                     (rs, index) -> rs.getString(1), normalize(text(data, "model")),
                     normalize(text(data, "color")), normalize(text(data, "lockBody")));
@@ -138,7 +138,7 @@ public class ImportValidationService {
             matches = List.of();
         }
         if (matches.size() == 1) {
-            data.put("skuCode", matches.get(0));
+            data.put("customerPartNumber", matches.get(0));
             data.remove("_autoSku");
             return valid(sheet, row, data);
         }
@@ -149,7 +149,7 @@ public class ImportValidationService {
     }
 
     private ParsedImportRow validateInventory(String sheet, int row, Map<String, Object> data) {
-        String sku = text(data, "skuCode");
+        String sku = text(data, "customerPartNumber");
         if (sku.isBlank()) return error(sheet, row, data, "客户料号 SKU 不能为空");
         try {
             int actual = integer(data, "actualQuantity");
@@ -158,7 +158,7 @@ public class ImportValidationService {
             if (actual < 0 || locked < 0 || transit < 0 || locked > actual + transit) {
                 return error(sheet, row, data, "库存数量无效或锁定库存大于实际与在途库存之和");
             }
-            data.put("skuCode", sku);
+            data.put("customerPartNumber", sku);
             data.put("actualQuantity", actual);
             data.put("lockedQuantity", locked);
             data.put("inTransitQuantity", transit);

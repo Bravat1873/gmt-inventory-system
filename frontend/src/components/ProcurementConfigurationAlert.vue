@@ -30,8 +30,8 @@ defineExpose({ reload: load })
     <div v-if="expanded" class="procurement-alert-details" data-test="procurement-alert-details">
       <article v-for="item in items" :key="item.skuId">
         <div class="procurement-alert-product">
-          <strong>{{ item.skuCode || item.productName || `产品 ${item.skuId}` }}</strong>
-          <span v-if="item.productName && item.productName !== item.skuCode">{{ item.productName }}</span>
+          <strong>{{ item.customerPartNumber || item.productName || `产品 ${item.skuId}` }}</strong>
+          <span v-if="item.productName && item.productName !== item.customerPartNumber">{{ item.productName }}</span>
         </div>
         <span class="procurement-alert-shortage">缺口 {{ item.shortageQuantity }}</span>
         <span class="procurement-alert-orders" :title="item.orderNumbers.join('、')">订单：{{ item.orderNumbers.join('、') || '—' }}</span>

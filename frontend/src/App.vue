@@ -4,6 +4,7 @@ import LoginPage from './components/LoginPage.vue'
 import { currentUser, logout, type CurrentUser } from './api/auth'
 import ImportPanel from './components/ImportPanel.vue'
 import ModuleListPage from './components/ModuleListPage.vue'
+import DashboardPage from './components/DashboardPage.vue'
 import EntityDialog from './components/EntityDialog.vue'
 import CustomerDialog from './components/CustomerDialog.vue'
 import CustomerFundsDialog from './components/CustomerFundsDialog.vue'
@@ -30,7 +31,7 @@ import { moduleDefinitions, type ModuleKey } from './modules/module-config'
 import { useGlobalDialogCloseGuard } from './composables/useUnsavedChangesGuard'
 
 const fromAddress = new URLSearchParams(location.search).get('module') as ModuleKey | null
-const activeModule = ref<ModuleKey>(moduleDefinitions.some(item => item.key === fromAddress) ? fromAddress! : 'order')
+const activeModule = ref<ModuleKey>(moduleDefinitions.some(item => item.key === fromAddress) ? fromAddress! : 'dashboard')
 const message = ref('')
 const messageKind = ref<'success' | 'error'>('success')
 const importOpen = ref(false)
@@ -106,6 +107,14 @@ function selectModule(key: ModuleKey) {
   productGalleryRow.value = undefined
   actionInput.value = null
   history.pushState(null, '', `${location.pathname}?${new URLSearchParams({ module: key, page: '1' })}`)
+}
+
+function navigateFromDashboard(key: ModuleKey, keyword: string) {
+  activeModule.value = key
+  productCodeRulesOpen.value = false
+  const params = new URLSearchParams({ module: key, page: '1' })
+  if (keyword) params.set('keyword', keyword)
+  history.pushState(null, '', location.pathname + '?' + params.toString())
 }
 
 function navigateModule(key: ModuleKey) {
@@ -271,7 +280,7 @@ async function saved(closeDialog = true) {
     </aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><ProductCodeRulesDialog v-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @import="openImport" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
+    <main><div class="content"><DashboardPage v-if="activeModule === 'dashboard'" @navigate="navigateFromDashboard" /><ProductCodeRulesDialog v-else-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @import="openImport" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
     <div v-if="importOpen && currentModule.importType && canUseCurrentModuleImport" class="dialog-mask import-dialog-mask"><ImportPanel :type="currentModule.importType" :title="currentModule.importActionLabel ?? currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <CustomerDialog v-if="entityOpen && activeModule === 'customer'" :row="editRow" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
@@ -295,3 +304,4 @@ async function saved(closeDialog = true) {
     <ActionInputDialog v-if="actionInput" :title="actionInput.title" :label="actionInput.label" :placeholder="actionInput.placeholder" @close="actionInput=null" @confirm="submitActionInput" />
   </div>
 </template>
+

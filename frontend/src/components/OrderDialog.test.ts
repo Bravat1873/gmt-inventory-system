@@ -9,7 +9,7 @@ const { createOrder, updateOrder, loadOrderCustomers, loadOrderSkus, loadContrac
 vi.mock('../api/workbench', () => ({ createOrder, updateOrder, loadOrderCustomers, loadOrderSkus, loadContractPrice }))
 
 const validOrder = () => ({ customerId: 1, orderDate: '2026-08-07', orderType: '工程订单', salesperson: 'Admin', items: [{ skuId: 1, quantity: 1, salePrice: 1 }] })
-const sku = (id: number) => ({ id, skuCode: `SKU-${id}`, productName: `Product ${id}`, model: 'M1', configuration: 'Standard', unit: 'PCS', primaryImageId: null as number | null, actualQuantity: 0, availableQuantity: 0, inTransitQuantity: 0, pendingDeliveryQuantity: 0, supplyDemandBalance: 0, purchaseShortageQuantity: 0 })
+const sku = (id: number) => ({ id, customerPartNumber: `SKU-${id}`, productName: `Product ${id}`, model: 'M1', configuration: 'Standard', unit: 'PCS', primaryImageId: null as number | null, actualQuantity: 0, availableQuantity: 0, inTransitQuantity: 0, pendingDeliveryQuantity: 0, supplyDemandSurplus: 0, purchaseShortageQuantity: 0 })
 const priceInput = (wrapper: VueWrapper) => wrapper.findAll('input[type="number"]')[1]
 const legacyMaterialNumber = '物料' + '编号'
 function deferred<T>() { let resolve!: (value: T) => void; return { promise: new Promise<T>(done => { resolve = done }), resolve } }
@@ -43,15 +43,48 @@ it('uses 客户料号 for its visible material-number labels and prompts', async
 })
 
 it('searches materials using product details when the SKU code is empty', async () => {
-  loadOrderSkus.mockResolvedValue([{ ...sku(8), skuCode: '', productName: 'Smart Lock', model: 'E71' }])
+  loadOrderSkus.mockResolvedValue([{ ...sku(8), customerPartNumber: '', productName: 'Smart Lock', model: 'E71' }])
   loadOrderCustomers.mockResolvedValue([])
   const wrapper = mount(OrderDialog, { props: { defaultSalesperson: 'Admin' } })
   await flushPromises()
   await wrapper.get('[data-test="order-sku-picker-0"] input').setValue('E71')
-  expect(document.body.querySelector('[data-test="fuzzy-option-8"]')?.textContent).toContain('Smart Lock')
+  expect(document.body.querySelector('[data-test="fuzzy-option-8"]')?.textContent).toContain('型号：E71')
   wrapper.unmount()
 })
 
+it('searches and displays product identifiers with product code first', async () => {
+  loadOrderSkus.mockResolvedValue([
+    { ...sku(21), productCode: 'BR_D51-A', customerPartNumber: 'D1213K-D51', model: 'D51-GEN2' },
+    { ...sku(22), productCode: 'BR_D51-B', customerPartNumber: 'D1213K-D51', model: 'D51-GEN2' }
+  ])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { attachTo: document.body, props: { defaultSalesperson: 'Admin' } })
+  await flushPromises()
+
+  await wrapper.get('[data-test="order-sku-picker-0"] input').setValue('BR_D51-B')
+  expect(document.body.querySelector('[data-test="fuzzy-option-21"]')).toBeNull()
+  const option = document.body.querySelector<HTMLElement>('[data-test="fuzzy-option-22"]')
+  expect(option?.textContent).toMatch(/产品编号：BR_D51-B[\s\S]*客户料号：D1213K-D51[\s\S]*型号：D51-GEN2/)
+
+  option?.click()
+  await flushPromises()
+  expect((wrapper.get('[data-test="order-sku-picker-0"] input').element as HTMLInputElement).value).toBe('BR_D51-B')
+  expect(wrapper.get('[data-test="order-product-identifiers-0"]').text())
+    .toMatch(/产品编号BR_D51-B[\s\S]*客户料号D1213K-D51[\s\S]*型号D51-GEN2/)
+  wrapper.unmount()
+})
+it('hides the duplicate product name while retaining model details', async () => {
+  loadOrderSkus.mockResolvedValue([{ ...sku(31), productCode: 'BR_A71', customerPartNumber: 'G8A71HS001', productName: 'A71', model: 'A71', configuration: 'BRAVAT / A71 / 宇宙黑' }])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { attachTo: document.body, props: { defaultSalesperson: 'Admin' } })
+  await flushPromises()
+  await choose(wrapper, '[data-test="order-sku-picker-0"]', 'BR_A71', 31)
+  const identity = wrapper.get('[data-test="order-product-identifiers-0"]')
+  expect(identity.text()).toContain('型号A71')
+  expect(identity.text()).toContain('型号 / 规格')
+  expect(identity.text()).not.toContain('产品名称')
+  wrapper.unmount()
+})
 it('leaves order and delivery contacts blank when the selected customer lacks order snapshots', async () => {
   loadOrderSkus.mockResolvedValue([])
   loadOrderCustomers.mockResolvedValue([{ id: 9, customerCode: 'C9', customerName: 'Legacy customer', contactName: 'Legacy name', phone: '13800138000', address: 'Address' }])
@@ -131,14 +164,14 @@ it('renders inline errors for every basic and line validation field', async () =
 })
 
 it('shows the selected product image and current inventory in the order line', async () => {
-  loadOrderSkus.mockResolvedValue([{ ...sku(1), primaryImageId: 91, actualQuantity: 12, availableQuantity: 9, supplyDemandBalance: 12 }])
+  loadOrderSkus.mockResolvedValue([{ ...sku(1), primaryImageId: 91, actualQuantity: 12, availableQuantity: 9, supplyDemandSurplus: 12 }])
   loadOrderCustomers.mockResolvedValue([])
   const wrapper = mount(OrderDialog, { attachTo: document.body, props: { defaultSalesperson: 'Admin' } })
   await flushPromises()
   await choose(wrapper, '[data-test="order-sku-picker-0"]', 'SKU-1', 1)
   expect(wrapper.get('[data-test="order-product-image-0"]').attributes('src')).toBe('/api/product-images/91/content')
-  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('实际 12')
-  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('供需余量 12')
+  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('实际库存12')
+  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('供需余量12')
   wrapper.unmount()
 })
 
@@ -151,13 +184,14 @@ it('shows an image placeholder when the selected product has no primary image', 
   expect(wrapper.get('[data-test="order-image-placeholder-0"]').text()).toBe('暂无图片')
   wrapper.unmount()
 })
-it('puts all order-detail rows in one shared horizontal scroller', async () => {
+it('renders order details as responsive product panels', async () => {
   loadOrderSkus.mockResolvedValue([sku(1)])
   loadOrderCustomers.mockResolvedValue([])
   const wrapper = mount(OrderDialog, { props: { defaultSalesperson: 'Admin' } })
   await flushPromises()
-  expect(wrapper.findAll('[data-test="order-lines-scroll"]')).toHaveLength(1)
-  expect(wrapper.findAll('[data-test="order-line-scroll"]')).toHaveLength(0)
+  expect(wrapper.findAll('.order-line-panel')).toHaveLength(1)
+  expect(wrapper.get('.order-line-panel').find('.order-line-fields').exists()).toBe(true)
+  expect(wrapper.get('.order-line-panel').find('.order-line-metrics').exists()).toBe(true)
   wrapper.unmount()
 })
 
@@ -233,28 +267,30 @@ it('requires one of the three supported order types', async () => {
   wrapper.unmount()
 })
 it('shows the post-order supply-demand shortage while creating an order', async () => {
-  loadOrderSkus.mockResolvedValue([{ ...sku(1), actualQuantity: 5, inTransitQuantity: 4, pendingDeliveryQuantity: 2, supplyDemandBalance: 7 }])
+  loadOrderSkus.mockResolvedValue([{ ...sku(1), actualQuantity: 5, inTransitQuantity: 4, pendingDeliveryQuantity: 2, supplyDemandSurplus: 7 }])
   loadOrderCustomers.mockResolvedValue([])
   const wrapper = mount(OrderDialog, { attachTo: document.body, props: { defaultSalesperson: 'Admin' } })
   await flushPromises()
   await choose(wrapper, '[data-test="order-sku-picker-0"]', 'SKU-1', 1)
   await wrapper.findAll('input[type="number"]')[0].setValue('10')
   const inventory = wrapper.get('[data-test="order-inventory-0"]')
-  expect(inventory.text()).toContain('实际 5')
-  expect(inventory.text()).toContain('在途 4')
-  expect(inventory.text()).toContain('未发货数量 2')
-  expect(inventory.text()).toContain('供需余量 7')
-  expect(inventory.text()).toContain('下单后供需余量 -3')
+  expect(inventory.text()).toContain('实际库存5')
+  expect(inventory.text()).toContain('在途数量4')
+  expect(inventory.text()).toContain('全局未发货2')
+  expect(inventory.text()).toContain('供需余量7')
+  expect(inventory.text()).toContain('下单后供需余量-3')
   expect(inventory.text()).toContain('下单后采购缺口 3')
   wrapper.unmount()
 })
 
 it('restores the original remainder before previewing an edited order', async () => {
-  loadOrderSkus.mockResolvedValue([{ ...sku(1), supplyDemandBalance: 7 }])
+  loadOrderSkus.mockResolvedValue([{ ...sku(1), supplyDemandSurplus: 7 }])
   loadOrderCustomers.mockResolvedValue([])
   const wrapper = mount(OrderDialog, { props: { row: { id: 9, version: 1, ...validOrder(), items: [{ id: 51, skuId: 1, quantity: 4, shippedQuantity: 0, remainingQuantity: 4, salePrice: 1 }] } } })
   await flushPromises()
   await wrapper.findAll('input[type="number"]')[0].setValue('6')
-  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('下单后供需余量 5')
+  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('下单后供需余量5')
   wrapper.unmount()
 })
+
+

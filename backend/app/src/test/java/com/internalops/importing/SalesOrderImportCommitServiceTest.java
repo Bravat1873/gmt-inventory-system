@@ -80,6 +80,21 @@ class SalesOrderImportCommitServiceTest {
     }
 
     @Test
+    void groupsBlankExternalNumbersByCustomerDateAndType() {
+        Map<String, Object> first = order("", "DRAFT", 1, 2, "12.50");
+        Map<String, Object> second = order("", "DRAFT", 2, 3, "8.00");
+        long batch = batch("auto-grouped", List.of(row(7, first), row(9, second)));
+
+        ImportBatchView committed = commitService.commit(batch);
+
+        assertEquals(1, count("sales_order"));
+        assertEquals(2, count("sales_order_item"));
+        assertEquals("AUTO|C1|2026-08-17|工程订单", jdbc.queryForObject(
+                "SELECT external_order_no FROM sales_order", String.class));
+        assertEquals(2, committed.committedRows());
+    }
+
+    @Test
     void formalOrderReusesInventoryAllocationAndLocksStock() {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
         long batch = batch("formal", List.of(row(2,

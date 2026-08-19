@@ -38,7 +38,7 @@ public class SalesOrderImportValidationService {
         for (int index = 0; index < rows.size(); index++) {
             ParsedImportRow row = rows.get(index);
             if (row.status() != ImportRowStatus.IGNORED) {
-                groups.computeIfAbsent(text(row.data(), "externalOrderNo"), ignored -> new ArrayList<>()).add(index);
+                groups.computeIfAbsent(SalesOrderImportGroupKey.from(row.data()), ignored -> new ArrayList<>()).add(index);
             }
         }
         for (Map.Entry<String, List<Integer>> group : groups.entrySet()) validateOrderGroup(rows, group.getKey(), group.getValue());
@@ -100,25 +100,34 @@ public class SalesOrderImportValidationService {
         List<Long> customers = jdbc.query("SELECT id FROM customer WHERE customer_code=? AND enabled=TRUE", (rs, index) -> rs.getLong(1), text(data, "customerCode"));
         if (customers.isEmpty()) return error(row, data, "客户编码不存在或未启用");
         if (customers.size() != 1) return error(row, data, "客户编码匹配不唯一");
-        List<Sku> skus = jdbc.query("SELECT id, sku_code, sales_minimum_order_quantity FROM sku WHERE product_code=? AND enabled=TRUE", (rs, index) -> new Sku(rs.getLong(1), rs.getString(2), rs.getInt(3)), text(data, "productCode"));
+        String productCode = text(data, "productCode");
+        String materialCode = text(data, "customerPartNumber");
+        List<Sku> skus = findSkus(productCode, materialCode);
+        if (skus.isEmpty() && !materialCode.isBlank()) skus = findSkus(materialCode, productCode);
         if (skus.isEmpty()) return error(row, data, "产品编号不存在或未启用");
         if (skus.size() != 1) return error(row, data, "产品编号匹配不唯一");
         Sku sku = skus.get(0);
-        if (quantity < sku.minimumQuantity()) return error(row, data, "订单数量不得低于销售最小起订量");
-        String materialCode = text(data, "customerMaterialCode");
-        if (!materialCode.isBlank() && !materialCode.equals(sku.skuCode())) return error(row, data, "客户料号与产品档案不一致");
         data.put("orderDate", date.toString()); data.put("quantity", quantity); data.put("salePrice", price);
         data.put("_customerId", customers.get(0)); data.put("_skuId", sku.id()); data.put("_normalizedStatus", normalizedStatus);
         return new ParsedImportRow(row.sheetName(), row.rowNumber(), ImportRowStatus.VALID, data, null);
     }
 
+    private List<Sku> findSkus(String productCode, String materialCode) {
+        if (materialCode.isBlank()) {
+            return jdbc.query("SELECT id, customer_part_number FROM sku WHERE product_code=? AND enabled=TRUE",
+                    (rs, index) -> new Sku(rs.getLong(1), rs.getString(2)), productCode);
+        }
+        return jdbc.query("SELECT id, customer_part_number FROM sku WHERE product_code=? AND customer_part_number=? AND enabled=TRUE",
+                (rs, index) -> new Sku(rs.getLong(1), rs.getString(2)), productCode, materialCode);
+    }
+
     private String required(Map<String, Object> data) {
-        String[][] fields = {{"externalOrderNo", "外部订单号"}, {"customerCode", "客户编码"}, {"orderDate", "订单日期"}, {"orderType", "订单类型"}, {"salesperson", "销售员"}, {"productCode", "产品编号"}, {"quantity", "订单数量"}, {"salePrice", "含税单价"}};
+        String[][] fields = {{"customerCode", "客户编码"}, {"orderDate", "订单日期"}, {"orderType", "订单类型"}, {"salesperson", "销售员"}, {"productCode", "产品编号"}, {"quantity", "订单数量"}, {"salePrice", "含税单价"}};
         for (String[] field : fields) if (text(data, field[0]).isBlank()) return field[1] + "不能为空";
         return null;
     }
     private String normalizedStatus(String value) { return value.isBlank() || "正式订单".equals(value) ? "PENDING_CUSTOMER_PAYMENT" : "草稿".equals(value) ? "DRAFT" : null; }
     private String text(Map<String, Object> data, String key) { Object value = data.get(key); return value == null ? "" : value.toString().trim(); }
     private ParsedImportRow error(ParsedImportRow row, Map<String, Object> data, String message) { return new ParsedImportRow(row.sheetName(), row.rowNumber(), ImportRowStatus.ERROR, data, message); }
-    private record Sku(long id, String skuCode, int minimumQuantity) { }
+    private record Sku(long id, String customerPartNumber) { }
 }

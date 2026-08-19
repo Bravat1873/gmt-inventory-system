@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { updateShipmentQuantities } from '../api/workbench'
+import ProductIdentityDisplay from './ProductIdentityDisplay.vue'
 
 type OrderItem = {
-  lineNo: number; skuCode?: string; productName?: string; model?: string; unit?: string
+  lineNo: number; productCode?: string; customerPartNumber?: string; productName?: string; model?: string; unit?: string
   quantity: number; shippedQuantity: number; availableQuantity?: number; lockedQuantity?: number
 }
 type ShipmentBatch = {
@@ -51,7 +52,7 @@ const totalCurrent = computed(() => props.order.items.reduce((sum, item) => sum 
 async function save() {
   for (const item of props.order.items) {
     if (!Number.isInteger(current(item)) || current(item) > maximumCurrent(item)) {
-      emit('message', `${item.productName || item.skuCode || '订单明细'}本次发货不能超过 ${maximumCurrent(item)}`, 'error')
+      emit('message', `${item.productName || item.customerPartNumber || '订单明细'}本次发货不能超过 ${maximumCurrent(item)}`, 'error')
       return
     }
   }
@@ -113,7 +114,7 @@ async function save() {
         <div class="shipment-lines">
           <article v-for="item in order.items" :key="item.lineNo" class="shipment-line-card" data-test="shipment-line">
             <div class="shipment-line-heading">
-              <div><strong>{{ item.productName || item.skuCode || '未命名物料' }}</strong><small>{{ item.skuCode }}{{ item.model ? ` · ${item.model}` : '' }}</small></div>
+              <ProductIdentityDisplay compact :product-code="item.productCode" :customer-part-number="item.customerPartNumber" :model="item.model" />
               <div class="shipment-line-state">
                 <span data-test="available-quantity">未锁定库存数量 {{ Number(item.availableQuantity ?? 0) }}{{ item.unit ? ` ${item.unit}` : '' }}</span>
                 <span data-test="shipment-status-dot" class="shipment-status-dot" :class="completed(item) ? 'complete' : 'incomplete'">{{ completed(item) ? '已完成' : '待发货' }}</span>

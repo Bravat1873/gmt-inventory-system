@@ -104,7 +104,7 @@ class MasterDataCommandApiTest {
     @Test
     void createsInventoryWithDynamicLockedSources() throws Exception {
         String response=mvc.perform(post("/api/workbench/inventory").cookie(session).contentType("application/json")
-                        .content("{\"skuCode\":\"SKU002\",\"actualQuantity\":10,\"lockedQuantity\":8,\"inTransitQuantity\":1,\"inventoryMovements\":[{\"date\":\"2026-08-06\",\"direction\":\"INBOUND\",\"quantity\":10},{\"date\":\"2026-08-06\",\"direction\":\"OUTBOUND\",\"quantity\":2}],"
+                        .content("{\"customerPartNumber\":\"SKU002\",\"actualQuantity\":10,\"lockedQuantity\":8,\"inTransitQuantity\":1,\"inventoryMovements\":[{\"date\":\"2026-08-06\",\"direction\":\"INBOUND\",\"quantity\":10},{\"date\":\"2026-08-06\",\"direction\":\"OUTBOUND\",\"quantity\":2}],"
                                 + "\"lockedAllocations\":[{\"lockSource\":\"新加坡\",\"quantity\":2},{\"lockSource\":\"越南\",\"quantity\":3}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.skuId").value(2))
@@ -118,7 +118,7 @@ class MasterDataCommandApiTest {
 
     @Test
     void rejectsDuplicateOrOverAllocatedDynamicLockedSources() throws Exception {
-        String prefix="{\"skuCode\":\"SKU002\",\"actualQuantity\":10,\"lockedQuantity\":4,\"inTransitQuantity\":0,\"lockedAllocations\":";
+        String prefix="{\"customerPartNumber\":\"SKU002\",\"actualQuantity\":10,\"lockedQuantity\":4,\"inTransitQuantity\":0,\"lockedAllocations\":";
         mvc.perform(post("/api/workbench/inventory").cookie(session).contentType("application/json")
                         .content(prefix+"[{\"lockSource\":\"新加坡\",\"quantity\":1},{\"lockSource\":\"新加坡\",\"quantity\":1}]}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("地点名称不能重复"));
@@ -344,7 +344,7 @@ class MasterDataCommandApiTest {
         Cookie userSession = loginAs("regular-user");
 
         mvc.perform(post("/api/workbench/product").cookie(userSession).contentType("application/json")
-                        .content("{\"skuCode\":\"SKU-USER\",\"productName\":\"越权产品\",\"currentCost\":1}"))
+                        .content("{\"customerPartNumber\":\"SKU-USER\",\"productName\":\"越权产品\",\"currentCost\":1}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("仅财务或管理员可修改产品价格"));
         mvc.perform(post("/api/workbench/user").cookie(userSession).contentType("application/json")

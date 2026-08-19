@@ -68,7 +68,7 @@ CREATE TABLE sku (
     product_code VARCHAR(80),
     code_suffix VARCHAR(255),
     ean_code VARCHAR(12),
-    sku_code VARCHAR(80),
+    customer_part_number VARCHAR(80),
     model VARCHAR(100),
     product_name VARCHAR(200) NOT NULL,
     color VARCHAR(80),
@@ -109,9 +109,9 @@ CREATE TABLE product_image (
     version INT NOT NULL DEFAULT 0
 );
 
-INSERT INTO sku(id,product_code,sku_code,product_name) VALUES
-(101,'OLD_000101','GALLERY-WITH-IMAGES','Product with gallery'),
-(102,'OLD_000102','GALLERY-WITHOUT-IMAGES','Product without gallery');
+INSERT INTO sku(id,product_code,customer_part_number,model,product_name) VALUES
+(101,'OLD_000101','GALLERY-WITH-IMAGES','MODEL-101','Product with gallery'),
+(102,'OLD_000102','GALLERY-WITHOUT-IMAGES','MODEL-102','Product without gallery');
 INSERT INTO product_image(id,product_id,storage_key,original_filename,content_type,file_size,is_primary,sort_order,uploaded_by) VALUES
 (501,101,'101/501-a.jpg','a.jpg','image/jpeg',100,FALSE,0,'tester'),
 (502,101,'101/502-main.jpg','main.jpg','image/jpeg',100,TRUE,1,'tester'),

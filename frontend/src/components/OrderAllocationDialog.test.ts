@@ -9,8 +9,13 @@ describe('OrderAllocationDialog', () => {
   beforeEach(() => updateOrderAllocations.mockReset().mockResolvedValue({}))
   it('submits the manually selected quantity with the current version', async () => {
     const wrapper = mount(OrderAllocationDialog, { props: { allocation: { id: 8, version: 3, status: 'READY_TO_SHIP', adjustable: true, items: [
-      { lineNo: 10000, skuCode: 'P50', productName: '智能锁', quantity: 5, shippedQuantity: 0, lockedQuantity: 5, uncoveredQuantity: 0, actualQuantity: 10, availableQuantity: 5 }
+      { lineNo: 10000, customerPartNumber: 'P50', productName: '智能锁', quantity: 5, shippedQuantity: 0, lockedQuantity: 5, uncoveredQuantity: 0, actualQuantity: 10, availableQuantity: 5 }
     ] } } })
+    expect(wrapper.findAll('.allocation-product-panel')).toHaveLength(1)
+    expect(wrapper.get('.allocation-product-identity').text()).toContain('P50')
+    expect(wrapper.get('.allocation-product-identity').text()).not.toContain('智能锁')
+    expect(wrapper.get('.allocation-metrics').text()).toContain('实际库存数量')
+    expect(wrapper.find('.allocation-target-field').exists()).toBe(true)
     expect(wrapper.text()).toContain('订单数量')
     expect(wrapper.text()).toContain('已发货数量')
     expect(wrapper.text()).toContain('实际库存数量')
@@ -24,3 +29,4 @@ describe('OrderAllocationDialog', () => {
     expect(wrapper.emitted('saved')).toHaveLength(1)
   })
 })
+

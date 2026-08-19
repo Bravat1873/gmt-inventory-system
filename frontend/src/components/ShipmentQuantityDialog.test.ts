@@ -6,7 +6,7 @@ const { updateShipmentQuantities } = vi.hoisted(() => ({ updateShipmentQuantitie
 vi.mock('../api/workbench', () => ({ updateShipmentQuantities }))
 
 const shipment = { shippedAt: '2026-08-02T10:00:00', totalQuantity: 8, deliveryAddress: '第一批地址' }
-const item = { lineNo: 10000, skuCode: 'SKU001', productName: '测试产品', quantity: 10, shippedQuantity: 3, availableQuantity: 7, lockedQuantity: 5 }
+const item = { lineNo: 10000, customerPartNumber: 'SKU001', productName: '测试产品', quantity: 10, shippedQuantity: 3, availableQuantity: 7, lockedQuantity: 5 }
 
 function mountDialog(order: Record<string, unknown> = {}) {
   return mount(ShipmentQuantityDialog, {

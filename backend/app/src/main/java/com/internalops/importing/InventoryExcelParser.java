@@ -15,7 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class InventoryExcelParser {
-    private static final List<String> SKU_HEADERS = List.of("客户料号SKU", "物料编号SKU");
+    private static final List<String> CUSTOMER_PART_NUMBER_HEADERS = List.of("客户料号SKU");
     private static final Pattern MMDD = Pattern.compile("^(\\d{2})(\\d{2})$");
     private static final Pattern YEAR = Pattern.compile(".*?(20\\d{2}).*");
     private static final List<String> LOCKED_SOURCES = List.of("铭爱钧乔", "博乐龙米", "老挝", "贝朗", "马来西亚");
@@ -34,8 +34,8 @@ final class InventoryExcelParser {
         for (int rowIndex = firstDataRow; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
             Row row = sheet.getRow(rowIndex);
             if (row == null || isCompletelyBlank(row)) continue;
-            String skuCode = ExcelValueReader.text(row.getCell(columns.skuCode()));
-            if (skuCode.isBlank()) {
+            String customerPartNumber = ExcelValueReader.text(row.getCell(columns.customerPartNumber()));
+            if (customerPartNumber.isBlank()) {
                 Map<String, Object> data = missingSkuData(row, columns);
                 if (isGroupRow(row)) {
                     result.add(new ParsedImportRow(sheet.getSheetName(), rowIndex + 1, ImportRowStatus.IGNORED, data,
@@ -62,7 +62,7 @@ final class InventoryExcelParser {
     private ParsedImportRow parseDataRow(Sheet sheet, Row row, int rowIndex, ColumnMap columns,
                                          List<MovementColumn> movementColumns) {
         var data = new LinkedHashMap<String, Object>();
-        data.put("skuCode", ExcelValueReader.text(cell(row, columns.skuCode())));
+        data.put("customerPartNumber", ExcelValueReader.text(cell(row, columns.customerPartNumber())));
         data.put("model", ExcelValueReader.text(cell(row, columns.model())));
         data.put("configuration", ExcelValueReader.text(cell(row, columns.configuration())));
         data.put("version", ExcelValueReader.text(cell(row, columns.version())));
@@ -89,13 +89,13 @@ final class InventoryExcelParser {
 
     private Map<String, Object> missingSkuData(Row row, ColumnMap columns) {
         Map<String, Object> data = sourceData(row, columns);
-        data.put("skuCode", "");
+        data.put("customerPartNumber", "");
         return data;
     }
 
     private Map<String, Object> sourceData(Row row, ColumnMap columns) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("skuCode", ExcelValueReader.text(cell(row, columns.skuCode())));
+        data.put("customerPartNumber", ExcelValueReader.text(cell(row, columns.customerPartNumber())));
         data.put("model", ExcelValueReader.text(cell(row, columns.model())));
         data.put("configuration", ExcelValueReader.text(cell(row, columns.configuration())));
         data.put("version", ExcelValueReader.text(cell(row, columns.version())));
@@ -124,7 +124,7 @@ final class InventoryExcelParser {
             // An inventory value marks the beginning of data even when it is malformed.
             // The normal row parser must see that row so it can expose an ERROR instead
             // of silently treating it as part of the multi-row header area.
-            if (!ExcelValueReader.text(row.getCell(columns.skuCode())).isBlank()
+            if (!ExcelValueReader.text(row.getCell(columns.customerPartNumber())).isBlank()
                     || !ExcelValueReader.text(row.getCell(columns.actualQuantity())).isBlank()) {
                 return rowIndex;
             }
@@ -199,13 +199,13 @@ final class InventoryExcelParser {
         int remarkColumn = optionalColumn(sheet, headers, "备注");
         if (supplierColumn < 0 && base.inTransitQuantity() >= 0) supplierColumn = base.inTransitQuantity() + 1;
         if (remarkColumn < 0 && base.inTransitQuantity() >= 0) remarkColumn = base.inTransitQuantity() + 2;
-        return new ColumnMap(base.skuCode(), base.model(), base.configuration(), base.version(), base.color(), base.lockBody(),
+        return new ColumnMap(base.customerPartNumber(), base.model(), base.configuration(), base.version(), base.color(), base.lockBody(),
                 base.unit(), base.actualQuantity(), base.sourceAvailableQuantity(), lockedColumns, base.inTransitQuantity(),
                 supplierColumn, remarkColumn);
     }
 
     private int skuColumn(Row header) {
-        return SKU_HEADERS.stream().mapToInt(label -> columnOf(header, label)).filter(column -> column >= 0)
+        return CUSTOMER_PART_NUMBER_HEADERS.stream().mapToInt(label -> columnOf(header, label)).filter(column -> column >= 0)
                 .findFirst().orElse(-1);
     }
 
@@ -308,7 +308,7 @@ final class InventoryExcelParser {
     private String excelColumnName(int zeroBasedColumn) { StringBuilder value = new StringBuilder(); for (int column = zeroBasedColumn + 1; column > 0; column = (column - 1) / 26) value.insert(0, (char) ('A' + (column - 1) % 26)); return value.toString(); }
 
     private record HeaderRange(int start, int endExclusive) { }
-    private record ColumnMap(int skuCode, int model, int configuration, int version, int color, int lockBody, int unit,
+    private record ColumnMap(int customerPartNumber, int model, int configuration, int version, int color, int lockBody, int unit,
                              int actualQuantity, int sourceAvailableQuantity, List<Integer> lockedColumns,
                              int inTransitQuantity, int supplierName, int remark) { }
     private record MovementColumn(int index, LocalDate date, String direction, String sourceColumn) { }

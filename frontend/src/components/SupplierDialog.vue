@@ -14,7 +14,11 @@ import FuzzyPicker, { type FuzzyPickerOption } from './FuzzyPicker.vue'
 const props = defineProps<{ row?: Record<string, unknown> }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
 
-type ProductRow = SupplierProductConfig & { label: string }
+type ProductRow = SupplierProductConfig & {
+  customerPartNumber: string
+  model: string
+  productCode: string
+}
 
 const form = reactive({
   manufacturerCategory: '',
@@ -44,12 +48,12 @@ const availableSkus = computed(() => skus.value.filter(sku => !products.value.so
 const availableSkuOptions = computed<FuzzyPickerOption[]>(() => availableSkus.value.map(sku => ({
   id: sku.id,
   label: labelOf(sku),
-  searchText: [sku.skuCode, sku.model, sku.productName, sku.configuration].filter(Boolean).join(' ')
+  selectedLabel: String(sku.productCode ?? '').trim() || '未设置产品编号',
+  searchText: [sku.productCode, sku.customerPartNumber, sku.model].filter(Boolean).join(' ')
 })))
 
 function labelOf(sku: OrderSku) {
-  const code = sku.skuCode || sku.model || `产品 ${sku.id}`
-  return sku.productName ? `${code} · ${sku.productName}` : code
+  return [`产品编号：${sku.productCode || '—'}`, `客户料号：${sku.customerPartNumber || '—'}`, `型号：${sku.model || '—'}`].join('\n')
 }
 
 function requestClose() {
@@ -61,7 +65,7 @@ function addProduct() {
   if (skuId == null) return
   const sku = skus.value.find(item => item.id === skuId)
   if (!sku) return
-  products.value.push({ skuId, label: labelOf(sku), purchaseInfos: [blankPurchaseInfo()] })
+  products.value.push({ skuId, customerPartNumber: sku.customerPartNumber || '', model: sku.model || '', productCode: sku.productCode || '', purchaseInfos: [blankPurchaseInfo()] })
   pickedSku.value = null
 }
 
@@ -173,10 +177,11 @@ async function initialise() {
     products.value = configured.map(item => {
       const product = item as Record<string, unknown>
       const sku = skus.value.find(value => value.id === Number(product.skuId))
-      const detailLabel = [product.skuCode, product.productName, product.model].filter(Boolean).map(String).join(' · ')
       return {
         skuId: Number(product.skuId),
-        label: detailLabel || (sku ? labelOf(sku) : `产品 ${String(product.skuId)}`),
+        customerPartNumber: String(product.customerPartNumber ?? sku?.customerPartNumber ?? ''),
+        model: String(product.model ?? sku?.model ?? ''),
+        productCode: String(product.productCode ?? sku?.productCode ?? ''),
         purchaseInfos: ((Array.isArray(product.purchaseInfos) && product.purchaseInfos.length ? product.purchaseInfos : [{ purchasePrice: product.purchasePrice, moq: product.moq, leadTimeDays: product.leadTimeDays }])).map(value => {
           const info = value as Record<string, unknown>
           return { id: info.id == null ? undefined : Number(info.id), purchasePrice: numberOrNull(info.purchasePrice), moq: numberOrNull(info.moq), leadTimeDays: numberOrNull(info.leadTimeDays), updatedAt: info.updatedAt == null ? undefined : String(info.updatedAt), version: info.version == null ? undefined : Number(info.version) }
@@ -216,8 +221,32 @@ onMounted(initialise)
         </div>
 
         <section class="supplier-products-section">
-          <div class="supplier-products-heading"><div><h3>供应产品</h3><p>同一产品可维护多条采购单价、起订量和交货天数，采购时默认使用最新记录。</p></div><div class="supplier-product-add"><FuzzyPicker data-test="supplier-product-picker" v-model="pickedSku" :options="availableSkuOptions" placeholder="输入客户料号、型号或名称搜索" :disabled="loading || saving" empty-text="没有可添加的产品" /><button data-test="add-supplier-product" type="button" class="secondary-action" :disabled="pickedSku == null || saving" @click="addProduct">添加产品</button></div></div>
-          <div v-if="products.length" class="supplier-products-table-wrap"><table class="supplier-products-table"><thead><tr><th>产品</th><th>采购单价</th><th>最小起订量</th><th>交货天数</th><th>修改时间</th><th>操作</th></tr></thead><tbody><template v-for="(product,index) in products" :key="product.skuId"><tr v-for="(info,infoIndex) in product.purchaseInfos" :key="info.id ?? `new-${infoIndex}`" :data-test="`purchase-info-row-${product.skuId}-${infoIndex}`"><td><div v-if="infoIndex===0" class="supplier-product-cell"><span class="supplier-product-name" :data-test="`supplier-product-name-${product.skuId}`" :title="product.label">{{ product.label }}</span><div><button type="button" class="text-action" :data-test="`add-purchase-info-${product.skuId}`" @click="addPurchaseInfo(product)">新增采购信息</button></div></div></td><td><input v-model.number="info.purchasePrice" type="number" min="0" step="0.0001" :disabled="saving"></td><td><input v-model.number="info.moq" type="number" min="1" step="1" :disabled="saving"></td><td><input v-model.number="info.leadTimeDays" type="number" min="0" step="1" :disabled="saving"></td><td class="purchase-info-updated">{{ info.updatedAt ? String(info.updatedAt).replace('T',' ').slice(0,16) : '保存后生成' }}</td><td><div class="supplier-product-actions"><button v-if="product.purchaseInfos.length > 1" type="button" class="text-action" :data-test="`remove-purchase-info-${product.skuId}-${infoIndex}`" :disabled="saving" @click="removePurchaseInfo(product,infoIndex)">删除采购信息</button><button v-if="infoIndex===0" type="button" class="text-action danger" :data-test="`remove-supplier-product-${product.skuId}`" @click="removeProduct(index)">移除产品</button></div></td></tr></template></tbody></table></div>
+          <div class="supplier-products-heading"><div><h3>供应产品</h3><p>同一产品可维护多条采购单价、起订量和交货天数，采购时默认使用最新记录。</p></div><div class="supplier-product-add"><FuzzyPicker data-test="supplier-product-picker" v-model="pickedSku" :options="availableSkuOptions" placeholder="输入产品编号、客户料号或型号搜索" :disabled="loading || saving" empty-text="没有可添加的产品" /><button data-test="add-supplier-product" type="button" class="secondary-action" :disabled="pickedSku == null || saving" @click="addProduct">添加产品</button></div></div>
+          <div v-if="products.length" class="supplier-product-panels" data-test="supplier-products-scroll">
+            <article v-for="(product, index) in products" :key="product.skuId" class="supplier-product-panel">
+              <header class="supplier-product-panel-header">
+                <div class="supplier-product-identity" :data-test="`supplier-product-name-${product.skuId}`">
+                  <div><span>产品编号</span><strong>{{ product.productCode || '—' }}</strong></div>
+                  <div><span>客户料号</span><strong>{{ product.customerPartNumber || '—' }}</strong></div>
+                  <div><span>型号</span><strong>{{ product.model || '—' }}</strong></div>
+                </div>
+                <div class="supplier-product-panel-actions">
+                  <button type="button" class="add-purchase-info-action" :data-test="`add-purchase-info-${product.skuId}`" @click="addPurchaseInfo(product)"><span aria-hidden="true">＋</span>新增采购信息</button>
+                  <button type="button" class="remove-product-action" :data-test="`remove-supplier-product-${product.skuId}`" @click="removeProduct(index)">移除产品</button>
+                </div>
+              </header>
+              <div class="purchase-info-list">
+                <div class="purchase-info-list-head" aria-hidden="true"><span>采购单价</span><span>最小起订量</span><span>交货天数</span><span>修改时间</span><span>操作</span></div>
+                <div v-for="(info, infoIndex) in product.purchaseInfos" :key="info.id ?? `new-${infoIndex}`" class="purchase-info-grid" :class="{ 'purchase-info-new-row': info.id == null }" :data-test="`purchase-info-row-${product.skuId}-${infoIndex}`">
+                  <label><span>采购单价</span><input v-model.number="info.purchasePrice" type="number" min="0" step="0.0001" :disabled="saving"></label>
+                  <label><span>最小起订量</span><input v-model.number="info.moq" type="number" min="1" step="1" :disabled="saving"></label>
+                  <label><span>交货天数</span><input v-model.number="info.leadTimeDays" type="number" min="0" step="1" :disabled="saving"></label>
+                  <div class="purchase-info-updated"><span v-if="info.id == null" class="purchase-info-new-badge">待保存</span><span>{{ info.updatedAt ? String(info.updatedAt).replace('T',' ').slice(0,16) : '保存后生成' }}</span></div>
+                  <div class="supplier-product-actions"><button v-if="product.purchaseInfos.length > 1" type="button" class="text-action danger" :data-test="`remove-purchase-info-${product.skuId}-${infoIndex}`" :disabled="saving" @click="removePurchaseInfo(product,infoIndex)">删除采购信息</button><span v-else class="purchase-info-required">基础采购信息</span></div>
+                </div>
+              </div>
+            </article>
+          </div>
           <p v-else class="supplier-products-empty">暂未添加供应产品。可以先保存供应商资料，后续再补充产品。</p>
         </section>
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
@@ -226,3 +255,4 @@ onMounted(initialise)
     </section>
   </div>
 </template>
+

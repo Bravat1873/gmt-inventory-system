@@ -7,7 +7,7 @@ vi.mock('../api/workbench', () => api)
 const legacyMaterialNumber = '物料' + '编号'
 
 it('maintains contract dates and per-product prices', async () => {
-  api.loadOrderSkus.mockResolvedValue([{ id: 1, skuCode: 'SKU-1', productName: '产品一' }])
+  api.loadOrderSkus.mockResolvedValue([{ id: 1, customerPartNumber: 'SKU-1', productName: '产品一' }])
   api.createCustomer.mockResolvedValue({ id: 1 })
   const wrapper = mount(CustomerDialog, { attachTo: document.body })
   await flushPromises()
@@ -40,6 +40,24 @@ it('maintains contract dates and per-product prices', async () => {
   wrapper.unmount()
 })
 
+it('searches and displays contract products with product code first', async () => {
+  api.loadOrderSkus.mockResolvedValue([
+    { id: 1, productCode: 'BR_A71', customerPartNumber: 'G8A71HS001', model: 'A71' },
+    { id: 2, productCode: 'BR_C51', customerPartNumber: 'D1212K-C51', model: 'C51' }
+  ])
+  const wrapper = mount(CustomerDialog, { attachTo: document.body })
+  await flushPromises()
+  await wrapper.get('[data-test="add-contract"]').trigger('click')
+  await wrapper.get('[data-test="contract-product-picker-0"] input').setValue('BR_C51')
+
+  expect(document.body.querySelector('[data-test="fuzzy-option-1"]')).toBeNull()
+  expect(document.body.querySelector('[data-test="fuzzy-option-2"]')?.textContent)
+    .toMatch(/产品编号：BR_C51[\s\S]*客户料号：D1212K-C51[\s\S]*型号：C51/)
+  document.body.querySelector<HTMLElement>('[data-test="fuzzy-option-2"]')?.click()
+  await flushPromises()
+  expect((wrapper.get('[data-test="contract-product-picker-0"] input').element as HTMLInputElement).value).toBe('BR_C51')
+  wrapper.unmount()
+})
 it('uses 客户料号 in its contract-product search prompt', async () => {
   api.loadOrderSkus.mockResolvedValue([])
   const wrapper = mount(CustomerDialog)

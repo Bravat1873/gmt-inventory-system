@@ -22,8 +22,8 @@ it('does not let the expanded alert be compressed by the purchase page flex layo
 
 it('summarizes and expands unconfigured shortages without changing table rows', async () => {
   loadUnconfiguredProcurementShortages.mockResolvedValue([
-    { skuId: 70, skuCode: 'F70', productName: 'F70', shortageQuantity: 200, orderNumbers: ['DD20260800002'] },
-    { skuId: 90, skuCode: 'P90', productName: 'P90', shortageQuantity: 2, orderNumbers: ['SO20260801', 'SO20260802'] }
+    { skuId: 70, customerPartNumber: 'F70', productName: 'F70', shortageQuantity: 200, orderNumbers: ['DD20260800002'] },
+    { skuId: 90, customerPartNumber: 'P90', productName: 'P90', shortageQuantity: 2, orderNumbers: ['SO20260801', 'SO20260802'] }
   ])
   const wrapper = mount(ProcurementConfigurationAlert)
   await flushPromises()
@@ -37,7 +37,7 @@ it('summarizes and expands unconfigured shortages without changing table rows', 
 
 it('navigates to supplier management and stays hidden when there is no alert', async () => {
   loadUnconfiguredProcurementShortages.mockResolvedValue([
-    { skuId: 70, skuCode: 'F70', productName: 'F70', shortageQuantity: 200, orderNumbers: ['DD20260800002'] }
+    { skuId: 70, customerPartNumber: 'F70', productName: 'F70', shortageQuantity: 200, orderNumbers: ['DD20260800002'] }
   ])
   const wrapper = mount(ProcurementConfigurationAlert)
   await flushPromises()

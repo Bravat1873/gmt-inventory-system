@@ -51,7 +51,7 @@ const definitions: Record<string, Field[]> = {
     { key: 'productCode', label: '产品编号', readOnly: true },
     { key: 'codeSuffix', label: '编码后缀' },
     { key: 'eanCode', label: 'EAN码' },
-    { key: 'customerCode', label: '客户料号' },
+  { key: 'customerPartNumber', label: '客户料号' },
     { key: 'productType', label: '产品分类', required: true, optionCategory: 'PRODUCT_TYPE' },
     { key: 'materialType', label: '物料类型', required: true },
     { key: 'brandRuleId', label: '品牌', required: true, optionCategory: 'BRAND' },
@@ -74,7 +74,7 @@ const definitions: Record<string, Field[]> = {
     { key: 'remark', label: '备注', multiline: true },
   ],
   inventory: [
-    { key: 'skuCode', label: '产品编号', required: true },
+    { key: 'customerPartNumber', label: '产品编号', required: true },
     { key: 'model', label: '型号', readOnly: true },
     { key: 'productType', label: '产品类型', optionCategory: 'PRODUCT_TYPE' },
     { key: 'productConfiguration', label: '产品配置', multiline: true, readOnly: true },
@@ -85,7 +85,7 @@ const definitions: Record<string, Field[]> = {
     { key: 'lockedQuantity', label: '已锁定数量', type: 'number' },
     { key: 'inTransitQuantity', label: '在途数量', type: 'number', required: true },
     { key: 'pendingDeliveryQuantity', label: '未发货数量', type: 'number', readOnly: true },
-    { key: 'supplyDemandBalance', label: '供需余量', type: 'number', readOnly: true },
+    { key: 'supplyDemandSurplus', label: '供需余量', type: 'number', readOnly: true },
     { key: 'sourceSupplierName', label: '供应商' },
     { key: 'inventoryRemark', label: '备注', multiline: true }
   ]
@@ -141,8 +141,9 @@ const inventorySkus = ref<OrderSku[]>([])
 
 const inventorySkuOptions = computed<FuzzyPickerOption[]>(() => inventorySkus.value.map(sku => ({
   id: sku.id,
-  label: sku.productName?.trim() || sku.model?.trim() || '未命名产品',
-  searchText: [sku.productCode, sku.skuCode, sku.productName, sku.model, sku.configuration, sku.productVersion, sku.color, sku.lockBody, sku.unit]
+  label: [`产品编号：${sku.productCode || '—'}`, `客户料号：${sku.customerPartNumber || '—'}`, `型号：${sku.model || '—'}`].join('\n'),
+  selectedLabel: String(sku.productCode ?? '').trim() || '未设置产品编号',
+  searchText: [sku.productCode, sku.customerPartNumber, sku.model]
     .filter(Boolean).join(' ')
 })))
 
@@ -215,7 +216,7 @@ function selectInventorySku(skuId: number | null) {
   form.skuId = skuId
   const sku = inventorySkus.value.find(item => item.id === skuId)
   if (!sku) return
-  form.skuCode = sku.productCode ?? sku.skuCode ?? ''
+  form.customerPartNumber = sku.productCode ?? sku.customerPartNumber ?? ''
   form.model = sku.model ?? ''
   form.productType = sku.productType ?? ''
   form.productConfiguration = sku.productConfiguration ?? ''
@@ -242,7 +243,7 @@ function inventoryFieldTestId(key: string) {
     model: 'inventory-model', productType: 'inventory-product-type', productConfiguration: 'inventory-product-configuration', configuration: 'inventory-configuration', color: 'inventory-color',
     lockBody: 'inventory-lock-body', unit: 'inventory-unit', actualQuantity: 'inventory-actual-quantity',
     availableQuantity: 'inventory-available-quantity', lockedQuantity: 'inventory-locked-quantity',
-    pendingDeliveryQuantity: 'inventory-pending-delivery-quantity', supplyDemandBalance: 'inventory-supply-demand-balance'
+    pendingDeliveryQuantity: 'inventory-pending-delivery-quantity', supplyDemandSurplus: 'inventory-supply-demand-surplus'
   }
   return names[key]
 }
@@ -317,7 +318,7 @@ function createPayload() {
     body.version = form.version
   }
   if (props.module === 'product' && !body.productName) {
-    body.productName = body.model || body.configuration || body.skuCode
+    body.productName = body.model || body.configuration || body.customerPartNumber
   }
   if (props.module === 'inventory') {
     if (inventorySkuId.value != null) body.skuId = inventorySkuId.value
@@ -425,11 +426,11 @@ async function save() {
               <option v-for="option in roleOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
             <FuzzyPicker
-              v-else-if="module === 'inventory' && field.key === 'skuCode' && !row?.id"
+              v-else-if="module === 'inventory' && field.key === 'customerPartNumber' && !row?.id"
               v-model="inventorySkuId"
               data-test="inventory-product-picker"
               :options="inventorySkuOptions"
-              placeholder="输入产品编号、型号或产品名称搜索"
+              placeholder="输入产品编号、客户料号或型号搜索"
               :disabled="saving"
             />
             <textarea
@@ -437,7 +438,7 @@ async function save() {
               v-model="form[field.key]"
               :data-test="field.key === 'customerCode' ? 'customer-code' : inventoryFieldTestId(field.key)"
               :required="fieldRequired(field)"
-              :disabled="Boolean(row?.id) && ((module === 'customer' && field.key === 'customerCode') || ['username', 'skuCode', 'skuId'].includes(field.key))"
+              :disabled="Boolean(row?.id) && ((module === 'customer' && field.key === 'customerCode') || field.key === 'username' || field.key === 'skuId' || (module === 'inventory' && field.key === 'customerPartNumber'))"
             />
             <textarea
               v-else-if="field.multiline"
@@ -456,7 +457,7 @@ async function save() {
             <input
               v-else
               v-model="form[field.key]"
-              :data-test="field.key === 'eanCode' ? 'product-ean-code' : field.key === 'codeSuffix' ? 'product-code-suffix' : field.key === 'customerCode' ? 'customer-code' : inventoryFieldTestId(field.key)"
+              :data-test="field.key === 'eanCode' ? 'product-ean-code' : field.key === 'codeSuffix' ? 'product-code-suffix' : field.key === 'customerPartNumber' ? 'customer-part-number' : field.key === 'customerCode' ? 'customer-code' : inventoryFieldTestId(field.key)"
               :list="field.key === 'codeSuffix' ? 'product-code-suffix-options' : undefined"
               :type="field.type ?? 'text'"
               :autocomplete="fieldAutocomplete(field)"
@@ -464,7 +465,7 @@ async function save() {
               :pattern="field.key === 'eanCode' ? '69[0-9]{10}' : undefined"
               :min="field.key === 'salesMinimumOrderQuantity' ? 1 : undefined"
               :required="fieldRequired(field)"
-              :disabled="(module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice) || (Boolean(row?.id) && ((module === 'customer' && field.key === 'customerCode') || ['username', 'skuCode', 'skuId'].includes(field.key)))"
+              :disabled="(module === 'product' && ['currentCost', 'factoryPrice'].includes(field.key) && !canEditProductPrice) || (Boolean(row?.id) && ((module === 'customer' && field.key === 'customerCode') || field.key === 'username' || field.key === 'skuId' || (module === 'inventory' && field.key === 'customerPartNumber')))"
               step="any"
               @input="field.key === 'actualQuantity' ? onInventoryMetricChange('actual') : field.key === 'availableQuantity' ? onInventoryMetricChange('available') : field.key === 'lockedQuantity' ? onInventoryMetricChange('locked') : field.key === 'inTransitQuantity' ? onInventoryMetricChange('transit') : undefined"
             />
@@ -523,3 +524,5 @@ async function save() {
     </section>
   </div>
 </template>
+
+

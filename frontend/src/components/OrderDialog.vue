@@ -55,11 +55,11 @@ const customerOptions = computed<FuzzyPickerOption[]>(() => customers.value.map(
   label: customer.customerName,
   searchText: [customer.customerCode, customer.customerName, customer.businessContactName, customer.businessContactPhone, customer.orderContactName, customer.orderContactPhone, customer.financeContactName, customer.financeContactPhone, customer.contactName, customer.phone].filter(Boolean).join(' ')
 })))
-const skuOptions = computed<FuzzyPickerOption[]>(() => skus.value.map(sku => ({ id: sku.id, label: skuLabel(sku), searchText: [sku.skuCode, sku.model, sku.productName, sku.configuration].filter(Boolean).join(' ') })))
+const skuOptions = computed<FuzzyPickerOption[]>(() => skus.value.map(sku => ({ id: sku.id, label: skuLabel(sku), selectedLabel: String(sku.productCode ?? '').trim() || '未设置产品编号', searchText: [sku.productCode, sku.customerPartNumber, sku.model].filter(Boolean).join(' ') })))
 
 function skuFor(line: Line) { return skus.value.find(sku => sku.id === line.skuId) }
 function salesMinimum(line: Line) { return Math.max(Number(skuFor(line)?.salesMinimumOrderQuantity ?? 1), 1) }
-function postOrderSupplyDemandBalance(line: Line, index: number) {
+function postOrderSupplyDemandSurplus(line: Line, index: number) {
   const sku = skuFor(line)
   if (!sku) return 0
   const draftRemainder = Math.max(Number(line.quantity || 0) - Number(line.shippedQuantity || 0), 0)
@@ -67,7 +67,7 @@ function postOrderSupplyDemandBalance(line: Line, index: number) {
   const originalRemainder = isEditing.value && original?.skuId === line.skuId
     ? Math.max(Number(original.quantity || 0) - Number(original.shippedQuantity || 0), 0)
     : 0
-  return sku.supplyDemandBalance + originalRemainder - draftRemainder
+  return sku.supplyDemandSurplus + originalRemainder - draftRemainder
 }
 const failedImageIds = reactive(new Set<number>())
 function imageIdFor(line: Line) { return Number(skuFor(line)?.primaryImageId) || null }
@@ -80,10 +80,11 @@ function markImageFailed(line: Line) {
   if (imageId) failedImageIds.add(imageId)
 }
 function skuLabel(sku: OrderSku) {
-  const code = String(sku.skuCode ?? '').trim()
-  if (code) return code
-  const details = [sku.model, sku.productName, sku.configuration].map(value => String(value ?? '').trim()).filter(Boolean)
-  return [...new Set(details)].join(' / ') || `未编号物料#${sku.id}`
+  return [
+    `产品编号：${String(sku.productCode ?? '').trim() || '—'}`,
+    `客户料号：${String(sku.customerPartNumber ?? '').trim() || '—'}`,
+    `型号：${String(sku.model ?? '').trim() || '—'}`
+  ].join('\n')
 }
 async function selectCustomerById(customerId: number | null) {
   const customer = customers.value.find(item => item.id === customerId)
@@ -197,11 +198,43 @@ onMounted(async () => {
         </section>
         <section class="order-section">
           <div class="line-title"><h3>订单明细</h3><button data-test="add-order-line" type="button" @click="add">新增明细</button></div>
-          <p v-if="!skus.length" class="empty-option-hint">暂无可选物料，请先导入产品或库存数据。</p>
-          <div class="order-lines-scroll" data-test="order-lines-scroll"><div class="order-lines"><div v-for="(line, index) in form.items" :key="index" class="order-line order-line-full"><span class="line-number">{{ index + 1 }}</span><label :class="{ 'field-invalid': lineError(index, 'sku') }"><span>客户料号 <small v-if="lineError(index, 'sku')" :data-test="`sku-error-${index}`" class="field-error">请选择物料</small></span><FuzzyPicker :data-test="`order-sku-picker-${index}`" v-model="line.skuId" :options="skuOptions" :placeholder="skus.length ? '输入客户料号、型号或名称搜索' : '暂无可选物料，请先导入产品或库存'" :disabled="saving || !skus.length" empty-text="没有匹配的物料" @update:model-value="value => selectSku(index, value)" /></label><div class="order-product-image-cell"><span>图片</span><img v-if="imageUrlFor(line)" :data-test="`order-product-image-${index}`" :src="imageUrlFor(line)" :alt="`${skuFor(line)?.productName || skuFor(line)?.skuCode || '产品'}主图`" @error="markImageFailed(line)"><div v-else :data-test="`order-image-placeholder-${index}`" class="order-image-placeholder">暂无图片</div></div><div :data-test="`order-inventory-${index}`" class="order-inventory-cell"><span>库存</span><strong>实际 {{ skuFor(line)?.actualQuantity ?? 0 }}</strong><strong>在途 {{ skuFor(line)?.inTransitQuantity ?? 0 }}</strong><strong>未发货数量 {{ skuFor(line)?.pendingDeliveryQuantity ?? 0 }}</strong><strong>销售最小起订量 {{ salesMinimum(line) }}</strong><strong :class="{ negative: (skuFor(line)?.supplyDemandBalance ?? 0) < 0 }">供需余量 {{ skuFor(line)?.supplyDemandBalance ?? 0 }}</strong><strong :class="{ negative: postOrderSupplyDemandBalance(line, index) < 0 }">下单后供需余量 {{ postOrderSupplyDemandBalance(line, index) }}</strong><small v-if="postOrderSupplyDemandBalance(line, index) < 0" class="field-error">下单后采购缺口 {{ Math.abs(postOrderSupplyDemandBalance(line, index)) }}</small></div><label><span>物料名称</span><input :value="skuFor(line)?.productName ?? ''" disabled></label><label><span>规格型号</span><input :value="[skuFor(line)?.model, skuFor(line)?.configuration].filter(Boolean).join(' / ')" disabled></label><label><span>单位</span><input :value="skuFor(line)?.unit ?? ''" disabled></label><label :class="{ 'field-invalid': lineError(index, 'quantity') }"><span>订单数量 <small v-if="lineError(index, 'quantity')" :data-test="`quantity-error-${index}`" class="field-error">{{ quantityErrorMessage(index) }}</small></span><input v-model.number="line.quantity" type="number" :min="salesMinimum(line)"></label><label><span>已发货数量</span><input :value="line.shippedQuantity ?? 0" disabled></label><label><span>未发货数量</span><input :value="line.remainingQuantity ?? line.quantity" disabled></label><label :class="{ 'field-invalid': lineError(index, 'price') }"><span>含税单价 <small v-if="lineError(index, 'price')" :data-test="`price-error-${index}`" class="field-error">单价不可为负</small></span><input v-model.number="line.salePrice" type="number" min="0" step="0.01"></label><button :data-test="`remove-order-line-${index}`" type="button" @click="remove(index)">删除</button></div></div></div>
+          <p v-if="!skus.length" class="empty-option-hint">暂无可选产品，请先导入产品或库存数据。</p>
+          <div class="order-lines">
+            <article v-for="(line, index) in form.items" :key="index" class="order-line-panel">
+              <header class="order-line-panel-header">
+                <span class="order-line-index">明细 {{ index + 1 }}</span>
+                <label class="order-line-product-picker" :class="{ 'field-invalid': lineError(index, 'sku') }"><span>产品 <small v-if="lineError(index, 'sku')" :data-test="`sku-error-${index}`" class="field-error">请选择产品</small></span><FuzzyPicker :data-test="`order-sku-picker-${index}`" v-model="line.skuId" :options="skuOptions" :placeholder="skus.length ? '输入产品编号、客户料号或型号搜索' : '暂无可选产品，请先导入产品或库存'" :disabled="saving || !skus.length" empty-text="没有匹配的产品" @update:model-value="value => selectSku(index, value)" /></label>
+                <div class="order-product-image-cell"><span>产品图片</span><img v-if="imageUrlFor(line)" :data-test="`order-product-image-${index}`" :src="imageUrlFor(line)" :alt="`${skuFor(line)?.productName || skuFor(line)?.customerPartNumber || '产品'}主图`" @error="markImageFailed(line)"><div v-else :data-test="`order-image-placeholder-${index}`" class="order-image-placeholder">暂无图片</div></div>
+                <button class="order-line-remove" :data-test="`remove-order-line-${index}`" type="button" :disabled="form.items.length === 1" @click="remove(index)">删除明细</button>
+              </header>
+              <div class="order-line-identity" :data-test="`order-product-identifiers-${index}`">
+                <div><span>产品编号</span><strong>{{ skuFor(line)?.productCode || '—' }}</strong></div>
+                <div><span>客户料号</span><strong>{{ skuFor(line)?.customerPartNumber || '—' }}</strong></div>
+                <div><span>型号</span><strong>{{ skuFor(line)?.model || '—' }}</strong></div>
+                <div><span>型号 / 规格</span><strong>{{ [skuFor(line)?.model, skuFor(line)?.configuration].filter(Boolean).join(' / ') || '—' }}</strong></div>
+                <div><span>单位</span><strong>{{ skuFor(line)?.unit || '—' }}</strong></div>
+              </div>
+              <div class="order-line-fields">
+                <label :class="{ 'field-invalid': lineError(index, 'quantity') }"><span>订单数量 <small v-if="lineError(index, 'quantity')" :data-test="`quantity-error-${index}`" class="field-error">{{ quantityErrorMessage(index) }}</small></span><input v-model.number="line.quantity" type="number" :min="salesMinimum(line)"></label>
+                <label :class="{ 'field-invalid': lineError(index, 'price') }"><span>含税单价 <small v-if="lineError(index, 'price')" :data-test="`price-error-${index}`" class="field-error">单价不可为负</small></span><input v-model.number="line.salePrice" type="number" min="0" step="0.01"></label>
+                <div><span>已发货数量</span><strong>{{ line.shippedQuantity ?? 0 }}</strong></div>
+                <div><span>未发货数量</span><strong>{{ line.remainingQuantity ?? line.quantity }}</strong></div>
+              </div>
+              <div :data-test="`order-inventory-${index}`" class="order-line-metrics">
+                <div><span>实际库存</span><strong>{{ skuFor(line)?.actualQuantity ?? 0 }}</strong></div>
+                <div><span>在途数量</span><strong>{{ skuFor(line)?.inTransitQuantity ?? 0 }}</strong></div>
+                <div><span>全局未发货</span><strong>{{ skuFor(line)?.pendingDeliveryQuantity ?? 0 }}</strong></div>
+                <div><span>销售最小起订量</span><strong>{{ salesMinimum(line) }}</strong></div>
+                <div :class="{ negative: (skuFor(line)?.supplyDemandSurplus ?? 0) < 0 }"><span>供需余量</span><strong>{{ skuFor(line)?.supplyDemandSurplus ?? 0 }}</strong></div>
+                <div :class="{ negative: postOrderSupplyDemandSurplus(line, index) < 0 }"><span>下单后供需余量</span><strong>{{ postOrderSupplyDemandSurplus(line, index) }}</strong><small v-if="postOrderSupplyDemandSurplus(line, index) < 0">下单后采购缺口 {{ Math.abs(postOrderSupplyDemandSurplus(line, index)) }}</small></div>
+              </div>
+            </article>
+          </div>
         </section>
         <footer><button type="button" class="secondary-action" @click="emit('close')">取消操作</button><button class="primary-action" :disabled="saving">确认保存</button></footer>
       </form>
     </section>
   </div>
 </template>
+
+

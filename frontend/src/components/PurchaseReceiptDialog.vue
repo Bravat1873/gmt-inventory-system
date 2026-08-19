@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { receivePurchase, type PurchaseDetail } from '../api/workbench'
+import ProductIdentityDisplay from './ProductIdentityDisplay.vue'
 
 const props = defineProps<{ purchase: PurchaseDetail }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
@@ -43,7 +44,7 @@ async function save() {
       <header><div><h2 id="purchase-receipt-title">登记采购收货</h2><p>{{ purchase.purchaseNo }} · {{ purchase.supplierName }}</p></div><button type="button" :disabled="saving" @click="emit('close')">关闭</button></header>
       <form @submit.prevent="save">
         <div class="order-lines-scroll"><table><thead><tr><th>物料</th><th>采购数量</th><th>累计已收</th><th>剩余数量</th><th>本次实收</th></tr></thead><tbody>
-          <tr v-for="item in purchase.items" :key="item.id"><td>{{ item.skuCode }} {{ item.productName }}</td><td>{{ item.quantity }}</td><td>{{ item.receivedQuantity }}</td><td>{{ item.remainingQuantity }}</td><td><input data-test="received-now" v-model.number="quantities[item.id]" type="number" min="0" :max="item.remainingQuantity" step="1" :disabled="saving || item.remainingQuantity <= 0"></td></tr>
+          <tr v-for="item in purchase.items" :key="item.id"><td><ProductIdentityDisplay compact :product-code="item.productCode" :customer-part-number="item.customerPartNumber" :model="item.model" /></td><td>{{ item.quantity }}</td><td>{{ item.receivedQuantity }}</td><td>{{ item.remainingQuantity }}</td><td><input data-test="received-now" v-model.number="quantities[item.id]" type="number" min="0" :max="item.remainingQuantity" step="1" :disabled="saving || item.remainingQuantity <= 0"></td></tr>
         </tbody></table></div>
         <p v-if="error" class="dialog-error" role="alert">{{ error }}</p>
         <footer><button type="button" class="secondary-action" :disabled="saving" @click="emit('close')">取消</button><button class="primary-action" :disabled="saving">确认收货</button></footer>

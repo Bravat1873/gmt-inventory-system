@@ -18,7 +18,7 @@ const detail = {
   supplierId: 3,
   supplierName: '供应商甲',
   items: [{
-    id: 71, skuId: 9, skuCode: 'P50', productName: '智能锁', shortageQuantity: 6,
+    id: 71, skuId: 9, customerPartNumber: 'P50', productName: '智能锁', shortageQuantity: 6,
     minimumOrderQuantity: 10, suggestedQuantity: 10, purchasePrice: 20,
     estimatedAmount: 200, expectedArrivalDate: '2026-08-20', supplierPurchaseInfoId: 31
   }]

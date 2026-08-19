@@ -55,12 +55,12 @@ public class SalesOrderCommandService {
 
     public Map<String, Object> get(long id) {
         Map<String, Object> order = jdbc.queryForMap("SELECT id,order_no,external_order_no,customer_id,status,total_amount,order_date,order_type,salesperson,customer_contact,customer_phone,business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,finance_contact_name,finance_contact_phone,order_remark,delivery_address,delivery_contact,delivery_phone,shipping_method,receipt_confirmed_at,shipped_at,carrier,tracking_no,shipping_remark,created_at,version FROM sales_order WHERE id=?", id);
-        List<Map<String, Object>> items = jdbc.query("SELECT i.id,i.line_no,i.sku_id,s.sku_code,s.product_name,s.model,s.configuration,s.unit,i.quantity,i.shipped_quantity,i.locked_quantity,i.uncovered_quantity,i.sale_price,i.cost_snapshot FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no", (rs, n) -> {
+        List<Map<String, Object>> items = jdbc.query("SELECT i.id,i.line_no,i.sku_id,s.product_code,s.customer_part_number,s.product_name,s.model,s.configuration,s.unit,i.quantity,i.shipped_quantity,i.locked_quantity,i.uncovered_quantity,i.sale_price,i.cost_snapshot FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no", (rs, n) -> {
             Map<String, Object> m = new LinkedHashMap<>();
             int quantity = rs.getInt("quantity");
             int shipped = rs.getInt("shipped_quantity");
             m.put("id", rs.getLong("id")); m.put("lineNo", rs.getInt("line_no")); m.put("skuId", rs.getLong("sku_id"));
-            m.put("skuCode", rs.getString("sku_code")); m.put("productName", rs.getString("product_name")); m.put("model", rs.getString("model")); m.put("configuration", rs.getString("configuration")); m.put("unit", rs.getString("unit"));
+            m.put("productCode", rs.getString("product_code")); m.put("customerPartNumber", rs.getString("customer_part_number")); m.put("productName", rs.getString("product_name")); m.put("model", rs.getString("model")); m.put("configuration", rs.getString("configuration")); m.put("unit", rs.getString("unit"));
             m.put("quantity", quantity); m.put("shippedQuantity", shipped); m.put("remainingQuantity", quantity - shipped);
             m.put("lockedQuantity", rs.getInt("locked_quantity")); m.put("uncoveredQuantity", rs.getInt("uncovered_quantity")); m.put("salePrice", rs.getBigDecimal("sale_price")); m.put("costSnapshot", rs.getBigDecimal("cost_snapshot"));
             return m;
@@ -114,7 +114,7 @@ public class SalesOrderCommandService {
         if (!shipments.isEmpty()) {
             List<Map<String, Object>> shipmentItems = jdbc.query("""
                     SELECT si.sales_shipment_id,si.id,si.sales_order_item_id,oi.line_no,oi.sku_id,
-                           sku.sku_code,sku.product_name,sku.model,sku.unit,si.quantity
+                           sku.product_code,sku.customer_part_number,sku.product_name,sku.model,sku.unit,si.quantity
                     FROM sales_shipment_item si
                     JOIN sales_shipment shipment ON shipment.id=si.sales_shipment_id
                     JOIN sales_order_item oi ON oi.id=si.sales_order_item_id
@@ -128,7 +128,7 @@ public class SalesOrderCommandService {
                 item.put("salesOrderItemId", rs.getLong("sales_order_item_id"));
                 item.put("lineNo", rs.getInt("line_no"));
                 item.put("skuId", rs.getLong("sku_id"));
-                item.put("skuCode", rs.getString("sku_code"));
+                item.put("productCode", rs.getString("product_code")); item.put("customerPartNumber", rs.getString("customer_part_number"));
                 item.put("productName", rs.getString("product_name"));
                 item.put("model", rs.getString("model"));
                 item.put("unit", rs.getString("unit"));
@@ -149,7 +149,7 @@ public class SalesOrderCommandService {
 
     public List<Map<String, Object>> skuOptions() {
         List<Map<String, Object>> items = jdbc.query("""
-                SELECT s.id,s.product_code,s.sku_code,s.product_name,s.model,s.product_type,s.product_configuration,s.configuration,s.product_version,s.color,s.lock_body,s.unit,s.sales_minimum_order_quantity,s.current_cost,s.factory_price,
+                SELECT s.id,s.product_code,s.customer_part_number,s.product_name,s.model,s.product_type,s.product_configuration,s.configuration,s.product_version,s.color,s.lock_body,s.unit,s.sales_minimum_order_quantity,s.current_cost,s.factory_price,
                        (SELECT pi.id FROM product_image pi
                         WHERE pi.product_id=s.id AND pi.is_primary=TRUE
                         ORDER BY pi.sort_order,pi.id LIMIT 1) AS primary_image_id
@@ -158,7 +158,7 @@ public class SalesOrderCommandService {
                 ORDER BY s.product_code
                 """, (rs, n) -> {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", rs.getLong("id")); item.put("productCode", rs.getString("product_code")); item.put("skuCode", rs.getString("sku_code")); item.put("productName", rs.getString("product_name"));
+            item.put("id", rs.getLong("id")); item.put("productCode", rs.getString("product_code")); item.put("customerPartNumber", rs.getString("customer_part_number")); item.put("productName", rs.getString("product_name"));
             item.put("model", rs.getString("model")); item.put("productType", rs.getString("product_type")); item.put("productConfiguration", rs.getString("product_configuration")); item.put("configuration", rs.getString("configuration"));
             item.put("productVersion", rs.getString("product_version")); item.put("color", rs.getString("color"));
             item.put("lockBody", rs.getString("lock_body")); item.put("unit", rs.getString("unit"));
@@ -176,7 +176,7 @@ public class SalesOrderCommandService {
             item.put("availableQuantity", snapshot.availableQuantity());
             item.put("inTransitQuantity", snapshot.inTransitQuantity());
             item.put("pendingDeliveryQuantity", snapshot.pendingDeliveryQuantity());
-            item.put("supplyDemandBalance", snapshot.supplyDemandBalance());
+            item.put("supplyDemandSurplus", snapshot.supplyDemandSurplus());
             item.put("purchaseShortageQuantity", snapshot.purchaseShortageQuantity());
         });
         return items;
@@ -253,9 +253,9 @@ public class SalesOrderCommandService {
         for (SalesOrderRequest.Item item : request.items()) {
             if (item.skuId() == null || jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE id=? AND enabled=TRUE", Integer.class, item.skuId()) == 0) throw new IllegalArgumentException("订单中存在无效产品");
             if (item.quantity() == null || item.quantity() <= 0) throw new IllegalArgumentException("产品数量必须为正数");
-            Map<String, Object> sku = jdbc.queryForMap("SELECT sku_code,sales_minimum_order_quantity FROM sku WHERE id=?", item.skuId());
+            Map<String, Object> sku = jdbc.queryForMap("SELECT customer_part_number,sales_minimum_order_quantity FROM sku WHERE id=?", item.skuId());
             int minimum = ((Number) sku.get("sales_minimum_order_quantity")).intValue();
-            if (item.quantity() < minimum) throw new IllegalArgumentException("产品 " + sku.get("sku_code") + " 的订单数量不能小于销售最小起订量 " + minimum);
+            if (item.quantity() < minimum) throw new IllegalArgumentException("产品 " + sku.get("customer_part_number") + " 的订单数量不能小于销售最小起订量 " + minimum);
             if (item.salePrice() == null || item.salePrice().signum() < 0) throw new IllegalArgumentException("销售单价不能为负数");
         }
     }
@@ -281,3 +281,6 @@ public class SalesOrderCommandService {
     private String trim(String value) { return value == null ? null : value.trim(); }
     private String status(SalesOrderRequest request) { return blankToNull(request.status()) == null ? "PENDING_CUSTOMER_PAYMENT" : request.status().trim(); }
 }
+
+
+

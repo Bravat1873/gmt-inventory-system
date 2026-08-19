@@ -322,7 +322,7 @@ class ProcurementWorkflowApiTest {
                 .andExpect(jsonPath("$.data.count").value(1))
                 .andExpect(jsonPath("$.data.unconfiguredCount").value(1))
                 .andExpect(jsonPath("$.data.unconfiguredItems[0].skuId").value(102))
-                .andExpect(jsonPath("$.data.unconfiguredItems[0].skuCode").value("D51-001"))
+                .andExpect(jsonPath("$.data.unconfiguredItems[0].customerPartNumber").value("D51-001"))
                 .andExpect(jsonPath("$.data.unconfiguredItems[0].productName").value("D51"))
                 .andExpect(jsonPath("$.data.unconfiguredItems[0].shortageQuantity").value(4))
                 .andExpect(jsonPath("$.data.unconfiguredItems[0].orderNumbers[0]").value("DD20260800001"))

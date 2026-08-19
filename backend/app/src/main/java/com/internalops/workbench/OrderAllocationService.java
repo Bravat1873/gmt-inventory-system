@@ -22,7 +22,7 @@ public class OrderAllocationService {
         Map<String, Object> order = jdbc.queryForMap("SELECT id,status,version FROM sales_order WHERE id=?", orderId);
         long warehouseId = defaultWarehouse();
         List<Map<String, Object>> items = jdbc.queryForList("""
-                SELECT i.line_no,s.sku_code,s.product_name,i.quantity,i.shipped_quantity,
+                SELECT i.line_no,s.product_code,s.customer_part_number,s.model,s.product_name,i.quantity,i.shipped_quantity,
                        i.locked_quantity,i.uncovered_quantity,
                        COALESCE(b.actual_quantity,0) AS actual_quantity,
                        COALESCE(b.actual_quantity-b.locked_quantity,0) AS available_quantity
@@ -88,7 +88,9 @@ public class OrderAllocationService {
     private Map<String, Object> allocationItem(Map<String, Object> row) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("lineNo", number(row, "line_no"));
-        item.put("skuCode", value(row, "sku_code"));
+        item.put("productCode", value(row, "product_code"));
+        item.put("customerPartNumber", value(row, "customer_part_number"));
+        item.put("model", value(row, "model"));
         item.put("productName", value(row, "product_name"));
         item.put("quantity", number(row, "quantity"));
         item.put("shippedQuantity", number(row, "shipped_quantity"));

@@ -4,8 +4,8 @@ import SupplierDialog from './SupplierDialog.vue'
 
 const api = vi.hoisted(() => ({
   loadOrderSkus: vi.fn().mockResolvedValue([
-    { id: 101, skuCode: 'P90-001', productName: 'P90 智能锁', model: 'P90', unit: '件' },
-    { id: 102, skuCode: 'M3-001', productName: 'M3 智能锁', model: 'M3', unit: '件' }
+    { id: 101, customerPartNumber: 'P90-001', productCode: 'GMT-P90', productName: 'P90 智能锁', model: 'P90', unit: '件' },
+    { id: 102, customerPartNumber: 'M3-001', productCode: 'GMT-M3', productName: 'M3 智能锁', model: 'M3', unit: '件' }
   ]),
   createSupplier: vi.fn().mockResolvedValue({ id: 201 }),
   updateSupplier: vi.fn(),
@@ -23,12 +23,15 @@ it('renders product suggestions above the scrollable supplier dialog', async () 
   await picker.get('input').setValue('P90')
 
   const matchingOption = document.body.querySelector('[data-test="fuzzy-option-101"]')
-  expect(matchingOption?.textContent).toContain('P90-001')
+  expect(matchingOption?.textContent)
+    .toMatch(/产品编号：GMT-P90[\s\S]*客户料号：P90-001[\s\S]*型号：P90/)
+  expect(matchingOption?.textContent).not.toContain('P90 智能锁')
   expect(document.body.querySelector('[data-test="fuzzy-option-102"]')).toBeNull()
   expect(matchingOption?.closest('[data-test="supplier-product-picker"]')).toBeNull()
 
   matchingOption?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   await flushPromises()
+  expect((wrapper.get('[data-test="supplier-product-picker"] input').element as HTMLInputElement).value).toBe('GMT-P90')
   await wrapper.get('[data-test="add-supplier-product"]').trigger('click')
 
   expect(wrapper.text()).toContain('P90-001')
@@ -41,7 +44,8 @@ it('uses 客户料号 in its product search prompt', async () => {
   const wrapper = mount(SupplierDialog)
   await flushPromises()
 
-  expect((wrapper.get('[data-test="supplier-product-picker"] input').element as HTMLInputElement).placeholder).toContain('客户料号')
+  expect((wrapper.get('[data-test="supplier-product-picker"] input').element as HTMLInputElement).placeholder)
+    .toBe('输入产品编号、客户料号或型号搜索')
   expect(wrapper.text()).not.toContain(legacyMaterialNumber)
   wrapper.unmount()
 })
@@ -89,10 +93,10 @@ it('submits the complete supplier profile fields without losing text formatting'
   }))
 })
 
-it('shows full product name on hover and edits multiple purchase infos', async () => {
+it('shows the three complete product identifiers and edits multiple purchase infos', async () => {
   api.getSupplier.mockResolvedValueOnce({
     id: 201, supplierName: '供应商', version: 0,
-    products: [{ skuId: 101, skuCode: 'P90-001', productName: '非常长的完整产品名称',
+    products: [{ skuId: 101, customerPartNumber: '非常长的客户料号-P90-001', productCode: 'GMT-VERY-LONG-P90', productName: '不应显示的产品名称', model: 'VERY-LONG-MODEL',
       purchaseInfos: [
         { id: 11, purchasePrice: 220, moq: 5, leadTimeDays: 7, updatedAt: '2026-08-14T10:30:00', version: 0 },
         { id: 10, purchasePrice: 210, moq: 10, leadTimeDays: 9, updatedAt: '2026-08-13T10:30:00', version: 0 }
@@ -102,10 +106,20 @@ it('shows full product name on hover and edits multiple purchase infos', async (
   await flushPromises()
 
   const name = wrapper.get('[data-test="supplier-product-name-101"]')
-  expect(name.attributes('title')).toContain('非常长的完整产品名称')
+  expect(wrapper.findAll('.supplier-product-panel')).toHaveLength(1)
+  expect(name.text()).toContain('非常长的客户料号-P90-001')
+  expect(name.text()).toContain('VERY-LONG-MODEL')
+  expect(name.text()).toContain('GMT-VERY-LONG-P90')
+  expect(name.text().indexOf('GMT-VERY-LONG-P90')).toBeLessThan(name.text().indexOf('非常长的客户料号-P90-001'))
+  expect(name.text().indexOf('非常长的客户料号-P90-001')).toBeLessThan(name.text().indexOf('VERY-LONG-MODEL'))
+  expect(name.text()).not.toContain('不应显示的产品名称')
+  expect(name.attributes('title')).toBeUndefined()
   expect(wrapper.findAll('[data-test^="purchase-info-row-"]')).toHaveLength(2)
   await wrapper.get('[data-test="add-purchase-info-101"]').trigger('click')
   expect(wrapper.findAll('[data-test^="purchase-info-row-"]')).toHaveLength(3)
+  const newRow = wrapper.get('[data-test="purchase-info-row-101-2"]')
+  expect(newRow.classes()).toContain('purchase-info-new-row')
+  expect(newRow.get('.purchase-info-new-badge').text()).toBe('待保存')
 })
 
 it('shows purchase-info deletion only when the same product has multiple records', async () => {
@@ -115,7 +129,7 @@ it('shows purchase-info deletion only when the same product has multiple records
     version: 0,
     products: [{
       skuId: 101,
-      skuCode: 'P90-001',
+      customerPartNumber: 'P90-001',
       productName: 'P90 智能锁',
       purchaseInfos: [
         { id: 11, purchasePrice: 220, moq: 5, leadTimeDays: 7, updatedAt: '2026-08-14T10:30:00', version: 0 },
@@ -135,7 +149,7 @@ it('shows purchase-info deletion only when the same product has multiple records
   expect(wrapper.get('[data-test="remove-supplier-product-101"]').text()).toBe('移除产品')
 })
 
-it('places the remove-product action in the operation column', async () => {
+it('places product actions together in the product panel header', async () => {
   const wrapper = mount(SupplierDialog)
   await flushPromises()
   const picker = wrapper.get('[data-test="supplier-product-picker"]')
@@ -145,8 +159,10 @@ it('places the remove-product action in the operation column', async () => {
   await wrapper.get('[data-test="add-supplier-product"]').trigger('click')
 
   const remove = wrapper.get('[data-test="remove-supplier-product-101"]')
-  expect(Array.from(remove.element.closest('tr')!.children).indexOf(remove.element.closest('td')!)).toBe(5)
-  expect(wrapper.get('[data-test="supplier-product-name-101"]').element.parentElement?.textContent).not.toContain('移除产品')
+  const header = remove.element.closest('.supplier-product-panel-header')
+  expect(header).not.toBeNull()
+  expect(header?.contains(wrapper.get('[data-test="add-purchase-info-101"]').element)).toBe(true)
+  expect(header?.contains(wrapper.get('[data-test="supplier-product-name-101"]').element)).toBe(true)
 })
 
 it('renders an associated product with blank editable purchase fields when purchase infos are empty', async () => {
@@ -154,7 +170,7 @@ it('renders an associated product with blank editable purchase fields when purch
     id: 201,
     supplierName: '待补填供应商',
     version: 0,
-    products: [{ skuId: 101, skuCode: 'P90-001', productName: 'P90 智能锁', purchaseInfos: [] }]
+    products: [{ skuId: 101, customerPartNumber: 'P90-001', productName: 'P90 智能锁', purchaseInfos: [] }]
   })
   const wrapper = mount(SupplierDialog, { props: { row: { id: 201 } } })
   await flushPromises()
@@ -180,7 +196,7 @@ it('allows blank purchase fields to be completed later and submits numbers', asy
     id: 201,
     supplierName: '待补填供应商',
     version: 0,
-    products: [{ skuId: 101, skuCode: 'P90-001', purchaseInfos: [] }]
+    products: [{ skuId: 101, customerPartNumber: 'P90-001', purchaseInfos: [] }]
   })
   const wrapper = mount(SupplierDialog, { props: { row: { id: 201 } } })
   await flushPromises()
@@ -199,3 +215,5 @@ it('allows blank purchase fields to be completed later and submits numbers', asy
     }]
   }))
 })
+
+

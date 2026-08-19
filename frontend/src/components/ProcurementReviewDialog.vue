@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import ProductIdentityDisplay from './ProductIdentityDisplay.vue'
 import { confirmProcurementSuggestion, loadProcurementSuggestion, rejectProcurementSuggestion, updateProcurementSuggestion, type ProcurementSuggestionDetail } from '../api/workbench'
 
 const props = defineProps<{ suggestionId: number }>()
@@ -21,7 +22,7 @@ async function load() {
 function validate() {
   delete errors.items
   const invalid = detail.value?.items.find(item => !Number.isInteger(Number(item.suggestedQuantity)) || Number(item.suggestedQuantity) < Number(item.minimumOrderQuantity))
-  if (invalid) errors.items = `${invalid.skuCode || invalid.productName || '采购明细'}：采购数量不能低于最小起购量 ${invalid.minimumOrderQuantity}`
+  if (invalid) errors.items = `${invalid.customerPartNumber || invalid.productName || '采购明细'}：采购数量不能低于最小起购量 ${invalid.minimumOrderQuantity}`
   return !invalid
 }
 async function saveEdits() {
@@ -60,7 +61,7 @@ onMounted(load)
         <div class="procurement-review-summary"><div><span>供应商</span><strong>{{ detail.supplierName }}</strong></div><div><span>建议明细</span><strong>{{ detail.items.length }} 项</strong></div><div><span>预计总额</span><strong>¥ {{ money(total) }}</strong></div></div>
         <div class="procurement-review-table-wrap"><table class="procurement-review-table">
           <thead><tr><th>物料</th><th>采购缺口</th><th>最小起购量</th><th>采购数量</th><th>采购单价</th><th>预计金额</th><th>预计到货日期</th></tr></thead>
-          <tbody><tr v-for="item in detail.items" :key="item.id"><td><strong>{{ item.skuCode || '—' }}</strong><small>{{ item.productName || '—' }}</small></td><td>{{ item.shortageQuantity }}</td><td>{{ item.minimumOrderQuantity }}</td><td><input v-model.number="item.suggestedQuantity" :data-test="`review-quantity-${item.id}`" type="number" step="1" :min="item.minimumOrderQuantity" :disabled="saving"></td><td>¥ {{ money(item.purchasePrice) }}</td><td>¥ {{ money(item.suggestedQuantity * item.purchasePrice) }}</td><td><input v-model="item.expectedArrivalDate" type="date" :disabled="saving"></td></tr></tbody>
+          <tbody><tr v-for="item in detail.items" :key="item.id"><td><ProductIdentityDisplay compact :product-code="item.productCode" :customer-part-number="item.customerPartNumber" :model="item.model" /></td><td>{{ item.shortageQuantity }}</td><td>{{ item.minimumOrderQuantity }}</td><td><input v-model.number="item.suggestedQuantity" :data-test="`review-quantity-${item.id}`" type="number" step="1" :min="item.minimumOrderQuantity" :disabled="saving"></td><td>¥ {{ money(item.purchasePrice) }}</td><td>¥ {{ money(item.suggestedQuantity * item.purchasePrice) }}</td><td><input v-model="item.expectedArrivalDate" type="date" :disabled="saving"></td></tr></tbody>
         </table></div>
         <p v-if="errors.items" class="form-error" role="alert">{{ errors.items }}</p>
         <label class="procurement-reject-reason"><span>无需采购原因（仅标记无需采购时填写）</span><textarea v-model="rejectReason" maxlength="500" :disabled="saving" placeholder="例如：客户取消、已有替代库存"></textarea><small v-if="errors.reason" class="field-error">{{ errors.reason }}</small></label>

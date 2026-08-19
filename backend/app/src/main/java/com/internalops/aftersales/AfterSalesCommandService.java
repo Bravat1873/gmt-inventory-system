@@ -33,18 +33,18 @@ public class AfterSalesCommandService {
         Map<Long,Long> returnIds=new HashMap<>();
         for (AfterSalesRequest.ReturnLine line:request.returnLines()) {
             if(line.requestedQuantity()<=0) throw new IllegalArgumentException("退回数量必须大于零");
-            Map<String,Object> item=one("SELECT i.id,i.sku_id,i.shipped_quantity,s.sku_code,s.product_name,s.model,s.configuration,s.unit FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.id=? AND i.sales_order_id=? FOR UPDATE",line.salesOrderItemId(),request.orderId());
+            Map<String,Object> item=one("SELECT i.id,i.sku_id,i.shipped_quantity,s.customer_part_number,s.product_name,s.model,s.configuration,s.unit FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.id=? AND i.sales_order_id=? FOR UPDATE",line.salesOrderItemId(),request.orderId());
             Integer used=jdbc.queryForObject("SELECT COALESCE(SUM(r.requested_quantity),0) FROM after_sales_return_line r JOIN after_sales_order a ON a.id=r.after_sales_order_id WHERE r.sales_order_item_id=? AND a.status<>'CANCELLED'",Integer.class,line.salesOrderItemId());
             if(line.requestedQuantity()>((int)num(item,"shipped_quantity")-Objects.requireNonNullElse(used,0))) throw new IllegalArgumentException("退回数量超过该订单明细可退数量");
             GeneratedKeyHolder lineKey=new GeneratedKeyHolder();
-            jdbc.update(c->{PreparedStatement s=c.prepareStatement("INSERT INTO after_sales_return_line(after_sales_order_id,sales_order_item_id,sku_id,sku_code,product_name,model,configuration,unit,requested_quantity) VALUES(?,?,?,?,?,?,?,?,?)",Statement.RETURN_GENERATED_KEYS);s.setLong(1,id);s.setLong(2,line.salesOrderItemId());s.setLong(3,num(item,"sku_id"));s.setString(4,str(item,"sku_code"));s.setString(5,str(item,"product_name"));s.setString(6,str(item,"model"));s.setString(7,str(item,"configuration"));s.setString(8,str(item,"unit"));s.setInt(9,line.requestedQuantity());return s;},lineKey);
+            jdbc.update(c->{PreparedStatement s=c.prepareStatement("INSERT INTO after_sales_return_line(after_sales_order_id,sales_order_item_id,sku_id,customer_part_number,product_name,model,configuration,unit,requested_quantity) VALUES(?,?,?,?,?,?,?,?,?)",Statement.RETURN_GENERATED_KEYS);s.setLong(1,id);s.setLong(2,line.salesOrderItemId());s.setLong(3,num(item,"sku_id"));s.setString(4,str(item,"customer_part_number"));s.setString(5,str(item,"product_name"));s.setString(6,str(item,"model"));s.setString(7,str(item,"configuration"));s.setString(8,str(item,"unit"));s.setInt(9,line.requestedQuantity());return s;},lineKey);
             returnIds.put(line.salesOrderItemId(),Objects.requireNonNull(lineKey.getKey()).longValue());
         }
         if(request.replacementLines()!=null) for(var line:request.replacementLines()) {
             if(line.plannedQuantity()<=0) throw new IllegalArgumentException("换出数量必须大于零");
-            Map<String,Object> sku=one("SELECT id,sku_code,product_name,model,configuration,unit FROM sku WHERE id=? AND enabled=TRUE",line.skuId());
+            Map<String,Object> sku=one("SELECT id,customer_part_number,product_name,model,configuration,unit FROM sku WHERE id=? AND enabled=TRUE",line.skuId());
             Long returnId=line.returnLineId()!=null?line.returnLineId():returnIds.get(line.salesOrderItemId());
-            jdbc.update("INSERT INTO after_sales_replacement_line(after_sales_order_id,return_line_id,sku_id,sku_code,product_name,model,configuration,unit,planned_quantity) VALUES(?,?,?,?,?,?,?,?,?)",id,returnId,line.skuId(),str(sku,"sku_code"),str(sku,"product_name"),str(sku,"model"),str(sku,"configuration"),str(sku,"unit"),line.plannedQuantity());
+            jdbc.update("INSERT INTO after_sales_replacement_line(after_sales_order_id,return_line_id,sku_id,customer_part_number,product_name,model,configuration,unit,planned_quantity) VALUES(?,?,?,?,?,?,?,?,?)",id,returnId,line.skuId(),str(sku,"customer_part_number"),str(sku,"product_name"),str(sku,"model"),str(sku,"configuration"),str(sku,"unit"),line.plannedQuantity());
         }
         event(id,"CREATED","创建售后单"); return Map.of("id",id,"afterSalesNo",no,"status","WAITING_RETURN","version",0);
     }

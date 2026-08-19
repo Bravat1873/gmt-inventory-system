@@ -9,7 +9,7 @@ public record EntityCommandRequest(
         String financeContactName, String financeContactPhone, String invoiceTitle, String taxpayerId,
         String invoiceAddress, String invoicePhone, String bankName, String bankAccount,
         String username, String displayName, String password, String role, Boolean enabled,
-        String skuCode, String productCode, String codeSuffix, String eanCode, String model, String productName, String color, String lockBody,
+        String customerPartNumber, String productCode, String codeSuffix, String eanCode, String model, String productName, String color, String lockBody,
         String productVersion, String configuration, String productConfiguration, String unit, Integer salesMinimumOrderQuantity, BigDecimal currentCost, BigDecimal factoryPrice, String remark,
         Long brandRuleId, Long seriesRuleId, Long bodyColorRuleId, Long lockTypeRuleId,
         Long connectivityRuleId, Long salesChannelRuleId, Long operatingEntityRuleId, Long languageRuleId,

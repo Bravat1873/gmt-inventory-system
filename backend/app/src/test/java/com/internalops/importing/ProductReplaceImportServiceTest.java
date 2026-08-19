@@ -31,7 +31,7 @@ class ProductReplaceImportServiceTest {
         jdbc.update("INSERT INTO sku(id,product_code,product_name) VALUES(1,'OLD-1','旧产品')");
         jdbc.update("INSERT INTO sales_order(id,customer_id,order_no) VALUES(1,1,'SO-1')");
         jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,sku_id) VALUES(1,1,1)");
-        jdbc.update("INSERT INTO inventory_balance(id,sku_id) VALUES(1,1)");
+        jdbc.update("INSERT INTO inventory_balance(id,warehouse_id,sku_id) VALUES(1,1,1)");
         jdbc.update("INSERT INTO inventory_locked_allocation(inventory_balance_id) VALUES(1)");
         jdbc.update("INSERT INTO inventory_transaction(sku_id) VALUES(1)");
         jdbc.update("INSERT INTO sku_cost_history(sku_id) VALUES(1)");
@@ -97,12 +97,17 @@ class ProductReplaceImportServiceTest {
         assertThat(result.status()).isEqualTo("COMMITTED");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class)).isOne();
         assertThat(jdbc.queryForObject("SELECT product_code FROM sku", String.class)).isEqualTo("BR_P90YZH70WPZC-A");
-        assertThat(jdbc.queryForObject("SELECT sku_code FROM sku", String.class)).isEqualTo("CUS-P90");
+        assertThat(jdbc.queryForObject("SELECT customer_part_number FROM sku", String.class)).isEqualTo("CUS-P90");
         assertThat(jdbc.queryForObject("SELECT product_type FROM sku", String.class)).isEqualTo("SMART_LOCK");
-        assertThat(jdbc.queryForObject("SELECT configuration FROM sku", String.class)).isEqualTo("测试规格");
+        assertThat(jdbc.queryForObject("SELECT configuration FROM sku", String.class)).isEqualTo("BRAVAT / P90 / 宇宙黑 / 7068 / 中文版");
         assertThat(jdbc.queryForObject("SELECT product_configuration FROM sku", String.class)).isEqualTo("测试配置");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_balance", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance", Integer.class)).isEqualTo(12);
+        assertThat(jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance", Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT source_supplier_name FROM inventory_balance", String.class)).isEqualTo("测试供应商");
+        assertThat(jdbc.queryForObject("SELECT inventory_remark FROM inventory_balance", String.class)).isEqualTo("现货");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_order", Integer.class)).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_balance", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM customer", Integer.class)).isOne();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM supplier", Integer.class)).isOne();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_code_rule", Integer.class)).isEqualTo(8);
@@ -151,6 +156,19 @@ class ProductReplaceImportServiceTest {
                 .containsEntry("LEAD_TIME_DAYS", null);
     }
 
+    @Test
+    void importsPricedSupplierRelationWithUsableProcurementDefaults() {
+        service.replace(repository.findBatchForUpdate(batch(List.of(validRow("A")))), Map.of());
+
+        assertThat(jdbc.queryForMap("SELECT purchase_price,moq,lead_time_days FROM sku_supplier_config"))
+                .containsEntry("PURCHASE_PRICE", new BigDecimal("88.5000"))
+                .containsEntry("MOQ", 1)
+                .containsEntry("LEAD_TIME_DAYS", 0);
+        assertThat(jdbc.queryForMap("SELECT purchase_price,moq,lead_time_days FROM sku_supplier_purchase_info"))
+                .containsEntry("PURCHASE_PRICE", new BigDecimal("88.5000"))
+                .containsEntry("MOQ", 1)
+                .containsEntry("LEAD_TIME_DAYS", 0);
+    }
     private long batch(List<ParsedImportRow> rows) {
         return repository.create(ImportType.PRODUCT, "products.xlsx", "hash-" + System.nanoTime(), rows);
     }
@@ -167,9 +185,11 @@ class ProductReplaceImportServiceTest {
         data.put("productCode", "BR_P90YZH70WPZC-" + suffix);
         data.put("_ruleFingerprint", "BRAND:1|SERIES:2|BODY_COLOR:3|LOCK_TYPE:4|CONNECTIVITY:5|SALES_CHANNEL:6|OPERATING_ENTITY:7|LANGUAGE:8");
         data.put("model", "P90"); data.put("productCategory", "智能锁"); data.put("materialType", "成品");
-        data.put("customerMaterialCode", "CUS-P90"); data.put("materialSpecification", "测试规格");
+        data.put("customerPartNumber", "CUS-P90"); data.put("materialSpecification", "测试规格");
         data.put("productConfiguration", "测试配置"); data.put("salesMinimumOrderQuantity", BigDecimal.ONE);
         data.put("supplierName", "测试供应商"); data.put("supplierTaxPrice", new BigDecimal("88.50"));
+        data.put("actualQuantity", 12); data.put("lockedQuantity", 3); data.put("inTransitQuantity", 4);
+        data.put("sourceSupplierName", "测试供应商"); data.put("inventoryRemark", "现货");
         return data;
     }
 }

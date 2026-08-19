@@ -69,7 +69,7 @@ function productImageUrl(row: Record<string, unknown>) {
 function columnWidth(field: string) {
   if (field === 'productImage') return 84
   if (field === 'supplierQuotes') return 260
-  const widths: Record<string, number> = { productCode: 240, afterSalesNo: 240, skuCode: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 240, purchaseNo: 240, businessNo: 240, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, oldestStockDate: 170, inventoryAgeDays: 90, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 140, lockedQuantity: 130, inTransitQuantity: 130, pendingDeliveryQuantity: 130, supplyDemandBalance: 170, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
+  const widths: Record<string, number> = { productCode: 240, afterSalesNo: 240, customerPartNumber: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 240, purchaseNo: 240, businessNo: 240, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, oldestStockDate: 170, inventoryAgeDays: 90, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 140, lockedQuantity: 130, inTransitQuantity: 130, pendingDeliveryQuantity: 130, supplyDemandSurplus: 170, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
   return widths[field] ?? 150
 }
 const actionColumnWidth = computed(() => {
@@ -116,7 +116,7 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
                 <span v-else-if="module.key === 'product' && field === 'supplierQuotes'" data-test="supplier-quotes" class="supplier-quotes" :title="supplierQuoteDetails(row)">{{ supplierQuoteSummary(row) }}</span>
                 <span v-else-if="['order', 'purchase'].includes(module.key) && field === 'status'" class="order-shipment-status"><i class="shipment-status-dot" :class="shipmentCompleted(row) ? 'complete' : 'incomplete'"></i><OverflowText :value="text(row[field], field)" /></span>
                 <span v-else-if="module.key === 'finance' && field === 'businessType'" data-test="finance-direction" class="finance-direction" :class="isReceivable(row) ? 'receivable' : 'payable'" :aria-label="isReceivable(row) ? '收款' : '付款'"><i aria-hidden="true"></i><OverflowText :value="text(row[field], field)" /></span>
-                <span v-else-if="module.key === 'inventory' && field === 'supplyDemandBalance'" data-test="supply-demand-balance" class="supply-demand-balance" :class="{ negative: Number(row[field]) < 0 }"><OverflowText :value="text(row[field], field)" /><small v-if="Number(row[field]) < 0">采购缺口 {{ Number(row.purchaseShortageQuantity ?? Math.abs(Number(row[field]))) }}</small></span>
+                <span v-else-if="module.key === 'inventory' && field === 'supplyDemandSurplus'" data-test="supply-demand-surplus" class="supply-demand-surplus" :class="{ negative: Number(row[field]) < 0 }"><OverflowText :value="text(row[field], field)" /><small v-if="Number(row[field]) < 0">采购缺口 {{ Number(row.purchaseShortageQuantity ?? Math.abs(Number(row[field]))) }}</small></span>
                 <span v-else-if="isFullIdentifier(field)" class="full-identifier">{{ text(row[field], field) }}</span>
                 <OverflowText v-else :value="text(row[field], field)" />
               </td>
@@ -146,3 +146,5 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
     </div>
   </section>
 </template>
+
+

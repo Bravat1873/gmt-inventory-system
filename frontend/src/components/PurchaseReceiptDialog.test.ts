@@ -12,8 +12,8 @@ const purchase = {
   supplierName: '供应商一',
   totalAmount: 150,
   items: [
-    { id: 81, skuCode: 'P90', productName: '门锁', quantity: 10, receivedQuantity: 4, remainingQuantity: 6 },
-    { id: 82, skuCode: 'D51', productName: '面板', quantity: 5, receivedQuantity: 0, remainingQuantity: 5 }
+    { id: 81, customerPartNumber: 'P90', productName: '门锁', quantity: 10, receivedQuantity: 4, remainingQuantity: 6 },
+    { id: 82, customerPartNumber: 'D51', productName: '面板', quantity: 5, receivedQuantity: 0, remainingQuantity: 5 }
   ]
 }
 

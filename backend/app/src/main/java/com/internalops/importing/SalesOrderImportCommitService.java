@@ -83,7 +83,7 @@ public class SalesOrderImportCommitService {
         Map<String, List<ImportRowView>> rowsByOrder = new LinkedHashMap<>();
         for (ImportRowView row : batch.rows()) {
             if (row.status() != ImportRowStatus.VALID) continue;
-            String externalOrderNo = text(row.data(), "externalOrderNo");
+            String externalOrderNo = SalesOrderImportGroupKey.from(row.data());
             rowsByOrder.computeIfAbsent(externalOrderNo, ignored -> new ArrayList<>()).add(row);
         }
 
