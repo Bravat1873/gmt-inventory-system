@@ -29,6 +29,7 @@ services:
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       ATTACHMENT_ROOT: /app/data/attachments
       PRODUCT_IMAGE_ROOT: /app/data/product-images
+      PRODUCT_REPLACE_IMPORT_ENABLED: "true"
       TZ: Asia/Shanghai
     volumes:
       - attachment_data:/app/data/attachments
