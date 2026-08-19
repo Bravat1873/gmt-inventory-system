@@ -26,6 +26,8 @@ const previewBatch = ref<ImportBatch | null>(null)
 const productActions = ref<Record<number, ProductConflictAction>>({})
 type RowConflictAction = 'OVERWRITE' | 'SKIP'
 const rowActions = ref<Record<number, RowConflictAction>>({})
+const editingRow = ref<ImportRow | null>(null)
+const editingData = ref<Record<string, string>>({})
 const errorText = (error: unknown) => error instanceof Error ? error.message : '导入失败，请稍后重试'
 
 const supplierFieldLabels: Record<string, string> = {
@@ -139,6 +141,25 @@ function skipProductRow(rowId: number) {
 
 function chooseConflict(row: ImportRow, action: RowConflictAction) {
   rowActions.value = { ...rowActions.value, [row.id]: action }
+}
+
+function startEditing(row: ImportRow) {
+  editingRow.value = row
+  editingData.value = Object.fromEntries(Object.entries(row.data)
+    .filter(([key]) => !key.startsWith('_'))
+    .map(([key, current]) => [key, current == null ? '' : String(current)]))
+}
+
+async function saveEdit() {
+  const batch = previewBatch.value
+  const row = editingRow.value
+  if (!batch || !row || busy.value) return
+  busy.value = true
+  try {
+    await updateImportRow(batch.batchId, row.id, editingData.value)
+    rowActions.value = { ...rowActions.value, [row.id]: 'OVERWRITE' }
+    editingRow.value = null
+  } finally { busy.value = false }
 }
 
 async function processFile(file: File) {
@@ -291,7 +312,8 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
 
       <section v-else-if="previewBatch && importedRows === null && type === 'CUSTOMER'" class="supplier-preview" aria-label="客户导入预览">
         <div class="supplier-preview-summary"><span>总行数 <strong>{{ previewBatch.totalRows }}</strong></span><span>冲突行 <strong>{{ conflictRows.length }}</strong></span></div>
-        <div class="supplier-preview-table-wrap"><table class="supplier-preview-table"><thead><tr><th>状态</th><th>来源</th><th>客户名称</th><th>冲突处理</th></tr></thead><tbody><tr v-for="row in previewBatch.rows" :key="row.id" :class="{ 'conflict-row': row.data._conflict }" :data-test="row.data._conflict ? `conflict-row-${row.id}` : 'preview-row'"><td>{{ row.status === 'VALID' ? '有效' : '错误' }}</td><td>{{ row.sheetName }} · 第 {{ row.rowNumber }} 行</td><td>{{ value(row, 'customerName') }}<p v-if="row.data._conflictLabel" class="conflict-label">{{ row.data._conflictLabel }}</p></td><td><template v-if="row.data._conflict"><button :data-test="`conflict-overwrite-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'OVERWRITE')">采用导入</button><button :data-test="`conflict-skip-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'SKIP')">保留现有</button><span v-if="rowActions[row.id]" class="resolved-state">{{ rowActions[row.id] === 'OVERWRITE' ? '将采用导入' : '将保留现有' }}</span></template><span v-else>—</span></td></tr></tbody></table></div>
+        <div class="supplier-preview-table-wrap"><table class="supplier-preview-table"><thead><tr><th>状态</th><th>来源</th><th>客户名称</th><th>冲突处理</th></tr></thead><tbody><tr v-for="row in previewBatch.rows" :key="row.id" :class="{ 'conflict-row': row.data._conflict }" :data-test="row.data._conflict ? `conflict-row-${row.id}` : 'preview-row'"><td>{{ row.status === 'VALID' ? '有效' : '错误' }}</td><td>{{ row.sheetName }} · 第 {{ row.rowNumber }} 行</td><td>{{ value(row, 'customerName') }}<p v-if="row.data._conflictLabel" class="conflict-label">{{ row.data._conflictLabel }}</p></td><td><template v-if="row.data._conflict"><button :data-test="`conflict-overwrite-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'OVERWRITE')">采用导入</button><button :data-test="`conflict-skip-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'SKIP')">保留现有</button><button :data-test="`conflict-edit-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="startEditing(row)">修改</button><span v-if="rowActions[row.id]" class="resolved-state">{{ rowActions[row.id] === 'OVERWRITE' ? '将采用导入' : '将保留现有' }}</span></template><span v-else>—</span></td></tr></tbody></table></div>
+        <form v-if="editingRow" data-test="import-row-editor" class="import-row-editor" @submit.prevent><label v-for="(_, key) in editingData" :key="key">{{ key }}<input v-model="editingData[key]" :name="key"></label><button data-test="save-import-row-edit" type="button" class="primary-action" :disabled="busy" @click="saveEdit">保存并采用导入</button></form>
         <div class="supplier-preview-actions"><p v-if="unresolvedConflictRows.length">还有 {{ unresolvedConflictRows.length }} 行冲突未处理。</p><button data-test="commit-import" type="button" class="primary-action" :disabled="busy || previewBatch.errorRows > 0 || unresolvedConflictRows.length > 0" @click="confirmCustomerImport">确认导入</button></div>
       </section>
 

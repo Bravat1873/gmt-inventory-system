@@ -133,6 +133,21 @@ describe('simple Excel import', () => {
     expect(commitImport).toHaveBeenCalledWith(8)
   })
 
+  it('edits a conflicting customer row before choosing the imported value', async () => {
+    previewImport.mockResolvedValue(structuredClone(customerConflictBatch))
+    const wrapper = mount(ImportPanel, { props: { type: 'CUSTOMER', title: '导入客户' } })
+    await selectFile(wrapper, 'customers.xlsx')
+
+    await wrapper.get('[data-test="conflict-edit-41"]').trigger('click')
+    const input = wrapper.get('[data-test="import-row-editor"] input')
+    await input.setValue('客户甲（修订）')
+    await wrapper.get('[data-test="save-import-row-edit"]').trigger('click')
+    await flushPromises()
+
+    expect(updateImportRow).toHaveBeenCalledWith(8, 41, expect.objectContaining({ customerName: '客户甲（修订）' }))
+    expect(wrapper.get('[data-test="commit-import"]').attributes('disabled')).toBeUndefined()
+  })
+
   it('groups ORDER preview rows by external order number and keeps the preview pending', async () => {
     previewImport.mockResolvedValue(structuredClone(orderBatch))
     const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
