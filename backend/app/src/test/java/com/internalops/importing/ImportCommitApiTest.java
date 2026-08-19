@@ -71,7 +71,8 @@ class ImportCommitApiTest {
     void regularUserCanStillCommitCustomerAndInventoryBatches() throws Exception {
         Cookie userSession = loginAs("regular-user");
         long customerBatch = repository.create(ImportType.CUSTOMER, "customer.xlsx", "api-customer-user", List.of(
-                new ParsedImportRow("Sheet1", 1, ImportRowStatus.VALID, Map.of("customerName", "普通客户"), null)));
+                new ParsedImportRow("Sheet1", 1, ImportRowStatus.VALID,
+                        Map.of("customerCode", "REG-CUSTOMER", "customerName", "普通客户"), null)));
         long inventoryBatch = repository.create(ImportType.INVENTORY, "inventory.xlsx", "api-inventory-user", List.of(
                 new ParsedImportRow("Sheet1", 1, ImportRowStatus.VALID, Map.of(
                         "customerPartNumber", "INV-USER", "model", "P90", "actualQuantity", 1,
@@ -84,6 +85,47 @@ class ImportCommitApiTest {
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM customer WHERE customer_name='普通客户'", Integer.class)).isOne();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_balance", Integer.class)).isOne();
+    }
+
+    @Test
+    void customerImportPersistsBankFields() throws Exception {
+        Cookie userSession = loginAs("regular-user");
+        long batchId = repository.create(ImportType.CUSTOMER, "customer.xlsx", "api-customer-bank-fields", List.of(
+                new ParsedImportRow("Sheet1", 1, ImportRowStatus.VALID, Map.of(
+                        "customerType", "DOMESTIC",
+                        "customerName", "银行客户",
+                        "taxpayerId", "91440400TESTBANK",
+                        "bankName", "中国银行珠海分行",
+                        "bankAccount", "6222-0001"), null)));
+
+        mvc.perform(post("/api/imports/{batchId}/commit", batchId).cookie(userSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMMITTED"))
+                .andExpect(jsonPath("$.data.committedRows").value(1));
+
+        assertThat(jdbc.queryForMap("SELECT bank_name,bank_account FROM customer WHERE customer_name='银行客户'"))
+                .containsEntry("bank_name", "中国银行珠海分行")
+                .containsEntry("bank_account", "6222-0001");
+
+        jdbc.update("""
+                INSERT INTO customer(customer_code,customer_type,customer_name,taxpayer_id,bank_name,bank_account,enabled)
+                VALUES('OLD-BANK','DOMESTIC','覆盖银行客户','91440400OLDBANK','旧银行','OLD-ACCOUNT',TRUE)
+                """);
+        long updateBatch = repository.create(ImportType.CUSTOMER, "customer-update.xlsx", "api-customer-bank-update", List.of(
+                new ParsedImportRow("Sheet1", 1, ImportRowStatus.VALID, Map.of(
+                        "customerType", "DOMESTIC",
+                        "customerName", "覆盖银行客户",
+                        "taxpayerId", "91440400NEWBANK",
+                        "bankName", "招商银行上海分行",
+                        "bankAccount", "NEW-ACCOUNT"), null)));
+
+        mvc.perform(post("/api/imports/{batchId}/commit", updateBatch).cookie(userSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.result.updated").value(1));
+
+        assertThat(jdbc.queryForMap("SELECT bank_name,bank_account FROM customer WHERE customer_name='覆盖银行客户'"))
+                .containsEntry("bank_name", "招商银行上海分行")
+                .containsEntry("bank_account", "NEW-ACCOUNT");
     }
 
     @Test
