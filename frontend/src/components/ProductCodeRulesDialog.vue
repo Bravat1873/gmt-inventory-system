@@ -60,22 +60,23 @@ onMounted(reload)
 </template>
 
 <style scoped>
+.rule-management-page { overflow: hidden; }
 .rule-panel { overflow: hidden; }
-.rule-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 20px; padding: 18px; min-height: 0; flex: 1; }
-.rule-tabs { display: grid; gap: 7px; align-content: start; overflow-y: auto; }
+.rule-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 20px; height: 100%; padding: 18px; min-height: 0; flex: 1; }
+.rule-tabs { display: grid; gap: 7px; min-height: 0; align-content: start; overflow-y: auto; }
 .rule-tabs button { min-height: 42px; padding: 9px 14px; border: 1px solid #d7d7d7; border-radius: 4px; background: #fafafa; text-align: left; }
 .rule-tabs button:hover { border-color: #999; background: #f3f3f3; }
 .rule-tabs .active { border-color: #111; background: #111; color: #fff; }
-.rule-content { min-width: 0; display: flex; flex-direction: column; }
+.rule-content { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .rule-form { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(240px, 1.4fr) minmax(160px, .8fr); gap: 12px; align-items: end; margin-bottom: 16px; padding: 16px; border: 1px solid #e5e5e5; border-radius: 4px; background: #fafafa; }
 .rule-form > label:not(.rule-enabled) { display: flex; min-width: 0; flex-direction: column; gap: 7px; color: #555; font-size: 13px; }
 .rule-form input { min-width: 0; min-height: 40px; padding: 9px 12px; }
 .rule-form-actions { display: flex; grid-column: 1 / -1; gap: 10px; }
 .module-description { margin: 6px 0 0; color: #777; font-size: 13px; }
-.rule-table-wrap { overflow: auto; border: 1px solid #e5e5e5; border-radius: 4px; }
+.rule-table-wrap { min-height: 0; flex: 1; overflow: auto; border: 1px solid #e5e5e5; border-radius: 4px; }
 .rule-content table { width: 100%; border-collapse: collapse; }
 .rule-content th, .rule-content td { height: 48px; padding: 10px 14px; border-bottom: 1px solid #eee; text-align: left; }
-.rule-content th { background: #fafafa; color: #666; font-weight: 500; }
+.rule-content th { position: sticky; top: 0; z-index: 1; background: #fafafa; color: #666; font-weight: 500; }
 .rule-content td button { margin-right: 8px; }
 @media (max-width: 900px) { .rule-layout { grid-template-columns: 1fr; } .rule-tabs { grid-template-columns: repeat(2,minmax(0,1fr)); } .rule-form { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .rule-form { grid-template-columns: 1fr; } .rule-form-actions { grid-column: 1; } }
