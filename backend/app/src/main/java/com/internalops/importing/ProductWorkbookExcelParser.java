@@ -40,6 +40,9 @@ public final class ProductWorkbookExcelParser {
             for (int index = 1; index <= sheet.getLastRowNum(); index++) {
                 if (isCancelledRow(sheet.getRow(index))) continue;
                 Map<String, Object> data = readProductRow(sheet.getRow(index), headers);
+                if (isBlank(data.get("sourceSupplierName"))) {
+                    data.put("sourceSupplierName", data.get("supplierName"));
+                }
                 if (isLeadingLegend(data)) continue;
                 if (!isBusinessRow(data)) continue;
                 result.add(new ParsedImportRow(sheetName, index + 1, ImportRowStatus.VALID, data, null));
@@ -127,6 +130,10 @@ public final class ProductWorkbookExcelParser {
     }
     private boolean hasText(Object value) {
         return value != null && !value.toString().isBlank();
+    }
+
+    private boolean isBlank(Object value) {
+        return value == null || value.toString().isBlank();
     }
 
     private BigDecimal decimalOrDefault(Row row, Integer column, BigDecimal defaultValue) {

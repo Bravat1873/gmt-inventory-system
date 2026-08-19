@@ -49,7 +49,7 @@ class ProductImportTemplateApiTest {
                     "锁体类型", "联网方式", "销售渠道", "运营主体", "语言", "编码后缀",
                     "型号（系列号+第几代）", "物料规格（不用写，会自动生成）", "产品配置",
                     "销售最小起订量", "供应商名称", "供应商含税价",
-                    "实际库存数量", "已锁定数量", "在途数量", "库存供应商", "库存备注");
+                    "实际库存数量", "已锁定数量", "在途数量", "库存备注");
             assertThat(sheet.getRow(0).getPhysicalNumberOfCells()).isEqualTo(expectedHeaders.size());
             for (int column = 0; column < expectedHeaders.size(); column++) {
                 assertThat(sheet.getRow(0).getCell(column).getStringCellValue())
@@ -64,7 +64,7 @@ class ProductImportTemplateApiTest {
             assertThat(rules.getRow(3).getCell(0).getStringCellValue())
                     .contains("产品编号、物料规格不用填写");
             assertThat(rules.getRow(6).getCell(0).getStringCellValue())
-                    .contains("实际库存数量").contains("已锁定数量").contains("在途数量").contains("库存供应商").contains("库存备注");
+                    .contains("实际库存数量").contains("已锁定数量").contains("在途数量").contains("库存备注");
         }
     }
 }
