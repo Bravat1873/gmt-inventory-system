@@ -141,10 +141,6 @@ function chooseConflict(row: ImportRow, action: RowConflictAction) {
   rowActions.value = { ...rowActions.value, [row.id]: action }
 }
 
-function isPreviewType() {
-  return props.type === 'SUPPLIER' || props.type === 'PRODUCT' || props.type === 'ORDER'
-}
-
 async function processFile(file: File) {
   if (!file || busy.value) return
   busy.value = true
@@ -156,13 +152,7 @@ async function processFile(file: File) {
   errorMessage.value = ''
   try {
     const batch = await previewImport(props.type, file)
-    if (isPreviewType() || batch.rows.some(row => row.data._conflict)) {
-      previewBatch.value = batch
-      return
-    }
-    const committed = await commitImport(batch.batchId)
-    importedRows.value = committed.committedRows
-    emit('message', `成功导入 ${committed.committedRows} 条数据`, 'success')
+    previewBatch.value = batch
   } catch (error) {
     errorMessage.value = errorText(error)
     emit('message', errorMessage.value, 'error')
@@ -299,7 +289,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
         <div class="supplier-preview-actions"><p v-if="previewBatch.errorRows > 0">存在错误行，不能提交。</p><p v-else-if="unresolvedConflictRows.length">还有 {{ unresolvedConflictRows.length }} 行冲突未处理。</p><button data-test="commit-import" type="button" class="primary-action" :disabled="busy || previewBatch.errorRows > 0 || unresolvedConflictRows.length > 0" @click="confirmSupplierImport">确认导入</button></div>
       </section>
 
-      <section v-else-if="previewBatch && importedRows === null && type === 'CUSTOMER' && hasConflictRows" class="supplier-preview" aria-label="客户导入预览">
+      <section v-else-if="previewBatch && importedRows === null && type === 'CUSTOMER'" class="supplier-preview" aria-label="客户导入预览">
         <div class="supplier-preview-summary"><span>总行数 <strong>{{ previewBatch.totalRows }}</strong></span><span>冲突行 <strong>{{ conflictRows.length }}</strong></span></div>
         <div class="supplier-preview-table-wrap"><table class="supplier-preview-table"><thead><tr><th>状态</th><th>来源</th><th>客户名称</th><th>冲突处理</th></tr></thead><tbody><tr v-for="row in previewBatch.rows" :key="row.id" :class="{ 'conflict-row': row.data._conflict }" :data-test="row.data._conflict ? `conflict-row-${row.id}` : 'preview-row'"><td>{{ row.status === 'VALID' ? '有效' : '错误' }}</td><td>{{ row.sheetName }} · 第 {{ row.rowNumber }} 行</td><td>{{ value(row, 'customerName') }}<p v-if="row.data._conflictLabel" class="conflict-label">{{ row.data._conflictLabel }}</p></td><td><template v-if="row.data._conflict"><button :data-test="`conflict-overwrite-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'OVERWRITE')">覆盖</button><button :data-test="`conflict-skip-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'SKIP')">跳过</button><span v-if="rowActions[row.id]" class="resolved-state">已{{ rowActions[row.id] === 'OVERWRITE' ? '覆盖' : '跳过' }}</span></template><span v-else>—</span></td></tr></tbody></table></div>
         <div class="supplier-preview-actions"><p v-if="unresolvedConflictRows.length">还有 {{ unresolvedConflictRows.length }} 行冲突未处理。</p><button data-test="commit-import" type="button" class="primary-action" :disabled="busy || previewBatch.errorRows > 0 || unresolvedConflictRows.length > 0" @click="confirmCustomerImport">确认导入</button></div>

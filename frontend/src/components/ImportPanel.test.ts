@@ -97,14 +97,13 @@ describe('simple Excel import', () => {
     expect(customer.find('[data-test="download-import-template"]').exists()).toBe(true)
   })
 
-  it('keeps the existing immediate flow for non-supplier imports', async () => {
+  it('keeps a no-conflict customer workbook in preview until explicitly committed', async () => {
     const wrapper = mount(ImportPanel, { props: { type: 'CUSTOMER', title: '导入客户' } })
     await selectFile(wrapper, 'customers.xlsx')
 
     expect(previewImport).toHaveBeenCalledWith('CUSTOMER', expect.any(File))
-    expect(commitImport).toHaveBeenCalledWith(8)
-    expect(wrapper.text()).toContain('成功导入 103 条数据')
-    expect(wrapper.find('[data-test="commit-import"]').exists()).toBe(false)
+    expect(commitImport).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="commit-import"]').attributes('disabled')).toBeUndefined()
   })
 
   it('previews a file dropped on the upload zone', async () => {
