@@ -36,10 +36,14 @@ public class SalesOrderImportCommitService {
     }
 
     public ImportBatchView commit(long batchId) {
-        ImportBatchView batch = transactions.execute(status -> claim(batchId));
+        return commit(batchId, Map.of());
+    }
+
+    public ImportBatchView commit(long batchId, Map<Long, String> conflictActions) {
+        ImportBatchView batch = transactions.execute(status -> claim(batchId, conflictActions));
         if (batch == null) throw new IllegalStateException("订单导入批次读取失败");
 
-        Map<String, List<ImportRowView>> rowsByOrder = groupRows(batch);
+        Map<String, List<ImportRowView>> rowsByOrder = groupRows(batch, conflictActions);
         List<OrderFailure> failures = new ArrayList<>();
         int committedRows = 0;
         int createdOrders = 0;
@@ -58,7 +62,7 @@ public class SalesOrderImportCommitService {
         return transactions.execute(status -> finish(batchId, finalCommittedRows, finalCreatedOrders, failures));
     }
 
-    private ImportBatchView claim(long batchId) {
+    private ImportBatchView claim(long batchId, Map<Long, String> conflictActions) {
         ImportBatchView batch = repository.findBatchForUpdate(batchId);
         if (batch.importType() != ImportType.ORDER) {
             throw new IllegalArgumentException("仅支持订单导入批次");
@@ -69,20 +73,24 @@ public class SalesOrderImportCommitService {
         if (!"PREVIEW".equals(batch.status())) {
             throw new IllegalStateException("订单导入批次状态不允许提交");
         }
-        if (batch.errorRows() > 0) {
+        boolean hasUnresolvedErrors = batch.rows().stream().anyMatch(row -> row.status() == ImportRowStatus.ERROR
+                && (!Boolean.TRUE.equals(row.data().get("_conflict"))
+                || !"SKIP".equals(conflictActions.get(row.id()))));
+        if (hasUnresolvedErrors) {
             throw new IllegalStateException("订单导入批次存在错误行");
         }
-        if (batch.validRows() <= 0 || groupRows(batch).isEmpty()) {
+        if (batch.validRows() <= 0 || groupRows(batch, conflictActions).isEmpty()) {
             throw new IllegalStateException("订单导入批次没有有效订单");
         }
         repository.markCommitting(batchId);
         return batch;
     }
 
-    private Map<String, List<ImportRowView>> groupRows(ImportBatchView batch) {
+    private Map<String, List<ImportRowView>> groupRows(ImportBatchView batch, Map<Long, String> conflictActions) {
         Map<String, List<ImportRowView>> rowsByOrder = new LinkedHashMap<>();
         for (ImportRowView row : batch.rows()) {
-            if (row.status() != ImportRowStatus.VALID) continue;
+            if (row.status() != ImportRowStatus.VALID
+                    || "SKIP".equals(conflictActions.get(row.id()))) continue;
             String externalOrderNo = SalesOrderImportGroupKey.from(row.data());
             rowsByOrder.computeIfAbsent(externalOrderNo, ignored -> new ArrayList<>()).add(row);
         }

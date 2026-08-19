@@ -60,6 +60,8 @@ public class ProductImportValidationService {
             if (row.status() != ImportRowStatus.VALID) {
                 data.remove("_conflict");
                 data.remove("_conflictGroup");
+                data.remove("_conflictField");
+                data.remove("_conflictLabel");
                 data.remove("_conflictAction");
             } else {
                 String businessUniqueId = text(data, "_businessUniqueId");
@@ -67,9 +69,13 @@ public class ProductImportValidationService {
                 data.put("_conflict", conflict);
                 if (conflict) {
                     data.put("_conflictGroup", businessUniqueId);
+                    data.put("_conflictField", "productCode+customerPartNumber");
+                    data.put("_conflictLabel", "产品编码：" + text(data, "productCode") + " / 客户料号：" + text(data, "customerPartNumber"));
                     data.put("_conflictAction", "UNRESOLVED");
                 } else {
                     data.remove("_conflictGroup");
+                    data.remove("_conflictField");
+                    data.remove("_conflictLabel");
                     data.remove("_conflictAction");
                 }
             }

@@ -80,6 +80,17 @@ public class ImportValidationService {
         }
         boolean conflict = hasConflict(type, data);
         data.put("_conflict", conflict);
+        if (conflict) {
+            String field = type == ImportType.CUSTOMER ? "customerName" : type == ImportType.SUPPLIER ? "supplierName" : "customerPartNumber";
+            String label = type == ImportType.CUSTOMER ? "客户名称：" : type == ImportType.SUPPLIER ? "供应商名称：" : "客户料号：";
+            data.put("_conflictField", field);
+            data.put("_conflictGroup", normalizeCustomer(text(data, field)));
+            data.put("_conflictLabel", label + text(data, field));
+        } else {
+            data.remove("_conflictField");
+            data.remove("_conflictGroup");
+            data.remove("_conflictLabel");
+        }
         data.put("_conflictAction", conflict && "OVERWRITE".equals(text(data, "_conflictAction")) ? "OVERWRITE" : "SKIP");
         return new ParsedImportRow(row.sheetName(), row.rowNumber(), row.status(), data, row.errorMessage());
     }

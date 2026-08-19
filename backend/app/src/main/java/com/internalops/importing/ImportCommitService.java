@@ -76,13 +76,20 @@ public class ImportCommitService {
     public ImportBatchView commit(long batchId, ImportConflictPolicy policy,
                                   ImportCommitRequest.SupplierMode supplierMode,
                                   Map<Long, ProductConflictAction> productConflictActions) {
+        return commit(batchId, policy, supplierMode, productConflictActions, Map.of());
+    }
+
+    public ImportBatchView commit(long batchId, ImportConflictPolicy policy,
+                                  ImportCommitRequest.SupplierMode supplierMode,
+                                  Map<Long, ProductConflictAction> productConflictActions,
+                                  Map<Long, String> conflictActions) {
         if (repository.type(batchId) == ImportType.ORDER) {
             UserRole role = CurrentUser.required().role();
             if (role != UserRole.ADMIN && role != UserRole.USER) {
                 throw new SecurityException("财务用户不能导入销售订单");
             }
             if (salesOrderImportCommitService == null) throw new IllegalStateException("订单分组提交服务未配置");
-            return salesOrderImportCommitService.commit(batchId);
+            return salesOrderImportCommitService.commit(batchId, conflictActions);
         }
         if (transactions == null) {
             return commitInSingleTransaction(batchId, policy, supplierMode, productConflictActions);
@@ -169,8 +176,14 @@ public class ImportCommitService {
         Set<Long> importedIds = new LinkedHashSet<>();
         int created = 0;
         int updated = 0;
+        int skipped = 0;
         for (ImportRowView row : batch.rows()) {
             if (row.status() != ImportRowStatus.VALID) continue;
+            if (Boolean.TRUE.equals(row.data().get("_conflict"))
+                    && "SKIP".equals(text(row.data(), "_conflictAction"))) {
+                skipped++;
+                continue;
+            }
             String name = text(row.data(), "supplierName");
             if (name.isBlank()) throw new IllegalArgumentException("供应商名称不能为空");
             String normalizedName = normalizeName(name);
@@ -204,7 +217,7 @@ public class ImportCommitService {
         result.put("committed", committed);
         result.put("errors", batch.errorRows());
         result.put("ignored", batch.ignoredRows());
-        result.put("skipped", 0);
+        result.put("skipped", skipped);
         result.put("disabled", disabled);
         result.put("mode", mode.name());
         repository.markCommitted(batch.batchId(), committed, result);
@@ -324,14 +337,15 @@ public class ImportCommitService {
                 nullableText(data, "orderContactName"), nullableText(data, "orderContactPhone"),
                 nullableText(data, "financeContactName"), nullableText(data, "financeContactPhone"),
                 nullableText(data, "invoiceTitle"), nullableText(data, "taxpayerId"),
-                nullableText(data, "invoiceAddress"), nullableText(data, "invoicePhone")
+                nullableText(data, "invoiceAddress"), nullableText(data, "invoicePhone"),
+                nullableText(data, "bankName"), nullableText(data, "bankAccount")
         };
         if (existing != null) {
             jdbc.update("""
                     UPDATE customer SET customer_code=?,customer_type=?,customer_name=?,contact_name=?,phone=?,address=?,
                         business_contact_name=?,business_contact_phone=?,order_contact_name=?,order_contact_phone=?,
                         finance_contact_name=?,finance_contact_phone=?,invoice_title=?,taxpayer_id=?,invoice_address=?,
-                        invoice_phone=?,enabled=TRUE,version=version+1 WHERE id=?
+                        invoice_phone=?,bank_name=?,bank_account=?,enabled=TRUE,version=version+1 WHERE id=?
                     """, append(fields, existing));
             return false;
         }
@@ -341,7 +355,7 @@ public class ImportCommitService {
                     INSERT INTO customer(customer_code,customer_type,customer_name,contact_name,phone,address,
                         business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,
                         finance_contact_name,finance_contact_phone,invoice_title,taxpayer_id,invoice_address,
-                        invoice_phone,enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
+                        invoice_phone,bank_name,bank_account,enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
                     """, Statement.RETURN_GENERATED_KEYS);
             for (int index = 0; index < fields.length; index++) statement.setObject(index + 1, fields[index]);
             return statement;

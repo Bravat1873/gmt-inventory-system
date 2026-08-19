@@ -75,7 +75,16 @@ public class SalesOrderImportValidationService {
     private void markGroupError(List<ParsedImportRow> rows, List<Integer> indexes, String message) {
         for (int index : indexes) {
             ParsedImportRow row = rows.get(index);
-            rows.set(index, error(row, copyData(row), message));
+            Map<String, Object> data = copyData(row);
+            if (message.equals("外部订单号已存在")) {
+                String orderNo = text(data, "externalOrderNo");
+                data.put("_conflict", true);
+                data.put("_conflictField", "externalOrderNo");
+                data.put("_conflictGroup", orderNo);
+                data.put("_conflictLabel", "订单号：" + orderNo);
+                data.put("_conflictAction", "SKIP");
+            }
+            rows.set(index, error(row, data, message));
         }
     }
 
