@@ -134,7 +134,7 @@ class SalesOrderImportValidationServiceTest {
     }
 
     @Test
-    void rejectsWholeGroupWhenExternalOrderNoAlreadyExists() {
+    void marksWholeGroupAsResolvableConflictWhenExternalOrderNoAlreadyExists() {
         customer(1, "C-001", true);
         sku(10, "P-001", "CM-001", true, 1);
         jdbc.update("INSERT INTO sales_order(id, external_order_no) VALUES (?, ?)", 1, "EXT-001");
@@ -142,8 +142,10 @@ class SalesOrderImportValidationServiceTest {
         List<ParsedImportRow> results = validation.validateAll(List.of(row(Map.of()), row(Map.of("quantity", "3"))));
 
         assertThat(results).allSatisfy(result -> {
-            assertThat(result.status()).isEqualTo(ImportRowStatus.ERROR);
-            assertThat(result.errorMessage()).contains("外部订单号已存在");
+            assertThat(result.status()).isEqualTo(ImportRowStatus.VALID);
+            assertThat(result.data()).containsEntry("_conflict", true)
+                    .containsEntry("_conflictField", "externalOrderNo")
+                    .containsEntry("_conflictGroup", "EXT-001");
         });
     }
 

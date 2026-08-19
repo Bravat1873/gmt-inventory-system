@@ -49,7 +49,7 @@ public class SalesOrderImportCommitService {
         int createdOrders = 0;
         for (Map.Entry<String, List<ImportRowView>> order : rowsByOrder.entrySet()) {
             try {
-                orderTransactions.executeWithoutResult(status -> commitOrder(order.getKey(), order.getValue()));
+                orderTransactions.executeWithoutResult(status -> commitOrder(order.getKey(), order.getValue(), conflictActions));
                 committedRows += order.getValue().size();
                 createdOrders++;
             } catch (RuntimeException failure) {
@@ -98,9 +98,19 @@ public class SalesOrderImportCommitService {
         return rowsByOrder;
     }
 
-    private void commitOrder(String externalOrderNo, List<ImportRowView> rows) {
-        lockAndRejectExistingOrder(externalOrderNo);
-        salesOrders.create(request(externalOrderNo, rows));
+    private void commitOrder(String externalOrderNo, List<ImportRowView> rows, Map<Long, String> actions) {
+        List<Map<String, Object>> existing = jdbc.queryForList(
+                "SELECT id,version FROM sales_order WHERE external_order_no=? FOR UPDATE", externalOrderNo);
+        if (existing.isEmpty()) {
+            salesOrders.create(request(externalOrderNo, rows, null));
+            return;
+        }
+        if (rows.stream().anyMatch(row -> !"OVERWRITE".equals(actions.get(row.id())))) {
+            throw new IllegalStateException("外部订单号冲突尚未选择采用导入");
+        }
+        Map<String, Object> order = existing.get(0);
+        salesOrders.update(((Number) order.get("id")).longValue(), request(externalOrderNo, rows,
+                ((Number) order.get("version")).intValue()));
     }
 
     private ImportBatchView finish(long batchId, int committedRows, int createdOrders,
@@ -144,15 +154,7 @@ public class SalesOrderImportCommitService {
         return false;
     }
 
-    private void lockAndRejectExistingOrder(String externalOrderNo) {
-        List<Long> existing = jdbc.queryForList(
-                "SELECT id FROM sales_order WHERE external_order_no=? FOR UPDATE", Long.class, externalOrderNo);
-        if (!existing.isEmpty()) {
-            throw new IllegalStateException("外部订单号已存在，订单提交已取消");
-        }
-    }
-
-    private SalesOrderRequest request(String externalOrderNo, List<ImportRowView> rows) {
+    private SalesOrderRequest request(String externalOrderNo, List<ImportRowView> rows, Integer version) {
         Map<String, Object> first = rows.get(0).data();
         List<SalesOrderRequest.Item> items = rows.stream()
                 .map(row -> new SalesOrderRequest.Item(
@@ -171,7 +173,7 @@ public class SalesOrderImportCommitService {
                 text(first, "financeContactName"), text(first, "financeContactPhone"),
                 text(first, "remark"), text(first, "deliveryAddress"),
                 text(first, "deliveryContact"), text(first, "deliveryPhone"),
-                text(first, "shippingMethod"), null, items);
+                text(first, "shippingMethod"), version, items);
     }
 
     private String text(Map<String, Object> data, String key) {

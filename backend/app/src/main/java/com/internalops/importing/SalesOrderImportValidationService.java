@@ -54,7 +54,7 @@ public class SalesOrderImportValidationService {
             return;
         }
         if (!externalOrderNo.isBlank() && externalOrderNoExists(externalOrderNo)) {
-            markGroupError(rows, indexes, "外部订单号已存在");
+            markOrderConflict(rows, indexes, externalOrderNo);
             return;
         }
         ParsedImportRow first = rows.get(indexes.get(0));
@@ -64,6 +64,19 @@ public class SalesOrderImportValidationService {
                 markGroupError(rows, indexes, "同一外部订单号的订单级字段不一致：" + field[1]);
                 return;
             }
+        }
+    }
+
+    private void markOrderConflict(List<ParsedImportRow> rows, List<Integer> indexes, String externalOrderNo) {
+        for (int index : indexes) {
+            ParsedImportRow row = rows.get(index);
+            Map<String, Object> data = copyData(row);
+            data.put("_conflict", true);
+            data.put("_conflictField", "externalOrderNo");
+            data.put("_conflictGroup", externalOrderNo);
+            data.put("_conflictLabel", "外部订单号：" + externalOrderNo);
+            data.put("_conflictAction", "UNRESOLVED");
+            rows.set(index, new ParsedImportRow(row.sheetName(), row.rowNumber(), ImportRowStatus.VALID, data, null));
         }
     }
 

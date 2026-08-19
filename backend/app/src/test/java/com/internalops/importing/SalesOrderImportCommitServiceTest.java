@@ -32,6 +32,7 @@ import static org.mockito.Mockito.reset;
 class SalesOrderImportCommitServiceTest {
     @Autowired ImportBatchRepository repository;
     @Autowired ImportCommitService commitService;
+    @Autowired SalesOrderImportCommitService orderCommitService;
     @Autowired JdbcTemplate jdbc;
     @SpyBean SalesOrderCommandService salesOrders;
 
@@ -183,7 +184,26 @@ class SalesOrderImportCommitServiceTest {
         assertEquals("COMMITTED", repository.status(batch));
         assertEquals(0, result.committedRows());
         assertEquals(1, result.errorRows());
-        assertEquals("外部订单号已存在，订单提交已取消", result.rows().get(0).errorMessage());
+        assertEquals("外部订单号冲突尚未选择采用导入", result.rows().get(0).errorMessage());
+    }
+
+    @Test
+    void explicitOverwriteUpdatesTheExistingExternalOrderAndReallocatesInventory() {
+        jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
+        insertExistingOrder("EXT-OVERWRITE");
+        long existingId = jdbc.queryForObject("SELECT id FROM sales_order WHERE external_order_no='EXT-OVERWRITE'", Long.class);
+        long batch = batch("overwrite", List.of(row(2,
+                order("EXT-OVERWRITE", "PENDING_CUSTOMER_PAYMENT", 1, 4, "12.50"))));
+        long rowId = repository.findBatch(batch).rows().get(0).id();
+
+        ImportBatchView result = orderCommitService.commit(batch, Map.of(rowId, "OVERWRITE"));
+
+        assertEquals(1, count("sales_order"));
+        assertEquals(existingId, jdbc.queryForObject("SELECT id FROM sales_order WHERE external_order_no='EXT-OVERWRITE'", Long.class));
+        assertEquals(4, jdbc.queryForObject("SELECT quantity FROM sales_order_item WHERE sales_order_id=?", Integer.class, existingId));
+        assertEquals(4, jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
+        assertEquals(1, result.committedRows());
+        assertEquals(0, result.errorRows());
     }
 
     @Test
@@ -253,7 +273,7 @@ class SalesOrderImportCommitServiceTest {
         assertEquals(1, ((Number) detail.get("committed")).intValue());
         assertEquals(1, ((Number) detail.get("errors")).intValue());
         assertEquals(ImportRowStatus.ERROR, result.rows().get(1).status());
-        assertEquals("外部订单号已存在，订单提交已取消", result.rows().get(1).errorMessage());
+        assertEquals("外部订单号冲突尚未选择采用导入", result.rows().get(1).errorMessage());
     }
 
     @Test
