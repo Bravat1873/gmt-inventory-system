@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.io.ByteArrayOutputStream;
 import java.util.Map;
 import java.util.List;
+import java.util.LinkedHashMap;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -47,6 +48,29 @@ class ImportPreviewApiTest {
                 .andExpect(jsonPath("$.data.rows[0].data._existingRecordId").isNumber())
                 .andExpect(jsonPath("$.data.rows[0].data._existingValues.customerName").value("同名客户"))
                 .andExpect(jsonPath("$.data.rows[0].data._existingValues.phone").value("13800000000"));
+    }
+
+    @Test
+    void revalidatesEveryProductRowAfterEditingADuplicateCandidate() throws Exception {
+        createProductRuleTable();
+        Map<String, Object> duplicate = new LinkedHashMap<>(productData("PART-001"));
+        duplicate.put("_conflict", true);
+        duplicate.put("_conflictGroup", "stale-conflict");
+        long batchId = repository.create(ImportType.PRODUCT, "products.xlsx", "product-revalidate", List.of(
+                new ParsedImportRow("产品", 2, ImportRowStatus.VALID, duplicate, null),
+                new ParsedImportRow("产品", 3, ImportRowStatus.VALID, duplicate, null)));
+        long rowId = repository.findBatch(batchId).rows().get(0).id();
+
+        mvc.perform(put("/api/imports/{batchId}/rows/{rowId}", batchId, rowId)
+                        .contentType("application/json")
+                        .content("{\"data\":{\"sourceProductCode\":\"参考编号\",\"brand\":\"G\",\"series\":\"T7\",\"bodyColor\":\"PBY\",\"lockType\":\"10\",\"connectivity\":\"W\",\"salesChannel\":\"P\",\"operatingEntity\":\"S\",\"language\":\"C\",\"customerPartNumber\":\"PART-002\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data._conflict").value(false));
+
+        mvc.perform(get("/api/imports/{batchId}", batchId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].data._conflict").value(false))
+                .andExpect(jsonPath("$.data.rows[1].data._conflict").value(false));
     }
 
     @Test
@@ -160,6 +184,22 @@ class ImportPreviewApiTest {
 
     private byte[] customerWorkbook() throws Exception {
         return customerWorkbook("测试客户");
+    }
+
+    private Map<String, Object> productData(String customerPartNumber) {
+        return Map.of("sourceProductCode", "参考编号", "brand", "G", "series", "T7", "bodyColor", "PBY",
+                "lockType", "10", "connectivity", "W", "salesChannel", "P", "operatingEntity", "S",
+                "language", "C", "customerPartNumber", customerPartNumber);
+    }
+
+    private void createProductRuleTable() {
+        jdbc.execute("CREATE TABLE product_code_rule (id BIGINT PRIMARY KEY, category VARCHAR(40) NOT NULL, code VARCHAR(40) NOT NULL, display_name VARCHAR(120) NOT NULL, enabled BOOLEAN NOT NULL)");
+        String[][] rules = {{"BRAND", "G"}, {"SERIES", "T7"}, {"BODY_COLOR", "PBY"}, {"LOCK_TYPE", "10"},
+                {"CONNECTIVITY", "W"}, {"SALES_CHANNEL", "P"}, {"OPERATING_ENTITY", "S"}, {"LANGUAGE", "C"}};
+        for (int index = 0; index < rules.length; index++) {
+            jdbc.update("INSERT INTO product_code_rule(id,category,code,display_name,enabled) VALUES(?,?,?,?,TRUE)",
+                    index + 1L, rules[index][0], rules[index][1], rules[index][1]);
+        }
     }
 
     private byte[] customerWorkbook(String name) throws Exception {
