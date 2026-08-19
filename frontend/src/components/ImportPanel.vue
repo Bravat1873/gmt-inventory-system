@@ -28,6 +28,7 @@ type RowConflictAction = 'OVERWRITE' | 'SKIP'
 const rowActions = ref<Record<number, RowConflictAction>>({})
 const editingRow = ref<ImportRow | null>(null)
 const editingData = ref<Record<string, string>>({})
+const reviewFilter = ref<'ALL' | 'CONFLICTS' | 'ERRORS' | 'RESOLVED'>('ALL')
 const errorText = (error: unknown) => error instanceof Error ? error.message : '导入失败，请稍后重试'
 
 const supplierFieldLabels: Record<string, string> = {
@@ -63,6 +64,14 @@ const unresolvedConflictRows = computed(() => conflictRows.value.filter(row => {
   return !rowActions.value[row.id]
 }))
 const nonConflictErrors = computed(() => (previewBatch.value?.rows ?? []).filter(row => row.status === 'ERROR' && !row.data._conflict))
+const resolvedConflictRows = computed(() => conflictRows.value.filter(row => props.type === 'PRODUCT'
+  ? Boolean(productActions.value[row.id]) : Boolean(rowActions.value[row.id])))
+const filteredRows = computed(() => (previewBatch.value?.rows ?? []).filter(row => {
+  if (reviewFilter.value === 'CONFLICTS') return Boolean(row.data._conflict || row.data._conflictGroup)
+  if (reviewFilter.value === 'ERRORS') return row.status === 'ERROR'
+  if (reviewFilter.value === 'RESOLVED') return resolvedConflictRows.value.some(conflict => conflict.id === row.id)
+  return true
+}))
 
 interface OrderCommitResult {
   createdOrders: number
@@ -311,8 +320,9 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
       </section>
 
       <section v-else-if="previewBatch && importedRows === null && type === 'CUSTOMER'" class="supplier-preview" aria-label="客户导入预览">
-        <div class="supplier-preview-summary"><span>总行数 <strong>{{ previewBatch.totalRows }}</strong></span><span>冲突行 <strong>{{ conflictRows.length }}</strong></span></div>
-        <div class="supplier-preview-table-wrap"><table class="supplier-preview-table"><thead><tr><th>状态</th><th>来源</th><th>客户名称</th><th>冲突处理</th></tr></thead><tbody><tr v-for="row in previewBatch.rows" :key="row.id" :class="{ 'conflict-row': row.data._conflict }" :data-test="row.data._conflict ? `conflict-row-${row.id}` : 'preview-row'"><td>{{ row.status === 'VALID' ? '有效' : '错误' }}</td><td>{{ row.sheetName }} · 第 {{ row.rowNumber }} 行</td><td>{{ value(row, 'customerName') }}<p v-if="row.data._conflictLabel" class="conflict-label">{{ row.data._conflictLabel }}</p></td><td><template v-if="row.data._conflict"><button :data-test="`conflict-overwrite-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'OVERWRITE')">采用导入</button><button :data-test="`conflict-skip-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'SKIP')">保留现有</button><button :data-test="`conflict-edit-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="startEditing(row)">修改</button><span v-if="rowActions[row.id]" class="resolved-state">{{ rowActions[row.id] === 'OVERWRITE' ? '将采用导入' : '将保留现有' }}</span></template><span v-else>—</span></td></tr></tbody></table></div>
+        <div class="supplier-preview-summary"><span>总行数 <strong>{{ previewBatch.totalRows }}</strong></span><span>有效 <strong>{{ previewBatch.validRows }}</strong></span><span>错误 <strong>{{ previewBatch.errorRows }}</strong></span><span>冲突 <strong>{{ conflictRows.length }}</strong></span><span>已处理 <strong>{{ resolvedConflictRows.length }}</strong></span><span>待处理 <strong>{{ unresolvedConflictRows.length }}</strong></span></div>
+        <div class="review-filters"><button data-test="review-filter-all" type="button" :class="{ selected: reviewFilter === 'ALL' }" @click="reviewFilter = 'ALL'">全部</button><button data-test="review-filter-conflicts" type="button" :class="{ selected: reviewFilter === 'CONFLICTS' }" @click="reviewFilter = 'CONFLICTS'">冲突</button><button data-test="review-filter-errors" type="button" :class="{ selected: reviewFilter === 'ERRORS' }" @click="reviewFilter = 'ERRORS'">错误</button><button data-test="review-filter-resolved" type="button" :class="{ selected: reviewFilter === 'RESOLVED' }" @click="reviewFilter = 'RESOLVED'">已处理</button></div>
+        <div class="supplier-preview-table-wrap"><table class="supplier-preview-table"><thead><tr><th>状态</th><th>来源</th><th>客户名称</th><th>冲突处理</th></tr></thead><tbody><tr v-for="row in filteredRows" :key="row.id" :class="{ 'conflict-row': row.data._conflict }" :data-test="`review-row-${row.id}`"><td>{{ row.status === 'VALID' ? '有效' : '错误' }}</td><td>{{ row.sheetName }} · 第 {{ row.rowNumber }} 行</td><td>{{ value(row, 'customerName') }}<p v-if="row.data._conflictLabel" class="conflict-label">{{ row.data._conflictLabel }}</p></td><td><template v-if="row.data._conflict"><button :data-test="`conflict-overwrite-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'OVERWRITE')">采用导入</button><button :data-test="`conflict-skip-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseConflict(row, 'SKIP')">保留现有</button><button :data-test="`conflict-edit-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="startEditing(row)">修改</button><span v-if="rowActions[row.id]" class="resolved-state">{{ rowActions[row.id] === 'OVERWRITE' ? '将采用导入' : '将保留现有' }}</span></template><span v-else>—</span></td></tr></tbody></table></div>
         <form v-if="editingRow" data-test="import-row-editor" class="import-row-editor" @submit.prevent><label v-for="(_, key) in editingData" :key="key">{{ key }}<input v-model="editingData[key]" :name="key"></label><button data-test="save-import-row-edit" type="button" class="primary-action" :disabled="busy" @click="saveEdit">保存并采用导入</button></form>
         <div class="supplier-preview-actions"><p v-if="unresolvedConflictRows.length">还有 {{ unresolvedConflictRows.length }} 行冲突未处理。</p><button data-test="commit-import" type="button" class="primary-action" :disabled="busy || previewBatch.errorRows > 0 || unresolvedConflictRows.length > 0" @click="confirmCustomerImport">确认导入</button></div>
       </section>
@@ -378,6 +388,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
 .supplier-preview,.product-preview,.order-preview{padding-top:18px}.supplier-preview-summary{gap:8px}.supplier-preview-summary span{border-color:#e0e5e9;border-radius:4px;background:#f6f8f9;color:#59636c}.supplier-preview-summary strong{color:#202a33}
 .supplier-preview-table-wrap{border-color:#dce3e8;border-radius:5px}.supplier-preview-table th,.product-preview-table th,.order-preview-table th{background:#f5f7f8;color:#44515c;font-weight:700}
 .supplier-preview-table tbody tr:hover,.product-preview-table tbody tr:hover,.order-preview-table tbody tr:hover{background:#fafcfd}.product-danger-note{border-radius:0 4px 4px 0}.order-preview-group{border-color:#dce3e8;border-radius:5px}
+.review-filters{display:flex;flex-wrap:wrap;gap:8px}.review-filters button{min-height:32px;padding:0 11px;border:1px solid #d5dde3;border-radius:4px;background:#fff;color:#58646e;font-size:12px}.review-filters button:hover{border-color:#7898b2;background:#f4f8fa}.review-filters button.selected{border-color:#315d82;background:#315d82;color:#fff}
 .simple-import-success,.simple-import-error{margin:0;padding:13px 14px;border:1px solid;border-radius:5px;font-size:13px}.simple-import-success{border-color:#b9dcc8;background:#f0f8f3;color:#25633f}.simple-import-error{border-color:#edc7c2;background:#fff5f3;color:#97372d}
 .simple-import-footer{min-height:66px;padding:12px 24px;border-top:1px solid #e6e9ec;background:#fafbfc}.simple-import-footer .secondary-action{min-width:88px;min-height:40px}
 @media (max-width:640px){.supplier-preview-panel{width:calc(100vw - 20px);max-height:calc(100vh - 20px)}.import-header,.supplier-preview-panel .simple-import-body,.simple-import-footer{padding-left:16px;padding-right:16px}.file-picker{min-height:136px;flex-direction:column;gap:12px;text-align:center}.file-picker::before{margin-right:0}.file-picker span{width:100%;justify-content:center}.order-template-download{width:100%;justify-content:center}.supplier-preview-fields{grid-template-columns:1fr}}

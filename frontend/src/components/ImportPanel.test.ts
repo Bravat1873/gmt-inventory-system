@@ -121,7 +121,7 @@ describe('simple Excel import', () => {
     await selectFile(wrapper, 'customers.xlsx')
 
     expect(commitImport).not.toHaveBeenCalled()
-    expect(wrapper.get('[data-test="conflict-row-41"]').classes()).toContain('conflict-row')
+    expect(wrapper.get('[data-test="review-row-41"]').classes()).toContain('conflict-row')
     expect(wrapper.get('[data-test="commit-import"]').attributes('disabled')).toBeDefined()
 
     await wrapper.get('[data-test="conflict-overwrite-41"]').trigger('click')
@@ -131,6 +131,27 @@ describe('simple Excel import', () => {
 
     expect(updateImportRow).toHaveBeenCalledWith(8, 41, expect.objectContaining({ _conflictAction: 'OVERWRITE' }))
     expect(commitImport).toHaveBeenCalledWith(8)
+  })
+
+  it('filters customer review rows by conflicts, errors, and resolved decisions', async () => {
+    const preview = structuredClone(customerConflictBatch)
+    preview.rows.push({ id: 43, sheetName: '客户', rowNumber: 4, status: 'ERROR', data: { customerName: '' }, errorMessage: '客户名称不能为空', manualEntry: false })
+    preview.totalRows = 3
+    preview.errorRows = 1
+    previewImport.mockResolvedValue(preview)
+    const wrapper = mount(ImportPanel, { props: { type: 'CUSTOMER', title: '导入客户' } })
+    await selectFile(wrapper, 'customers.xlsx')
+
+    await wrapper.get('[data-test="review-filter-conflicts"]').trigger('click')
+    expect(wrapper.findAll('[data-test^="review-row-"]')).toHaveLength(1)
+    await wrapper.get('[data-test="review-filter-errors"]').trigger('click')
+    expect(wrapper.findAll('[data-test^="review-row-"]')).toHaveLength(1)
+    await wrapper.get('[data-test="review-filter-resolved"]').trigger('click')
+    expect(wrapper.findAll('[data-test^="review-row-"]')).toHaveLength(0)
+    await wrapper.get('[data-test="review-filter-all"]').trigger('click')
+    await wrapper.get('[data-test="conflict-overwrite-41"]').trigger('click')
+    await wrapper.get('[data-test="review-filter-resolved"]').trigger('click')
+    expect(wrapper.findAll('[data-test^="review-row-"]')).toHaveLength(1)
   })
 
   it('edits a conflicting customer row before choosing the imported value', async () => {
