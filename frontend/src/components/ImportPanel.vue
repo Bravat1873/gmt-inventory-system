@@ -351,7 +351,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
             <button v-for="row in group.rows" :key="row.id" :data-test="`product-conflict-skip-${row.id}`" type="button" class="secondary-action compact-action" :disabled="row.status !== 'VALID' || busy" @click="skipProductRow(row.id)">第 {{ row.rowNumber }} 行</button>
           </div>
         </div>
-        <div class="supplier-preview-actions"><p v-if="previewBatch.errorRows > 0">存在错误行，不能执行全量替换。</p><p v-else-if="!productCanCommit">请完成所有冲突组的保留或跳过决定。</p><button data-test="commit-product-replace" type="button" class="primary-action danger-action" :disabled="busy || !productCanCommit" @click="confirmProductReplace">确认全量替换</button></div>
+        <div class="supplier-preview-actions"><p v-if="previewBatch.errorRows > 0">存在错误行，不能执行全量替换。</p><p v-else-if="!productCanCommit">请完成所有冲突组的保留或跳过决定。</p></div>
       </section>
 
       <section v-else-if="previewBatch && importedRows === null && type === 'ORDER'" class="order-preview" aria-label="订单导入预览">
@@ -374,7 +374,11 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
       <p v-else-if="importedRows !== null" data-test="import-success" class="simple-import-success">成功导入 {{ importedRows }} 条数据。关闭窗口后，列表会自动刷新。</p>
       <p v-else-if="errorMessage" class="simple-import-error">导入失败：{{ errorMessage }}</p>
     </div>
-    <footer class="simple-import-footer"><button type="button" class="secondary-action" @click="emit('close')">完成</button></footer>
+    <footer class="simple-import-footer">
+      <p v-if="previewBatch && importedRows === null && type === 'PRODUCT'" class="footer-submit-hint">{{ productCanCommit ? '已通过预览，确认后将执行全量替换。' : '请先处理预览中的错误或冲突。' }}</p>
+      <button v-if="previewBatch && importedRows === null && type === 'PRODUCT'" data-test="commit-product-replace" type="button" class="primary-action danger-action" :disabled="busy || !productCanCommit" @click="confirmProductReplace">确认全量替换</button>
+      <button type="button" class="secondary-action" @click="emit('close')">完成</button>
+    </footer>
   </section>
 </template>
 
@@ -404,7 +408,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
 .supplier-preview-table tbody tr:hover,.product-preview-table tbody tr:hover,.order-preview-table tbody tr:hover{background:#fafcfd}.product-danger-note{border-radius:0 4px 4px 0}.order-preview-group{border-color:#dce3e8;border-radius:5px}
 .review-filters{display:flex;flex-wrap:wrap;gap:8px}.review-filters button{min-height:32px;padding:0 11px;border:1px solid #d5dde3;border-radius:4px;background:#fff;color:#58646e;font-size:12px}.review-filters button:hover{border-color:#7898b2;background:#f4f8fa}.review-filters button.selected{border-color:#315d82;background:#315d82;color:#fff}
 .simple-import-success,.simple-import-error{margin:0;padding:13px 14px;border:1px solid;border-radius:5px;font-size:13px}.simple-import-success{border-color:#b9dcc8;background:#f0f8f3;color:#25633f}.simple-import-error{border-color:#edc7c2;background:#fff5f3;color:#97372d}
-.simple-import-footer{min-height:66px;padding:12px 24px;border-top:1px solid #e6e9ec;background:#fafbfc}.simple-import-footer .secondary-action{min-width:88px;min-height:40px}
+.simple-import-footer{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-height:66px;padding:12px 24px;border-top:1px solid #e6e9ec;background:#fafbfc}.footer-submit-hint{margin:0 auto 0 0;color:#842d25;font-size:12px}.simple-import-footer .secondary-action{min-width:88px;min-height:40px}
 @media (max-width:640px){.supplier-preview-panel{width:calc(100vw - 20px);max-height:calc(100vh - 20px)}.import-header,.supplier-preview-panel .simple-import-body,.simple-import-footer{padding-left:16px;padding-right:16px}.file-picker{min-height:136px;flex-direction:column;gap:12px;text-align:center}.file-picker::before{margin-right:0}.file-picker span{width:100%;justify-content:center}.order-template-download{width:100%;justify-content:center}.supplier-preview-fields{grid-template-columns:1fr}}
 .conflict-row,.product-preview-table tr:has(.decision-control){background:#fff8e6!important;box-shadow:inset 3px 0 0 #d88a00}.conflict-label{margin:6px 0 0;color:#9a5b00;font-weight:650}.resolved-state{display:inline-block;margin-left:6px;color:#17633c;font-size:12px}
 </style>

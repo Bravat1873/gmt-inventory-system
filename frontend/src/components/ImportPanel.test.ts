@@ -391,6 +391,7 @@ describe('simple Excel import', () => {
     expect(commitProductReplace).not.toHaveBeenCalled()
     expect(wrapper.find('[data-test="product-conflict-keep-21"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="commit-product-replace"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.simple-import-footer [data-test="commit-product-replace"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('GMT库存产品清单')
     expect(wrapper.text()).toContain('旧编号-A')
     expect(wrapper.text()).toContain('NEW-A')
