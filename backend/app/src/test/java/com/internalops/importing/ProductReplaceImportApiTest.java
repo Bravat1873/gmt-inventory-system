@@ -56,6 +56,7 @@ class ProductReplaceImportApiTest {
         data.put("lockType", "7068"); data.put("connectivity", "WiFi"); data.put("salesChannel", "平面");
         data.put("operatingEntity", "珠海"); data.put("language", "中文版"); data.put("codeSuffix", "A");
         data.put("productCode", "BR_P90YZH70WPZC-A");
+        data.put("customerPartNumber", "P90-TEST-001");
         data.put("_ruleFingerprint", "BRAND:1|SERIES:2|BODY_COLOR:3|LOCK_TYPE:4|CONNECTIVITY:5|SALES_CHANNEL:6|OPERATING_ENTITY:7|LANGUAGE:8");
         data.put("model", "P90"); data.put("supplierName", "测试供应商"); data.put("supplierTaxPrice", "88.5");
         return repository.create(ImportType.PRODUCT, "products.xlsx", hash,

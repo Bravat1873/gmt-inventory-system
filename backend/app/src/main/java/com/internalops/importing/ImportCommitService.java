@@ -325,9 +325,10 @@ public class ImportCommitService {
         String code = text(data, "customerCode");
         if (code.isBlank()) {
             String normalizedTaxpayerId = taxpayerId.toUpperCase(Locale.ROOT);
-            if (normalizedTaxpayerId.length() < 10) throw new IllegalArgumentException("纳税人识别号至少需要10位");
-            code = ("DOMESTIC".equals(type) ? "A." : "B.")
-                    + normalizedTaxpayerId.substring(normalizedTaxpayerId.length() - 10);
+            code = normalizedTaxpayerId.length() >= 10
+                    ? ("DOMESTIC".equals(type) ? "A." : "B.")
+                    + normalizedTaxpayerId.substring(normalizedTaxpayerId.length() - 10)
+                    : nextCustomerCode();
         }
         Long existing = findByNormalizedName("customer", "customer_name", name);
         Object[] fields = {
@@ -363,6 +364,11 @@ public class ImportCommitService {
         if (keys.getKey() == null) throw new IllegalStateException("新增客户失败，未生成数据编号");
         jdbc.update("INSERT INTO customer_fund_account(customer_id,balance,version) VALUES(?,0,0)", keys.getKey().longValue());
         return true;
+    }
+
+    private String nextCustomerCode() {
+        int next = jdbc.queryForObject("SELECT COALESCE(MAX(id),0)+1 FROM customer", Integer.class);
+        return String.format("CUS%06d", next);
     }
 
     private Object[] append(Object[] values, Object last) {
