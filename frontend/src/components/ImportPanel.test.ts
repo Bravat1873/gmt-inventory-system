@@ -161,6 +161,8 @@ describe('simple Excel import', () => {
     await selectFile(wrapper, 'customers.xlsx')
 
     await wrapper.get('[data-test="conflict-edit-41"]').trigger('click')
+    expect(wrapper.find('[data-test="inline-editor-41"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="import-row-editor"]').text()).toContain('客户名称')
     const input = wrapper.get('[data-test="import-row-editor"] input')
     await input.setValue('客户甲（修订）')
     await wrapper.get('[data-test="save-import-row-edit"]').trigger('click')
