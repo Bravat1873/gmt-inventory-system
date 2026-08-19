@@ -12,18 +12,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Parses only the two approved source-product worksheets, never the inventory worksheet. */
+/** Parses only the three approved source-product worksheets, never the inventory worksheet. */
 public final class ProductWorkbookExcelParser {
-    private static final List<String> SHEETS = List.of("GMT库存产品清单", "贝朗库存产品清单");
+    private static final List<String> SHEETS = List.of("GMT库存产品清单", "贝朗库存产品清单", "STANLEY库存产品清单");
     private static final List<String> TEXT_FIELDS = List.of(
-            "sourceProductCode", "productCategory", "materialType", "customerMaterialCode", "brand", "series",
+            "sourceProductCode", "productCategory", "materialType", "customerPartNumber", "brand", "series",
             "bodyColor", "lockType", "connectivity", "salesChannel", "operatingEntity", "language", "codeSuffix",
-            "model", "materialSpecification", "productConfiguration", "supplierName");
+            "model", "materialSpecification", "productConfiguration", "supplierName", "sourceSupplierName",
+            "inventoryRemark");
     private static final List<String> CODE_FIELDS = List.of(
             "brand", "series", "bodyColor", "lockType", "connectivity", "salesChannel", "operatingEntity", "language",
             "codeSuffix");
     private static final List<String> PRODUCT_DETAIL_FIELDS = List.of(
-            "customerMaterialCode", "model", "materialSpecification", "productConfiguration", "supplierName");
+            "customerPartNumber", "model", "materialSpecification", "productConfiguration", "supplierName");
     // These are the fixed coding-legend entries in rows 2-8 of both approved product sheets.
     private static final Set<String> LEADING_LEGEND_VALUES = Set.of(
             "BRAVAT（BR）", "STANLEY(SXSEL)", "GMT(G)",
@@ -34,10 +35,14 @@ public final class ProductWorkbookExcelParser {
         List<ParsedImportRow> result = new ArrayList<>();
         for (String sheetName : SHEETS) {
             Sheet sheet = workbook.getSheet(sheetName);
-            if (sheet == null) throw new IllegalArgumentException("缺少产品工作表：" + sheetName);
+            if (sheet == null) continue;
             Map<String, Integer> headers = normalizedHeaders(sheet.getRow(0));
             for (int index = 1; index <= sheet.getLastRowNum(); index++) {
+                if (isCancelledRow(sheet.getRow(index))) continue;
                 Map<String, Object> data = readProductRow(sheet.getRow(index), headers);
+                if (isBlank(data.get("sourceSupplierName"))) {
+                    data.put("sourceSupplierName", data.get("supplierName"));
+                }
                 if (isLeadingLegend(data)) continue;
                 if (!isBusinessRow(data)) continue;
                 result.add(new ParsedImportRow(sheetName, index + 1, ImportRowStatus.VALID, data, null));
@@ -61,7 +66,7 @@ public final class ProductWorkbookExcelParser {
         if (header.startsWith("产品编号")) return "sourceProductCode";
         if (header.contains("产品分类")) return "productCategory";
         if (header.contains("物料类型")) return "materialType";
-        if (header.contains("客户料号")) return "customerMaterialCode";
+        if (header.contains("客户料号")) return "customerPartNumber";
         if (header.equals("品牌")) return "brand";
         if (header.equals("系列")) return "series";
         if (header.contains("物料颜色")) return "bodyColor";
@@ -77,6 +82,11 @@ public final class ProductWorkbookExcelParser {
         if (header.contains("销售最小起订量")) return "salesMinimumOrderQuantity";
         if (header.contains("供应商含税价")) return "supplierTaxPrice";
         if (header.equals("供应商名称")) return "supplierName";
+        if (header.contains("实际库存数量")) return "actualQuantity";
+        if (header.contains("已锁定数量")) return "lockedQuantity";
+        if (header.contains("在途数量")) return "inTransitQuantity";
+        if (header.contains("库存供应商")) return "sourceSupplierName";
+        if (header.contains("库存备注")) return "inventoryRemark";
         return null;
     }
 
@@ -85,6 +95,9 @@ public final class ProductWorkbookExcelParser {
         for (String field : TEXT_FIELDS) data.put(field, nullableText(row, headers.get(field)));
         data.put("salesMinimumOrderQuantity", decimalOrDefault(row, headers.get("salesMinimumOrderQuantity"), BigDecimal.ONE));
         data.put("supplierTaxPrice", decimalOrDefault(row, headers.get("supplierTaxPrice"), BigDecimal.ZERO));
+        data.put("actualQuantity", integerOrDefault(row, headers.get("actualQuantity"), 0));
+        data.put("lockedQuantity", integerOrDefault(row, headers.get("lockedQuantity"), 0));
+        data.put("inTransitQuantity", integerOrDefault(row, headers.get("inTransitQuantity"), 0));
         return data;
     }
 
@@ -94,6 +107,17 @@ public final class ProductWorkbookExcelParser {
 
     private boolean hasValue(Map<String, Object> data, List<String> fields) {
         return fields.stream().map(data::get).anyMatch(this::hasText);
+    }
+
+    private boolean isCancelledRow(Row row) {
+        if (row == null) return false;
+        for (int column = Math.max(0, row.getFirstCellNum()); column < row.getLastCellNum(); column++) {
+            String value = ExcelValueReader.text(row.getCell(column));
+            if (value.startsWith("取消") || value.contains("更换新料号")) {
+                return true;
+            }
+        }
+        return false;
     }
 
 
@@ -108,9 +132,19 @@ public final class ProductWorkbookExcelParser {
         return value != null && !value.toString().isBlank();
     }
 
+    private boolean isBlank(Object value) {
+        return value == null || value.toString().isBlank();
+    }
+
     private BigDecimal decimalOrDefault(Row row, Integer column, BigDecimal defaultValue) {
         BigDecimal value = ExcelValueReader.decimal(cell(row, column));
         return value == null ? defaultValue : value;
+    }
+
+    private int integerOrDefault(Row row, Integer column, int defaultValue) {
+        String value = ExcelValueReader.text(cell(row, column));
+        if (value.isBlank()) return defaultValue;
+        return ExcelValueReader.integer(cell(row, column));
     }
 
     private String nullableText(Row row, Integer column) {

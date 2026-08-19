@@ -35,14 +35,16 @@ const visibleProducts = computed(() => {
 
 const visibleSuppliers = computed(() => suppliers.value)
 
-function productLabel(product: OrderSku) {
-  const code = product.skuCode || product.model || `产品 ${product.id}`
-  const name = product.productName || product.configuration || ''
-  return name ? `${code} · ${name}` : code
+function productOptionLabel(product: OrderSku) {
+  return [`产品编号：${product.productCode || '—'}`, `客户料号：${product.customerPartNumber || '—'}`, `型号：${product.model || '—'}`].join('\n')
+}
+
+function productSelectedLabel(product: OrderSku) {
+  return String(product.productCode ?? '').trim() || '未设置产品编号'
 }
 
 function productSearchText(product: OrderSku) {
-  return [product.skuCode, product.productName, product.model, product.configuration]
+  return [product.productCode, product.customerPartNumber, product.model]
     .filter(Boolean).join(' ').toLowerCase()
 }
 
@@ -102,7 +104,7 @@ function hideLater(field: 'product' | 'supplier') {
 
 async function selectProduct(product: OrderSku) {
   selectedProduct.value = product
-  productQuery.value = productLabel(product)
+  productQuery.value = productSelectedLabel(product)
   productOpen.value = false
   selectedSupplier.value = null
   supplierQuery.value = ''
@@ -174,11 +176,11 @@ onMounted(loadProducts)
         <div class="form-grid">
           <label class="choice-field">
             <span>产品</span>
-            <input data-test="product-search" v-model="productQuery" type="search" autocomplete="off" placeholder="输入产品编号、名称、型号或规格" :disabled="saving" @focus="productOpen=true" @blur="hideLater('product')">
+            <input data-test="product-search" v-model="productQuery" type="search" autocomplete="off" placeholder="输入产品编号、客户料号或型号搜索" :disabled="saving" @focus="productOpen=true" @blur="hideLater('product')">
             <div v-if="productOpen" class="choice-options" role="listbox">
               <span v-if="loadingProducts" class="choice-empty">正在加载产品…</span>
               <button v-for="product in visibleProducts" v-else :key="product.id" :data-test="`product-option-${product.id}`" type="button" @mousedown.prevent @click="selectProduct(product)">
-                <strong>{{ productLabel(product) }}</strong><small>{{ product.model || '未设置型号' }}<template v-if="product.configuration"> · {{ product.configuration }}</template></small>
+                <strong>{{ productOptionLabel(product) }}</strong><small>{{ product.model || '未设置型号' }}<template v-if="product.configuration"> · {{ product.configuration }}</template></small>
               </button>
               <span v-if="!loadingProducts && visibleProducts.length===0" class="choice-empty">没有匹配的产品。</span>
             </div>
@@ -188,7 +190,7 @@ onMounted(loadProducts)
             <span>实际库存 <strong>{{ selectedProduct.actualQuantity }}</strong></span>
             <span>在途数量 <strong>{{ selectedProduct.inTransitQuantity }}</strong></span>
             <span>未发货数量 <strong>{{ selectedProduct.pendingDeliveryQuantity }}</strong></span>
-            <span :class="{ negative: selectedProduct.supplyDemandBalance < 0 }">供需余量 <strong>{{ selectedProduct.supplyDemandBalance }}</strong></span>
+            <span :class="{ negative: selectedProduct.supplyDemandSurplus < 0 }">供需余量 <strong>{{ selectedProduct.supplyDemandSurplus }}</strong></span>
             <small v-if="selectedProduct.purchaseShortageQuantity > 0" class="field-error">建议采购 {{ selectedProduct.purchaseShortageQuantity }}</small>
           </div>
           <label class="choice-field">
@@ -215,3 +217,4 @@ onMounted(loadProducts)
     </section>
   </div>
 </template>
+

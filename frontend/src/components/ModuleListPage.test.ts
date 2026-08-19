@@ -11,7 +11,7 @@ vi.mock('../api/workbench', () => ({ loadModule, loadUnconfiguredProcurementShor
 it('shows supplier configuration alerts only in purchase management', async () => {
   loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
   loadUnconfiguredProcurementShortages.mockResolvedValue([
-    { skuId: 70, skuCode: 'F70', productName: 'F70', shortageQuantity: 200, orderNumbers: ['DD20260800002'] }
+    { skuId: 70, customerPartNumber: 'F70', productName: 'F70', shortageQuantity: 200, orderNumbers: ['DD20260800002'] }
   ])
   const purchase = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
   await flushPromises()
@@ -175,18 +175,18 @@ it.each([
   expect(wrapper.text()).toContain(label)
 })
 it('shows only the edit action for inventory rows', async () => {
-  loadModule.mockResolvedValue({ items: [{ id: 1, skuCode: 'P50' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  loadModule.mockResolvedValue({ items: [{ id: 1, customerPartNumber: 'P50' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'inventory')! } })
   await flushPromises()
   const actions = wrapper.get('.row-actions')
   expect(actions.text()).toBe('修改')
   expect(actions.find('[data-test="inventory-details"]').exists()).toBe(false)
 })
-it('highlights negative inventory supply-demand balance as a purchase shortage', async () => {
-  loadModule.mockResolvedValue({ items: [{ id: 1, supplyDemandBalance: -6, purchaseShortageQuantity: 6 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+it('highlights negative inventory supply-demand surplus as a purchase shortage', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, supplyDemandSurplus: -6, purchaseShortageQuantity: 6 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'inventory')! } })
   await flushPromises()
-  const balance = wrapper.get('[data-test="supply-demand-balance"]')
+  const balance = wrapper.get('[data-test="supply-demand-surplus"]')
   expect(balance.classes()).toContain('negative')
   expect(balance.text()).toContain('-6')
   expect(balance.text()).toContain('采购缺口 6')
@@ -207,3 +207,5 @@ it('keeps supplier quotes on one line and exposes all quotes in the title', asyn
   expect(quotes.findAll('span')).toHaveLength(0)
   expect(quotes.attributes('title')).toBe('供应商甲：¥100\n供应商乙：¥105.5')
 })
+
+

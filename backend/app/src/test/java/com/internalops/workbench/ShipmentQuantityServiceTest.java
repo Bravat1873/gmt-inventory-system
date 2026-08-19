@@ -19,7 +19,7 @@ class ShipmentQuantityServiceTest {
         when(jdbc.queryForObject(startsWith("SELECT status FROM sales_order"), eq(String.class), eq(1L))).thenReturn("READY_TO_SHIP");
         when(jdbc.queryForObject(startsWith("SELECT id FROM warehouse"), eq(Long.class))).thenReturn(1L);
         when(jdbc.queryForList(startsWith("SELECT i.id"), eq(1L))).thenReturn(List.of(Map.of(
-                "id", 21L, "line_no", 10000, "sku_id", 9L, "sku_code", "SKU-9", "product_name", "测试锁",
+                "id", 21L, "line_no", 10000, "sku_id", 9L, "customer_part_number", "SKU-9", "product_name", "测试锁",
                 "quantity", 10, "shipped_quantity", 0, "locked_quantity", 2
         )));
         when(jdbc.queryForMap(startsWith("SELECT id,actual_quantity"), eq(1L), eq(9L))).thenReturn(Map.of(

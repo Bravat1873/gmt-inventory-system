@@ -46,7 +46,7 @@ public class ShipmentQuantityService {
                 throw new IllegalArgumentException("订单明细行号重复");
             }
         }
-        List<Map<String, Object>> lines = jdbc.queryForList("SELECT i.id,i.line_no,i.sku_id,s.sku_code,s.product_name,i.quantity,i.shipped_quantity,i.locked_quantity "
+        List<Map<String, Object>> lines = jdbc.queryForList("SELECT i.id,i.line_no,i.sku_id,s.customer_part_number,s.product_name,i.quantity,i.shipped_quantity,i.locked_quantity "
                 + "FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no FOR UPDATE", orderId);
         if (lines.isEmpty()) throw new IllegalArgumentException("订单没有可发货明细");
         List<ShipmentDelta> positiveDeltas = new ArrayList<>();
@@ -85,9 +85,9 @@ public class ShipmentQuantityService {
                 int balanceLocked = (int) InventoryAllocationService.num(balance, "locked_quantity");
                 int transit = (int) InventoryAllocationService.num(balance, "in_transit_quantity");
                 if (delta > 0 && (balanceLocked < lockedReduction || actual < delta || locked < delta)) {
-                    String skuCode = String.valueOf(line.getOrDefault("sku_code", ""));
+                    String customerPartNumber = String.valueOf(line.getOrDefault("customer_part_number", ""));
                     String productName = String.valueOf(line.getOrDefault("product_name", ""));
-                    String material = !skuCode.isBlank() && !"null".equals(skuCode) ? skuCode
+                    String material = !customerPartNumber.isBlank() && !"null".equals(customerPartNumber) ? customerPartNumber
                             : (!productName.isBlank() && !"null".equals(productName) ? productName : "该物料");
                     throw new IllegalStateException("物料 " + material + " 本单已备货 " + locked
                             + "，本次最多可增加发货 " + Math.max(0, locked)

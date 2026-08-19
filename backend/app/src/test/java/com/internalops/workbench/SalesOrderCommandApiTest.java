@@ -33,14 +33,14 @@ class SalesOrderCommandApiTest {
                 .andExpect(jsonPath("$.data[0].availableQuantity").value(7))
                 .andExpect(jsonPath("$.data[0].inTransitQuantity").value(2))
                 .andExpect(jsonPath("$.data[0].pendingDeliveryQuantity").value(6))
-                .andExpect(jsonPath("$.data[0].supplyDemandBalance").value(6))
+                .andExpect(jsonPath("$.data[0].supplyDemandSurplus").value(6))
                 .andExpect(jsonPath("$.data[0].purchaseShortageQuantity").value(0))
                 .andExpect(jsonPath("$.data[1].primaryImageId").doesNotExist())
                 .andExpect(jsonPath("$.data[1].actualQuantity").value(0))
                 .andExpect(jsonPath("$.data[1].availableQuantity").value(0))
                 .andExpect(jsonPath("$.data[1].inTransitQuantity").value(0))
                 .andExpect(jsonPath("$.data[1].pendingDeliveryQuantity").value(0))
-                .andExpect(jsonPath("$.data[1].supplyDemandBalance").value(0));
+                .andExpect(jsonPath("$.data[1].supplyDemandSurplus").value(0));
     }
     @Test void manuallyReducesAnAutomaticAllocationAndReleasesInventory() throws Exception {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
@@ -465,3 +465,4 @@ class SalesOrderCommandApiTest {
         org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion WHERE suggestion_no LIKE 'QR%'",Integer.class)).isEqualTo(1);
     }
 }
+

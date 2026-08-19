@@ -14,7 +14,7 @@ final class SalesOrderExcelParser {
     private static final Map<String, String> FIELDS = Map.ofEntries(
             Map.entry("外部订单号", "externalOrderNo"), Map.entry("客户编码", "customerCode"), Map.entry("订单日期", "orderDate"),
             Map.entry("订单类型", "orderType"), Map.entry("订单状态", "orderStatus"), Map.entry("销售员", "salesperson"),
-            Map.entry("客户料号", "customerMaterialCode"), Map.entry("产品编号", "productCode"), Map.entry("订单数量", "quantity"),
+            Map.entry("客户料号", "customerPartNumber"), Map.entry("产品编号", "productCode"), Map.entry("订单数量", "quantity"),
             Map.entry("含税单价", "salePrice"), Map.entry("业务联系人", "businessContactName"), Map.entry("业务联系电话", "businessContactPhone"),
             Map.entry("订单联系人", "orderContactName"), Map.entry("订单联系电话", "orderContactPhone"), Map.entry("财务联系人", "financeContactName"),
             Map.entry("财务联系电话", "financeContactPhone"), Map.entry("收货地址", "deliveryAddress"), Map.entry("收货联系人", "deliveryContact"),

@@ -18,7 +18,7 @@ class ImportValidationServiceTest {
     @Test
     void acceptsLockedStockCoveredByTransitStock() {
         ParsedImportRow row = service.validate(ImportType.INVENTORY, "爱迪生", 37, Map.of(
-                "skuCode", "SKU-1",
+                "customerPartNumber", "SKU-1",
                 "actualQuantity", 0,
                 "lockedQuantity", 135,
                 "inTransitQuantity", 135
@@ -30,7 +30,7 @@ class ImportValidationServiceTest {
     @Test
     void acceptsCostRowWithoutUniqueInventorySkuForAutomaticTemporaryCode() {
         ParsedImportRow row = service.validate(ImportType.COST, "Sheet1", 3, Map.of(
-                "skuCode", "",
+                "customerPartNumber", "",
                 "model", "P90",
                 "color", "宇宙黑",
                 "lockBody", "7068",
@@ -50,7 +50,7 @@ class ImportValidationServiceTest {
         ));
 
         assertEquals(ImportRowStatus.VALID, rows.get(0).status());
-        assertEquals("SXSEL_P90YZH70WPSE-A", rows.get(0).data().get("skuCode"));
+        assertEquals("SXSEL_P90YZH70WPSE-A", rows.get(0).data().get("customerPartNumber"));
         assertEquals("P90", rows.get(0).data().get("model"));
         assertEquals(120, rows.get(0).data().get("inTransitQuantity"));
         assertEquals(ImportRowStatus.IGNORED, rows.get(1).status());
@@ -69,10 +69,10 @@ class ImportValidationServiceTest {
         assertTrue(rows.get(1).errorMessage().contains("19"));
     }
 
-    private ParsedImportRow inventoryRow(int rowNumber, String skuCode, String model,
+    private ParsedImportRow inventoryRow(int rowNumber, String customerPartNumber, String model,
                                          int actual, int locked, int transit) {
         return new ParsedImportRow("爱迪生", rowNumber, ImportRowStatus.VALID, Map.of(
-                "skuCode", skuCode,
+                "customerPartNumber", customerPartNumber,
                 "model", model,
                 "actualQuantity", actual,
                 "lockedQuantity", locked,
@@ -86,7 +86,7 @@ class ImportValidationServiceTest {
         ImportValidationService productService = new ImportValidationService(jdbc);
         ParsedImportRow parsed = new ParsedImportRow("GMT库存产品清单", 9, ImportRowStatus.VALID, Map.of(
                 "brand", "BR",
-                "customerMaterialCode", "D1214K-P90"
+                "customerPartNumber", "D1214K-P90"
         ), null);
 
         List<ParsedImportRow> rows = productService.validateAll(ImportType.PRODUCT, List.of(parsed));

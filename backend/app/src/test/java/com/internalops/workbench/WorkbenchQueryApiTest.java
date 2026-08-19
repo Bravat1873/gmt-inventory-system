@@ -80,6 +80,22 @@ class WorkbenchQueryApiTest {
                 .andExpect(jsonPath("$.data.items[0].supplierQuotes[1].supplierName").value("Second supplier"))
                 .andExpect(jsonPath("$.data.items[0].supplierQuotes[1].purchasePrice").value(105));
     }
+
+    @Test
+    void productSearchUsesOnlyCustomerPartNumberModelAndProductCode() throws Exception {
+        String retiredApiField = "sku" + "Code";
+        for (String keyword : new String[]{"GALLERY-WITH-IMAGES", "MODEL-101", "OLD_000101"}) {
+            mvc.perform(get("/api/workbench/product").param("keyword", keyword))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.total").value(1))
+                    .andExpect(jsonPath("$.data.items[0].customerPartNumber").value("GALLERY-WITH-IMAGES"))
+                    .andExpect(jsonPath("$.data.items[0]." + retiredApiField).doesNotExist());
+        }
+
+        mvc.perform(get("/api/workbench/product").param("keyword", "Product with gallery"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0));
+    }
     @Test
     void supplierListAndTotalExcludeDisabledSuppliers() throws Exception {
         mvc.perform(get("/api/workbench/supplier"))

@@ -44,9 +44,9 @@ class SalesOrderExcelParserTest {
     }
 
     private void writeRow(org.apache.poi.ss.usermodel.Row row, String externalOrderNo, String customerCode,
-                          String date, String type, String status, String salesperson, String customerMaterialCode,
+                          String date, String type, String status, String salesperson, String customerPartNumber,
                           String productCode, int quantity, double salePrice) {
-        String[] values = {externalOrderNo, customerCode, date, type, status, salesperson, customerMaterialCode,
+        String[] values = {externalOrderNo, customerCode, date, type, status, salesperson, customerPartNumber,
                 productCode, String.valueOf(quantity), String.valueOf(salePrice), "业务", "13800000000", "订单", "13800000001",
                 "财务", "13800000002", "上海市", "收货人", "13800000003", "快递", "备注"};
         for (int index = 0; index < values.length; index++) row.createCell(index).setCellValue(values[index]);

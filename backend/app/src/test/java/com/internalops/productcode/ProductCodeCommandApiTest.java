@@ -20,25 +20,25 @@ class ProductCodeCommandApiTest {
     @Autowired MockMvc mvc;
 
     @Test
-    void createsFormalCodesAndAllowsDuplicateCustomerCodes() throws Exception {
+    void createsFormalCodesAndAllowsDuplicateCustomerPartNumbers() throws Exception {
         Cookie session=login();
         mvc.perform(post("/api/workbench/product").cookie(session).contentType("application/json").content(body(2)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.productCode").value("BR_P90HGT60WPZE"))
-                .andExpect(jsonPath("$.data.customerCode").value("客户-重复"));
+                .andExpect(jsonPath("$.data.customerPartNumber").value("客户-重复"));
         mvc.perform(post("/api/workbench/product").cookie(session).contentType("application/json").content(body(9)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.productCode").value("BR_P50HGT60WPZE"))
-                .andExpect(jsonPath("$.data.customerCode").value("客户-重复"));
+                .andExpect(jsonPath("$.data.customerPartNumber").value("客户-重复"));
     }
 
     @Test
     void createsEntryDoorCode() throws Exception {
         Cookie session = login();
-        String json = "{\"customerCode\":\"门客户号\",\"productName\":\"入户门\",\"productType\":\"ENTRY_DOOR\",\"materialType\":\"FINISHED_PRODUCT\"," +
+        String json = "{\"customerPartNumber\":\"门客户号\",\"productName\":\"入户门\",\"productType\":\"ENTRY_DOOR\",\"materialType\":\"FINISHED_PRODUCT\"," +
                 "\"brandRuleId\":1,\"doorModelRuleId\":11,\"securityGradeRuleId\":12,\"baseMaterialRuleId\":13," +
                 "\"thicknessRuleId\":14,\"finishColorRuleId\":15}";
         mvc.perform(post("/api/workbench/product").cookie(session).contentType("application/json").content(json))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.productCode").value("BR_MJ3080A"))
-                .andExpect(jsonPath("$.data.customerCode").value("门客户号"));
+                .andExpect(jsonPath("$.data.customerPartNumber").value("门客户号"));
     }
     @Test
     void rejectsIncompleteNewProductAndPreservesHistoricalCodeOnIncompleteEdit() throws Exception {
@@ -46,12 +46,12 @@ class ProductCodeCommandApiTest {
         mvc.perform(post("/api/workbench/product").cookie(session).contentType("application/json").content("{\"productName\":\"不完整产品\",\"productType\":\"SMART_LOCK\",\"materialType\":\"FINISHED_PRODUCT\"}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("请补齐产品编码信息"));
         mvc.perform(put("/api/workbench/product/100").cookie(session).contentType("application/json")
-                        .content("{\"productName\":\"历史产品更新\",\"customerCode\":null,\"version\":0}"))
+                        .content("{\"productName\":\"历史产品更新\",\"customerPartNumber\":null,\"version\":0}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.productCode").value("OLD_000100"));
     }
 
     private String body(long series) {
-        return "{\"productCode\":\"HACKED\",\"customerCode\":\"客户-重复\",\"productName\":\"正式产品\",\"productType\":\"SMART_LOCK\",\"materialType\":\"FINISHED_PRODUCT\","+
+        return "{\"productCode\":\"HACKED\",\"customerPartNumber\":\"客户-重复\",\"productName\":\"正式产品\",\"productType\":\"SMART_LOCK\",\"materialType\":\"FINISHED_PRODUCT\","+
                 "\"brandRuleId\":1,\"seriesRuleId\":"+series+",\"bodyColorRuleId\":3,\"lockTypeRuleId\":4,"+
                 "\"connectivityRuleId\":5,\"salesChannelRuleId\":6,\"operatingEntityRuleId\":7,\"languageRuleId\":8}";
     }

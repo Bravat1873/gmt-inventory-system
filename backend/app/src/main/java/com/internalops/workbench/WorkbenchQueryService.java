@@ -32,7 +32,7 @@ public class WorkbenchQueryService {
             Map.entry("invoicetitle", "invoiceTitle"), Map.entry("taxpayerid", "taxpayerId"),
             Map.entry("invoiceaddress", "invoiceAddress"), Map.entry("invoicephone", "invoicePhone"), Map.entry("bankname", "bankName"),
             Map.entry("contractstatus", "contractStatus"), Map.entry("contractenddate", "contractEndDate"),
-            Map.entry("updatedat", "updatedAt"), Map.entry("skucode", "skuCode"), Map.entry("productcode", "productCode"),
+            Map.entry("updatedat", "updatedAt"), Map.entry("customerpartnumber", "customerPartNumber"), Map.entry("productcode", "productCode"),
             Map.entry("producttype", "productType"), Map.entry("productconfiguration", "productConfiguration"),
             Map.entry("productname", "productName"), Map.entry("lockbody", "lockBody"),
             Map.entry("productversion", "productVersion"), Map.entry("currentcost", "currentCost"),
@@ -131,7 +131,7 @@ public class WorkbenchQueryService {
                 int balance = ((Number) item.get("actualQuantity")).intValue()
                         + ((Number) item.get("inTransitQuantity")).intValue() - pending;
                 item.put("pendingDeliveryQuantity", pending);
-                item.put("supplyDemandBalance", balance);
+                item.put("supplyDemandSurplus", balance);
                 item.put("purchaseShortageQuantity", Math.max(-balance, 0));
                 inventoryAge(transactions, ((Number) item.get("actualQuantity")).intValue()).ifPresentOrElse(
                         age -> {
@@ -236,16 +236,17 @@ public class WorkbenchQueryService {
     public List<Map<String, Object>> supplierProducts(long supplierId, String keyword) {
         String search = keyword == null ? "" : keyword.trim();
         return jdbc.queryForList("""
-                        SELECT s.id,s.sku_code AS `skuCode`,s.product_name AS `productName`,s.model,
+                        SELECT s.id,s.customer_part_number AS `customerPartNumber`,s.model,
+                               s.product_code AS `productCode`,
                                s.configuration,s.unit,ssc.purchase_price AS `purchasePrice`,
                                ssc.moq,ssc.lead_time_days AS `leadTimeDays`
                         FROM sku_supplier_config ssc
                         JOIN sku s ON s.id=ssc.sku_id
                         WHERE ssc.supplier_id=? AND ssc.enabled=TRUE AND s.enabled=TRUE
-                          AND (LOCATE(?,COALESCE(s.sku_code,''))>0
-                               OR LOCATE(?,COALESCE(s.product_name,''))>0
-                               OR LOCATE(?,COALESCE(s.model,''))>0)
-                        ORDER BY s.sku_code,s.id
+                          AND (LOCATE(?,COALESCE(s.customer_part_number,''))>0
+                               OR LOCATE(?,COALESCE(s.model,''))>0
+                               OR LOCATE(?,COALESCE(s.product_code,''))>0)
+                        ORDER BY s.customer_part_number,s.id
                         LIMIT 50
                         """, supplierId, search, search, search).stream().map(this::normalizeKeys).toList();
     }
@@ -302,14 +303,14 @@ public class WorkbenchQueryService {
         }
         Map<String, Object> supplier = new LinkedHashMap<>(suppliers.get(0));
         List<Map<String, Object>> products = jdbc.queryForList("""
-                SELECT ssc.id AS `relationId`,s.id AS `skuId`,s.sku_code AS `skuCode`,
-                       s.product_name AS `productName`,s.model,s.configuration,s.unit,
+                SELECT ssc.id AS `relationId`,s.id AS `skuId`,s.customer_part_number AS `customerPartNumber`,
+                       s.product_code AS `productCode`,s.product_name AS `productName`,s.model,s.configuration,s.unit,
                        ssc.purchase_price AS `purchasePrice`,ssc.moq,
                        ssc.lead_time_days AS `leadTimeDays`
                 FROM sku_supplier_config ssc
                 JOIN sku s ON s.id=ssc.sku_id
                 WHERE ssc.supplier_id=? AND ssc.enabled=TRUE
-                ORDER BY s.sku_code,s.id
+                ORDER BY s.customer_part_number,s.id
                 """, supplierId).stream().map(this::normalizeKeys).map(product -> {
                     Map<String, Object> result = new LinkedHashMap<>(product);
                     long relationId = ((Number) result.remove("relationId")).longValue();
@@ -441,13 +442,14 @@ public class WorkbenchQueryService {
                 sorts("id", "u.id", "username", "u.username", "displayName", "u.display_name", "role", "CASE u.role WHEN 'ADMIN' THEN 10 WHEN 'FINANCE' THEN 20 WHEN 'USER' THEN 30 ELSE 999 END", "updatedAt", "u.updated_at"),
                 "u.updated_at", "u.id DESC"));
         modules.put("product", new ModuleSpec(
-                "SELECT s.id, s.product_code AS `productCode`, s.code_suffix AS `codeSuffix`, s.ean_code AS `eanCode`, s.sku_code AS `customerCode`, s.sku_code AS `skuCode`, s.model, s.product_name AS `productName`, s.color, "
+                "SELECT s.id, s.product_code AS `productCode`, s.code_suffix AS `codeSuffix`, s.ean_code AS `eanCode`, s.customer_part_number AS `customerPartNumber`, s.model, s.product_name AS `productName`, s.color, "
                         + "s.lock_body AS `lockBody`, s.product_version AS `productVersion`, s.configuration, s.product_configuration AS `productConfiguration`, s.unit, "
                         + "s.brand_rule_id AS `brandRuleId`,s.series_rule_id AS `seriesRuleId`,s.body_color_rule_id AS `bodyColorRuleId`,s.lock_type_rule_id AS `lockTypeRuleId`,"
                         + "s.connectivity_rule_id AS `connectivityRuleId`,s.sales_channel_rule_id AS `salesChannelRuleId`,s.operating_entity_rule_id AS `operatingEntityRuleId`,s.language_rule_id AS `languageRuleId`,"
                         + "s.product_type AS `productType`,s.material_type AS `materialType`,s.door_model_rule_id AS `doorModelRuleId`,s.security_grade_rule_id AS `securityGradeRuleId`,s.base_material_rule_id AS `baseMaterialRuleId`,s.thickness_rule_id AS `thicknessRuleId`,s.finish_color_rule_id AS `finishColorRuleId`,"
                         + "br.display_name AS brand,COALESCE(sr.display_name,dmr.display_name) AS series,bcr.display_name AS `bodyColor`,ltr.display_name AS `lockType`,cr.display_name AS connectivity,scr.display_name AS `salesChannel`,oer.display_name AS `operatingEntity`,lr.display_name AS language,"
                         + "s.current_cost AS `currentCost`, s.factory_price AS `factoryPrice`, s.sales_minimum_order_quantity AS `salesMinimumOrderQuantity`, (s.factory_price-s.current_cost) AS `priceDifference`, s.product_remark AS remark, s.enabled, s.updated_at AS `updatedAt`, s.version, "
+                        + "COALESCE(ib.actual_quantity,0) AS `actualQuantity`, COALESCE(ib.locked_quantity,0) AS `lockedQuantity`, COALESCE(ib.in_transit_quantity,0) AS `inTransitQuantity`, COALESCE(ib.source_supplier_name,'') AS `sourceSupplierName`, COALESCE(ib.inventory_remark,'') AS `inventoryRemark`, "
                         + "(SELECT COUNT(*) FROM product_image pi WHERE pi.product_id=s.id) AS `imageCount`, "
                         + "(SELECT pi.id FROM product_image pi WHERE pi.product_id=s.id AND pi.is_primary=TRUE LIMIT 1) AS `primaryImageId`, "
                         + "NULL AS `supplierId`, NULL AS `supplierName`, NULL AS `purchasePrice`, NULL AS moq, NULL AS `leadTimeDays`",
@@ -455,9 +457,10 @@ public class WorkbenchQueryService {
                         + "LEFT JOIN product_code_rule br ON br.id=s.brand_rule_id LEFT JOIN product_code_rule sr ON sr.id=s.series_rule_id "
                         + "LEFT JOIN product_code_rule bcr ON bcr.id=s.body_color_rule_id LEFT JOIN product_code_rule ltr ON ltr.id=s.lock_type_rule_id "
                         + "LEFT JOIN product_code_rule cr ON cr.id=s.connectivity_rule_id LEFT JOIN product_code_rule scr ON scr.id=s.sales_channel_rule_id "
-                        + "LEFT JOIN product_code_rule oer ON oer.id=s.operating_entity_rule_id LEFT JOIN product_code_rule lr ON lr.id=s.language_rule_id LEFT JOIN product_code_rule dmr ON dmr.id=s.door_model_rule_id",
-                "LOCATE(?, COALESCE(s.product_code,''))>0 OR LOCATE(?, COALESCE(s.sku_code,''))>0 OR LOCATE(?, COALESCE(br.display_name,''))>0 OR LOCATE(?, COALESCE(br.code,''))>0 OR LOCATE(?, COALESCE(sr.display_name,''))>0 OR LOCATE(?, COALESCE(sr.code,''))>0 OR LOCATE(?, COALESCE(s.product_name,''))>0 OR LOCATE(?, COALESCE(s.configuration,''))>0", 8,
-                sorts("id", "s.id", "productCode", "s.product_code", "customerCode", "s.sku_code", "skuCode", "s.sku_code", "brand", "br.display_name", "model", "s.model", "productName", "s.product_name", "productType", "CASE s.product_type WHEN 'SMART_LOCK' THEN 10 WHEN 'ENTRY_DOOR' THEN 20 ELSE 999 END", "materialType", "CASE s.material_type WHEN 'FINISHED_PRODUCT' THEN 10 WHEN 'PART' THEN 20 ELSE 999 END", "salesMinimumOrderQuantity", "s.sales_minimum_order_quantity", "updatedAt", "s.updated_at"),
+                        + "LEFT JOIN product_code_rule oer ON oer.id=s.operating_entity_rule_id LEFT JOIN product_code_rule lr ON lr.id=s.language_rule_id LEFT JOIN product_code_rule dmr ON dmr.id=s.door_model_rule_id "
+                        + "LEFT JOIN inventory_balance ib ON ib.sku_id=s.id AND ib.warehouse_id=(SELECT id FROM warehouse WHERE is_default=TRUE ORDER BY id LIMIT 1)",
+                "LOCATE(?, COALESCE(s.customer_part_number,''))>0 OR LOCATE(?, COALESCE(s.model,''))>0 OR LOCATE(?, COALESCE(s.product_code,''))>0", 3,
+                sorts("id", "s.id", "productCode", "s.product_code", "customerPartNumber", "s.customer_part_number", "brand", "br.display_name", "model", "s.model", "productName", "s.product_name", "productType", "CASE s.product_type WHEN 'SMART_LOCK' THEN 10 WHEN 'ENTRY_DOOR' THEN 20 ELSE 999 END", "materialType", "CASE s.material_type WHEN 'FINISHED_PRODUCT' THEN 10 WHEN 'PART' THEN 20 ELSE 999 END", "salesMinimumOrderQuantity", "s.sales_minimum_order_quantity", "updatedAt", "s.updated_at"),
                 "s.updated_at", "s.id DESC"));        modules.put("supplier", new ModuleSpec(
                 "SELECT sp.id,sp.supplier_code AS `supplierCode`,sp.supplier_name AS `supplierName`,"
                         + "sp.manufacturer_category AS `manufacturerCategory`,sp.manufacturer_type AS `manufacturerType`,"
@@ -487,19 +490,19 @@ public class WorkbenchQueryService {
                         + "a.status,a.application_date AS `applicationDate`,a.updated_at AS `updatedAt`,a.version",
                 "FROM after_sales_order a JOIN sales_order o ON o.id=a.sales_order_id JOIN customer c ON c.id=a.customer_id",
                 "LOCATE(?,COALESCE(a.after_sales_no,''))>0 OR LOCATE(?,COALESCE(o.order_no,''))>0 OR LOCATE(?,COALESCE(c.customer_name,''))>0 "
-                        + "OR EXISTS(SELECT 1 FROM after_sales_return_line r WHERE r.after_sales_order_id=a.id AND (LOCATE(?,COALESCE(r.sku_code,''))>0 OR LOCATE(?,COALESCE(r.product_name,''))>0)) "
-                        + "OR EXISTS(SELECT 1 FROM after_sales_replacement_line x WHERE x.after_sales_order_id=a.id AND (LOCATE(?,COALESCE(x.sku_code,''))>0 OR LOCATE(?,COALESCE(x.product_name,''))>0))", 7,
+                        + "OR EXISTS(SELECT 1 FROM after_sales_return_line r WHERE r.after_sales_order_id=a.id AND (LOCATE(?,COALESCE(r.customer_part_number,''))>0 OR LOCATE(?,COALESCE(r.product_name,''))>0)) "
+                        + "OR EXISTS(SELECT 1 FROM after_sales_replacement_line x WHERE x.after_sales_order_id=a.id AND (LOCATE(?,COALESCE(x.customer_part_number,''))>0 OR LOCATE(?,COALESCE(x.product_name,''))>0))", 7,
                 sorts("id","a.id","afterSalesNo","a.after_sales_no","orderNo","o.order_no","customerName","c.customer_name","orderType","CASE WHEN o.order_type IN ('工程订单','零售订单','前置订单') THEN 0 ELSE 1 END ASC, CASE o.order_type WHEN '工程订单' THEN 10 WHEN '零售订单' THEN 20 WHEN '前置订单' THEN 30 ELSE 999 END","afterSalesType","a.after_sales_type","returnQuantity","(SELECT COALESCE(SUM(r.requested_quantity),0) FROM after_sales_return_line r WHERE r.after_sales_order_id=a.id)","replacementQuantity","(SELECT COALESCE(SUM(x.planned_quantity),0) FROM after_sales_replacement_line x WHERE x.after_sales_order_id=a.id)","status","CASE a.status WHEN 'WAITING_RETURN' THEN 10 WHEN 'RETURN_RECEIVED' THEN 20 WHEN 'WAITING_REPLACEMENT' THEN 30 WHEN 'COMPLETED' THEN 40 WHEN 'CANCELLED' THEN 50 ELSE 999 END","applicationDate","a.application_date","updatedAt","a.updated_at"),
                 "a.updated_at", "a.id DESC"));        modules.put("inventory", new ModuleSpec(
-                "SELECT b.id, b.sku_id AS `skuId`, s.product_code AS `productCode`, s.sku_code AS `skuCode`, s.model, s.product_type AS `productType`, s.product_configuration AS `productConfiguration`, s.configuration, s.unit, "
+                "SELECT b.id, b.sku_id AS `skuId`, s.product_code AS `productCode`, s.customer_part_number AS `customerPartNumber`, s.model, s.product_type AS `productType`, s.product_configuration AS `productConfiguration`, s.configuration, s.unit, "
                         + "b.actual_quantity AS `actualQuantity`, b.locked_quantity AS `lockedQuantity`, "
 
                         + "(b.actual_quantity-b.locked_quantity) AS `availableQuantity`, b.in_transit_quantity AS `inTransitQuantity`, "
                         + "(SELECT COUNT(*) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.business_type='EXCEL_IMPORT_HISTORY') AS `movementCount`, "
                         + "b.source_supplier_name AS `sourceSupplierName`, b.inventory_remark AS `inventoryRemark`, b.updated_at AS `updatedAt`, b.version",
                 "FROM inventory_balance b JOIN sku s ON s.id=b.sku_id",
-                "LOCATE(?, COALESCE(s.sku_code,''))>0 OR LOCATE(?, COALESCE(s.model,''))>0 OR LOCATE(?, COALESCE(s.configuration,''))>0 OR LOCATE(?, COALESCE(b.source_supplier_name,''))>0", 4,
-                sorts("id", "b.id", "productCode", "s.product_code", "skuCode", "s.sku_code", "model", "s.model", "productType", "s.product_type", "unit", "s.unit", "actualQuantity", "b.actual_quantity", "availableQuantity", "(b.actual_quantity-b.locked_quantity)", "oldestStockDate", "(SELECT MIN(tx.operated_at) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.actual_delta>0)", "inventoryAgeDays", "DATEDIFF(CURRENT_DATE,(SELECT MIN(tx.operated_at) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.actual_delta>0))", "lockedQuantity", "b.locked_quantity", "inTransitQuantity", "b.in_transit_quantity", "pendingDeliveryQuantity", "(SELECT COALESCE(SUM(GREATEST(i.quantity-i.shipped_quantity,0)),0) FROM sales_order_item i JOIN sales_order o2 ON o2.id=i.sales_order_id WHERE o2.status<>'CANCELLED' AND i.sku_id=b.sku_id)", "supplyDemandBalance", "b.actual_quantity+b.in_transit_quantity-(SELECT COALESCE(SUM(GREATEST(i.quantity-i.shipped_quantity,0)),0) FROM sales_order_item i JOIN sales_order o2 ON o2.id=i.sales_order_id WHERE o2.status<>'CANCELLED' AND i.sku_id=b.sku_id)", "sourceSupplierName", "b.source_supplier_name", "updatedAt", "b.updated_at"),
+                "LOCATE(?, COALESCE(s.customer_part_number,''))>0 OR LOCATE(?, COALESCE(s.model,''))>0 OR LOCATE(?, COALESCE(s.product_code,''))>0", 3,
+                sorts("id", "b.id", "productCode", "s.product_code", "customerPartNumber", "s.customer_part_number", "model", "s.model", "productType", "s.product_type", "unit", "s.unit", "actualQuantity", "b.actual_quantity", "availableQuantity", "(b.actual_quantity-b.locked_quantity)", "oldestStockDate", "(SELECT MIN(tx.operated_at) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.actual_delta>0)", "inventoryAgeDays", "DATEDIFF(CURRENT_DATE,(SELECT MIN(tx.operated_at) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.actual_delta>0))", "lockedQuantity", "b.locked_quantity", "inTransitQuantity", "b.in_transit_quantity", "pendingDeliveryQuantity", "(SELECT COALESCE(SUM(GREATEST(i.quantity-i.shipped_quantity,0)),0) FROM sales_order_item i JOIN sales_order o2 ON o2.id=i.sales_order_id WHERE o2.status<>'CANCELLED' AND i.sku_id=b.sku_id)", "supplyDemandSurplus", "b.actual_quantity+b.in_transit_quantity-(SELECT COALESCE(SUM(GREATEST(i.quantity-i.shipped_quantity,0)),0) FROM sales_order_item i JOIN sales_order o2 ON o2.id=i.sales_order_id WHERE o2.status<>'CANCELLED' AND i.sku_id=b.sku_id)", "sourceSupplierName", "b.source_supplier_name", "updatedAt", "b.updated_at"),
                 "b.updated_at", "b.id DESC"));
         String purchaseView = "FROM ("
                 + "SELECT po.id, 'PURCHASE' AS record_type, po.purchase_no, po.supplier_id, sp.supplier_name, "
@@ -570,3 +573,4 @@ public class WorkbenchQueryService {
                               String defaultSort, String tieBreaker) {
     }
 }
+

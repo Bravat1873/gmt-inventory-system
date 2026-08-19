@@ -27,9 +27,35 @@ class SalesOrderImportValidationServiceTest {
         jdbc.execute("DROP TABLE IF EXISTS customer");
         jdbc.execute("DROP TABLE IF EXISTS sales_order");
         jdbc.execute("CREATE TABLE customer (id BIGINT PRIMARY KEY, customer_code VARCHAR(64), enabled BOOLEAN)");
-        jdbc.execute("CREATE TABLE sku (id BIGINT PRIMARY KEY, product_code VARCHAR(64), sku_code VARCHAR(64), enabled BOOLEAN, sales_minimum_order_quantity DECIMAL(18,2))");
+        jdbc.execute("CREATE TABLE sku (id BIGINT PRIMARY KEY, product_code VARCHAR(64), customer_part_number VARCHAR(64), enabled BOOLEAN, sales_minimum_order_quantity DECIMAL(18,2))");
         jdbc.execute("CREATE TABLE sales_order (id BIGINT PRIMARY KEY, external_order_no VARCHAR(100))");
         validation = new SalesOrderImportValidationService(jdbc);
+    }
+
+    @Test
+    void groupsBlankExternalOrderNumbersByCustomerDateAndOrderType() {
+        customer(1, "C-001", true);
+        customer(2, "C-002", true);
+        sku(10, "P-001", "CM-001", true, 1);
+
+        List<ParsedImportRow> results = validation.validateAll(List.of(
+                row(Map.of("externalOrderNo", "", "salesperson", "张三")),
+                row(Map.of("externalOrderNo", "", "salesperson", "李四", "customerCode", "C-002"))));
+
+        assertThat(results).allMatch(result -> result.status() == ImportRowStatus.VALID);
+    }
+
+    @Test
+    void rejectsInconsistentOrderFieldsWithinTheSameAutomaticGroup() {
+        customer(1, "C-001", true);
+        sku(10, "P-001", "CM-001", true, 1);
+
+        List<ParsedImportRow> results = validation.validateAll(List.of(
+                row(Map.of("externalOrderNo", "", "salesperson", "张三")),
+                row(Map.of("externalOrderNo", "", "salesperson", "李四"))));
+
+        assertThat(results).allMatch(result -> result.status() == ImportRowStatus.ERROR);
+        assertThat(results).allMatch(result -> result.errorMessage().contains("销售员"));
     }
 
     @Test
@@ -81,11 +107,12 @@ class SalesOrderImportValidationServiceTest {
     }
 
     @Test
-    void rejectsQuantityBelowSalesMinimumAndMismatchedCustomerMaterialCode() {
+    void allowsHistoricalQuantityBelowCurrentMinimumAndRejectsUnknownProductPair() {
         customer(1, "C-001", true);
         sku(10, "P-001", "CM-001", true, 3);
-        assertError(Map.of("quantity", "2"), "销售最小起订量");
-        assertError(Map.of("quantity", "3", "customerMaterialCode", "WRONG"), "客户料号");
+        assertThat(validation.validateAll(List.of(row(Map.of("quantity", "2")))).get(0).status())
+                .isEqualTo(ImportRowStatus.VALID);
+        assertError(Map.of("quantity", "3", "customerPartNumber", "WRONG"), "产品编号不存在");
     }
 
     @ParameterizedTest
@@ -197,7 +224,7 @@ class SalesOrderImportValidationServiceTest {
         data.put("orderType", "工程订单");
         data.put("orderStatus", "正式订单");
         data.put("salesperson", "张三");
-        data.put("customerMaterialCode", "CM-001");
+        data.put("customerPartNumber", "CM-001");
         data.put("productCode", "P-001");
         data.put("quantity", "2");
         data.put("salePrice", "10.50");
@@ -209,8 +236,8 @@ class SalesOrderImportValidationServiceTest {
         jdbc.update("INSERT INTO customer(id, customer_code, enabled) VALUES (?, ?, ?)", id, code, enabled);
     }
 
-    private void sku(long id, String productCode, String skuCode, boolean enabled, int minimumQuantity) {
-        jdbc.update("INSERT INTO sku(id, product_code, sku_code, enabled, sales_minimum_order_quantity) VALUES (?, ?, ?, ?, ?)",
-                id, productCode, skuCode, enabled, minimumQuantity);
+    private void sku(long id, String productCode, String customerPartNumber, boolean enabled, int minimumQuantity) {
+        jdbc.update("INSERT INTO sku(id, product_code, customer_part_number, enabled, sales_minimum_order_quantity) VALUES (?, ?, ?, ?, ?)",
+                id, productCode, customerPartNumber, enabled, minimumQuantity);
     }
 }

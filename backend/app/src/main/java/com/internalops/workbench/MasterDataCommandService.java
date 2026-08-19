@@ -4,6 +4,7 @@ import com.internalops.auth.CurrentUser;
 import com.internalops.auth.UserRole;
 import com.internalops.productcode.ProductCodeGenerator;
 import com.internalops.productcode.EntryDoorProductCodeSelection;
+import com.internalops.productcode.ProductUniqueId;
 import com.internalops.productcode.ProductCodeSelection;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -166,11 +167,12 @@ public class MasterDataCommandService {
         EntryDoorProductCodeSelection door = doorSelection(r);
         String codeSuffix = normalizeSuffix(r.codeSuffix());
         String productCode = productCodeGenerator.appendSuffix(generateProductCode(productType, smart, door), codeSuffix);
-        String customerCode = r.customerCode() != null ? r.customerCode() : r.skuCode();
+        String customerPartNumber = r.customerPartNumber() == null ? null : r.customerPartNumber().trim();
+        String businessUniqueId = ProductUniqueId.from(productCode, customerPartNumber);
         String materialSpecification = materialSpecification(r.brandRuleId(), r.model(), r.bodyColorRuleId(), r.lockTypeRuleId(), r.languageRuleId());
         try {
-            long id = insert("INSERT INTO sku(product_code,code_suffix,ean_code,product_type,material_type,sku_code,model,product_name,color,lock_body,product_version,configuration,product_configuration,unit,current_cost,factory_price,product_remark,enabled,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    productCode, codeSuffix, eanCode, productType, materialType, customerCode, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), materialSpecification, r.productConfiguration(),
+            long id = insert("INSERT INTO sku(product_code,business_unique_id,code_suffix,ean_code,product_type,material_type,customer_part_number,model,product_name,color,lock_body,product_version,configuration,product_configuration,unit,current_cost,factory_price,product_remark,enabled,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                productCode, businessUniqueId, codeSuffix, eanCode, productType, materialType, customerPartNumber, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), materialSpecification, r.productConfiguration(),
                     textOr(r.unit(), "件"), r.currentCost(), r.factoryPrice(), r.remark(), enabled(r),
                     r.brandRuleId(), r.seriesRuleId(), r.bodyColorRuleId(), r.lockTypeRuleId(), r.connectivityRuleId(),
                     r.salesChannelRuleId(), r.operatingEntityRuleId(), r.languageRuleId(), r.doorModelRuleId(), r.securityGradeRuleId(),
@@ -179,14 +181,14 @@ public class MasterDataCommandService {
             saveSupplierConfig(id, r);
             return product(id);
         } catch (DataIntegrityViolationException e) {
-            throw new IllegalStateException("产品编号已存在：" + productCode);
+            throw new IllegalStateException("产品编号和客户料号组合已存在：" + productCode + " + " + customerPartNumber);
         }
     }
 
     private Map<String, Object> updateProduct(long id, EntityCommandRequest r, EntityCommandFields fields) {
         validateProduct(r);
         requireProductPricePermission(fields);
-        Map<String,Object> current = jdbc.queryForMap("SELECT product_code,code_suffix,ean_code,product_type,material_type,model,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id FROM sku WHERE id=?", id);
+        Map<String,Object> current = jdbc.queryForMap("SELECT product_code,customer_part_number,code_suffix,ean_code,product_type,material_type,model,brand_rule_id,series_rule_id,body_color_rule_id,lock_type_rule_id,connectivity_rule_id,sales_channel_rule_id,operating_entity_rule_id,language_rule_id,door_model_rule_id,security_grade_rule_id,base_material_rule_id,thickness_rule_id,finish_color_rule_id FROM sku WHERE id=?", id);
         String productType = r.productType() == null ? String.valueOf(current.get("product_type")) : requiredProductType(r.productType());
         String materialType = r.materialType() == null ? String.valueOf(current.get("material_type")) : requiredMaterialType(r.materialType());
         ProductCodeSelection smart = new ProductCodeSelection(
@@ -202,12 +204,13 @@ public class MasterDataCommandService {
         String codeSuffix = r.codeSuffix() == null ? normalizeSuffix((String) current.get("code_suffix")) : normalizeSuffix(r.codeSuffix());
         String productCode = productCodeGenerator.appendSuffix(baseProductCode, codeSuffix);
         String eanCode = r.eanCode() == null ? (String) current.get("ean_code") : validateEan(r.eanCode(), id);
-        String customerCode = r.customerCode() != null ? r.customerCode() : r.skuCode();
+        String customerPartNumber = r.customerPartNumber() == null ? (String) current.get("customer_part_number") : r.customerPartNumber().trim();
+        String businessUniqueId = ProductUniqueId.from(productCode, customerPartNumber);
         String model = r.model() != null ? r.model() : (String) current.get("model");
         String materialSpecification = materialSpecification(smart.brandRuleId(), model, smart.bodyColorRuleId(), smart.lockTypeRuleId(), smart.languageRuleId());
         try {
-            int changed = jdbc.update("UPDATE sku SET product_code=?,product_type=?,material_type=?,sku_code=?,model=?,product_name=?,color=?,lock_body=?,product_version=?,configuration=?,product_configuration=COALESCE(?,product_configuration),unit=?,current_cost=CASE WHEN ? THEN ? ELSE current_cost END,factory_price=CASE WHEN ? THEN ? ELSE factory_price END,product_remark=?,enabled=?,brand_rule_id=?,series_rule_id=?,body_color_rule_id=?,lock_type_rule_id=?,connectivity_rule_id=?,sales_channel_rule_id=?,operating_entity_rule_id=?,language_rule_id=?,door_model_rule_id=?,security_grade_rule_id=?,base_material_rule_id=?,thickness_rule_id=?,finish_color_rule_id=?,code_suffix=?,ean_code=?,version=version+1 WHERE id=? AND version=?",
-                    productCode, productType, materialType, customerCode, model, r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), materialSpecification, r.productConfiguration(), textOr(r.unit(), "件"),
+            int changed = jdbc.update("UPDATE sku SET product_code=?,business_unique_id=?,product_type=?,material_type=?,customer_part_number=?,model=?,product_name=?,color=?,lock_body=?,product_version=?,configuration=?,product_configuration=COALESCE(?,product_configuration),unit=?,current_cost=CASE WHEN ? THEN ? ELSE current_cost END,factory_price=CASE WHEN ? THEN ? ELSE factory_price END,product_remark=?,enabled=?,brand_rule_id=?,series_rule_id=?,body_color_rule_id=?,lock_type_rule_id=?,connectivity_rule_id=?,sales_channel_rule_id=?,operating_entity_rule_id=?,language_rule_id=?,door_model_rule_id=?,security_grade_rule_id=?,base_material_rule_id=?,thickness_rule_id=?,finish_color_rule_id=?,code_suffix=?,ean_code=?,version=version+1 WHERE id=? AND version=?",
+                productCode, businessUniqueId, productType, materialType, customerPartNumber, model, r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), materialSpecification, r.productConfiguration(), textOr(r.unit(), "件"),
                     fields.currentCostPresent(), r.currentCost(), fields.factoryPricePresent(), r.factoryPrice(), r.remark(), enabled(r),
                     smart.brandRuleId(), smart.seriesRuleId(), smart.bodyColorRuleId(), smart.lockTypeRuleId(), smart.connectivityRuleId(),
                     smart.salesChannelRuleId(), smart.operatingEntityRuleId(), smart.languageRuleId(), door.doorModelRuleId(), door.securityGradeRuleId(),
@@ -217,7 +220,7 @@ public class MasterDataCommandService {
             saveSupplierConfig(id, r);
             return product(id);
         } catch (DataIntegrityViolationException e) {
-            throw new IllegalStateException("产品编号已存在：" + productCode);
+            throw new IllegalStateException("产品编号和客户料号组合已存在：" + productCode + " + " + customerPartNumber);
         }
     }
 
@@ -362,8 +365,8 @@ public class MasterDataCommandService {
 
     private long inventorySkuId(EntityCommandRequest r) {
         if (r.skuId() != null) return r.skuId();
-        requireText(r.skuCode(), "请选择客户料号 SKU");
-        List<Long> ids = jdbc.queryForList("SELECT id FROM sku WHERE sku_code=?", Long.class, r.skuCode().trim());
+        requireText(r.customerPartNumber(), "请选择客户料号 SKU");
+        List<Long> ids = jdbc.queryForList("SELECT id FROM sku WHERE customer_part_number=?", Long.class, r.customerPartNumber().trim());
         if (ids.isEmpty()) throw new IllegalArgumentException("客户料号不存在，请先新增产品");
         return ids.get(0);
     }
@@ -501,7 +504,7 @@ public class MasterDataCommandService {
     }
     private Map<String, Object> product(long id) {
         return map(jdbc.queryForMap("""
-                SELECT s.id,s.product_code,s.code_suffix,s.ean_code,s.product_type,s.material_type,s.sku_code,s.model,s.product_name,s.color,s.lock_body,s.product_version,s.configuration,s.product_configuration,s.unit,
+                SELECT s.id,s.product_code,s.code_suffix,s.ean_code,s.product_type,s.material_type,s.customer_part_number,s.model,s.product_name,s.color,s.lock_body,s.product_version,s.configuration,s.product_configuration,s.unit,
                        s.current_cost,s.factory_price,s.sales_minimum_order_quantity,s.product_remark,s.enabled,s.version,
                        s.brand_rule_id,s.series_rule_id,s.body_color_rule_id,s.lock_type_rule_id,s.connectivity_rule_id,
                        s.sales_channel_rule_id,s.operating_entity_rule_id,s.language_rule_id,
@@ -519,7 +522,7 @@ public class MasterDataCommandService {
                 LEFT JOIN product_code_rule lr ON lr.id=s.language_rule_id
                 WHERE s.id=?
                 """, id),
-                "product_code","productCode","code_suffix","codeSuffix","ean_code","eanCode","product_type","productType","material_type","materialType","sku_code","customerCode","product_name","productName","lock_body","lockBody","sales_minimum_order_quantity","salesMinimumOrderQuantity",
+                "product_code","productCode","code_suffix","codeSuffix","ean_code","eanCode","product_type","productType","material_type","materialType","customer_part_number","customerPartNumber","product_name","productName","lock_body","lockBody","sales_minimum_order_quantity","salesMinimumOrderQuantity",
                 "product_version","productVersion","product_configuration","productConfiguration","current_cost","currentCost","factory_price","factoryPrice","product_remark","remark",
                 "brand_rule_id","brandRuleId","series_rule_id","seriesRuleId","body_color_rule_id","bodyColorRuleId",
                 "lock_type_rule_id","lockTypeRuleId","connectivity_rule_id","connectivityRuleId","sales_channel_rule_id","salesChannelRuleId",

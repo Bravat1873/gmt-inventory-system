@@ -167,7 +167,7 @@ class ImportPreviewApiTest {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("库存");
             var header = sheet.createRow(0);
-            header.createCell(1).setCellValue("物料编号 SKU");
+            header.createCell(1).setCellValue("客户料号 SKU");
             header.createCell(2).setCellValue("型号");
             header.createCell(8).setCellValue("实际库存数量");
             header.createCell(9).setCellValue("可用库存数量");
@@ -194,7 +194,7 @@ class ImportPreviewApiTest {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("产品成本");
             var header = sheet.createRow(1);
-            String[] names = {"序号", "物料编号", "型号", "颜色", "锁体", "物料规格", "成本单价（含税）"};
+            String[] names = {"序号", "客户料号", "型号", "颜色", "锁体", "物料规格", "成本单价（含税）"};
             for (int i = 0; i < names.length; i++) header.createCell(i).setCellValue(names[i]);
             var row = sheet.createRow(2);
             row.createCell(2).setCellValue("P90");

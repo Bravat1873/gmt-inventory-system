@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ImportPanel from './ImportPanel.vue'
 import type { ImportBatch } from '../api/imports'
 
-const { previewImport, commitImport, commitProductReplace } = vi.hoisted(() => ({ previewImport: vi.fn(), commitImport: vi.fn(), commitProductReplace: vi.fn() }))
-vi.mock('../api/imports', () => ({ previewImport, commitImport, commitProductReplace }))
+const { previewImport, commitImport, commitProductReplace, updateImportRow } = vi.hoisted(() => ({ previewImport: vi.fn(), commitImport: vi.fn(), commitProductReplace: vi.fn(), updateImportRow: vi.fn() }))
+vi.mock('../api/imports', () => ({ previewImport, commitImport, commitProductReplace, updateImportRow }))
 
 const batch = {
   batchId: 8, importType: 'CUSTOMER', originalFilename: 'customers.xlsx', status: 'PREVIEW',
@@ -20,6 +20,17 @@ const supplierBatch = {
   rows: [
     { id: 1, sheetName: '供应商', rowNumber: 3, status: 'VALID', data: { supplierName: '星云科技', phone: ' 00123 ' }, errorMessage: null, manualEntry: false },
     { id: 2, sheetName: '供应商', rowNumber: 4, status: 'ERROR', data: { supplierName: '', taxRegistrationNo: '0007' }, errorMessage: '供应商名称不能为空', manualEntry: false }
+  ]
+}
+
+const customerConflictBatch = {
+  ...batch,
+  importType: 'CUSTOMER',
+  totalRows: 2,
+  validRows: 2,
+  rows: [
+    { id: 41, sheetName: '客户', rowNumber: 2, status: 'VALID', data: { customerName: '客户甲', _conflict: true, _conflictGroup: '客户甲', _conflictLabel: '客户名称：客户甲', _conflictField: 'customerName', _conflictAction: 'SKIP' }, errorMessage: null, manualEntry: false },
+    { id: 42, sheetName: '客户', rowNumber: 3, status: 'VALID', data: { customerName: '客户乙' }, errorMessage: null, manualEntry: false }
   ]
 }
 
@@ -53,9 +64,9 @@ const orderBatch: ImportBatch = {
   totalRows: 3,
   validRows: 3,
   rows: [
-    { id: 31, sheetName: '订单导入', rowNumber: 2, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P001', customerMaterialCode: 'CM-01', quantity: 2, salePrice: 99.5 }, errorMessage: null, manualEntry: false },
-    { id: 32, sheetName: '订单导入', rowNumber: 3, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P002', customerMaterialCode: 'CM-02', quantity: 3, salePrice: 120 }, errorMessage: null, manualEntry: false },
-    { id: 33, sheetName: '订单导入', rowNumber: 4, status: 'VALID', data: { externalOrderNo: 'EXT-002', customerCode: 'C002', orderDate: '2026-08-18', orderType: '零售订单', orderStatus: '草稿', productCode: 'P003', customerMaterialCode: 'CM-03', quantity: 1, salePrice: 80 }, errorMessage: null, manualEntry: false }
+    { id: 31, sheetName: '订单导入', rowNumber: 2, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P001', customerPartNumber: 'CM-01', quantity: 2, salePrice: 99.5 }, errorMessage: null, manualEntry: false },
+    { id: 32, sheetName: '订单导入', rowNumber: 3, status: 'VALID', data: { externalOrderNo: 'EXT-001', customerCode: 'C001', orderDate: '2026-08-17', orderType: '工程订单', orderStatus: '正式订单', productCode: 'P002', customerPartNumber: 'CM-02', quantity: 3, salePrice: 120 }, errorMessage: null, manualEntry: false },
+    { id: 33, sheetName: '订单导入', rowNumber: 4, status: 'VALID', data: { externalOrderNo: 'EXT-002', customerCode: 'C002', orderDate: '2026-08-18', orderType: '零售订单', orderStatus: '草稿', productCode: 'P003', customerPartNumber: 'CM-03', quantity: 1, salePrice: 80 }, errorMessage: null, manualEntry: false }
   ]
 }
 
@@ -77,13 +88,13 @@ describe('simple Excel import', () => {
 
   it('shows the ORDER template download link only for ORDER imports', () => {
     const order = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
-    const download = order.get('[data-test="download-order-template"]')
-    expect(download.text()).toBe('下载模板')
+    const download = order.get('[data-test="download-import-template"]')
+    expect(download.text()).toBe('下载 XLSX 模板')
     expect(download.attributes('href')).toBe('/api/imports/templates/ORDER.xlsx')
     expect(download.attributes('download')).toBeDefined()
 
     const customer = mount(ImportPanel, { props: { type: 'CUSTOMER', title: '导入客户' } })
-    expect(customer.find('[data-test="download-order-template"]').exists()).toBe(false)
+    expect(customer.find('[data-test="download-import-template"]').exists()).toBe(true)
   })
 
   it('keeps the existing immediate flow for non-supplier imports', async () => {
@@ -94,6 +105,33 @@ describe('simple Excel import', () => {
     expect(commitImport).toHaveBeenCalledWith(8)
     expect(wrapper.text()).toContain('成功导入 103 条数据')
     expect(wrapper.find('[data-test="commit-import"]').exists()).toBe(false)
+  })
+
+  it('previews a file dropped on the upload zone', async () => {
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    const file = new File(['x'], 'orders.xlsx')
+    await wrapper.get('[data-test="import-dropzone"]').trigger('drop', { dataTransfer: { files: [file] } })
+    await flushPromises()
+
+    expect(previewImport).toHaveBeenCalledWith('ORDER', file)
+  })
+
+  it('highlights conflict rows and blocks customer commit until each conflict is resolved', async () => {
+    previewImport.mockResolvedValue(structuredClone(customerConflictBatch))
+    const wrapper = mount(ImportPanel, { props: { type: 'CUSTOMER', title: '导入客户' } })
+    await selectFile(wrapper, 'customers.xlsx')
+
+    expect(commitImport).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="conflict-row-41"]').classes()).toContain('conflict-row')
+    expect(wrapper.get('[data-test="commit-import"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-test="conflict-overwrite-41"]').trigger('click')
+    expect(wrapper.get('[data-test="commit-import"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-test="commit-import"]').trigger('click')
+    await flushPromises()
+
+    expect(updateImportRow).toHaveBeenCalledWith(8, 41, expect.objectContaining({ _conflictAction: 'OVERWRITE' }))
+    expect(commitImport).toHaveBeenCalledWith(8)
   })
 
   it('groups ORDER preview rows by external order number and keeps the preview pending', async () => {

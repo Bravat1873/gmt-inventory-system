@@ -79,4 +79,5 @@ class ImportTemplateApiTest {
             assertThat(new SalesOrderExcelParser().parse(workbook)).hasSize(3);
         }
     }
+
 }

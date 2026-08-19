@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 final class CostExcelParser {
-    private static final List<String> SKU_HEADERS = List.of("客户料号", "物料编号");
+    private static final List<String> CUSTOMER_PART_NUMBER_HEADERS = List.of("客户料号");
 
     List<ParsedImportRow> parse(Workbook workbook) {
         Sheet sheet = findCostSheet(workbook);
@@ -21,7 +21,7 @@ final class CostExcelParser {
             Row row = sheet.getRow(index);
             if (row == null || isBlankDataRow(row, columns)) continue;
             var data = new LinkedHashMap<String, Object>();
-            data.put("skuCode", text(row, columns.skuCode()));
+            data.put("customerPartNumber", text(row, columns.customerPartNumber()));
             data.put("model", text(row, columns.model()));
             data.put("color", text(row, columns.color()));
             data.put("lockBody", text(row, columns.lockBody()));
@@ -85,7 +85,7 @@ final class CostExcelParser {
     }
 
     private int skuColumn(Row header) {
-        return SKU_HEADERS.stream().mapToInt(label -> columnOf(header, label)).filter(column -> column >= 0)
+        return CUSTOMER_PART_NUMBER_HEADERS.stream().mapToInt(label -> columnOf(header, label)).filter(column -> column >= 0)
                 .findFirst().orElse(-1);
     }
 
@@ -98,7 +98,7 @@ final class CostExcelParser {
     }
 
     private boolean isBlankDataRow(Row row, ColumnMap columns) {
-        return text(row, columns.skuCode()).isBlank()
+        return text(row, columns.customerPartNumber()).isBlank()
                 && text(row, columns.model()).isBlank()
                 && text(row, columns.color()).isBlank()
                 && text(row, columns.lockBody()).isBlank()
@@ -114,6 +114,6 @@ final class CostExcelParser {
         return column < 0 ? null : row.getCell(column);
     }
 
-    private record ColumnMap(int skuCode, int model, int color, int lockBody, int configuration, int cost,
+    private record ColumnMap(int customerPartNumber, int model, int color, int lockBody, int configuration, int cost,
                              int factoryPrice, int priceDifference, int remark) { }
 }

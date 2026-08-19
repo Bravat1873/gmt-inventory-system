@@ -41,11 +41,11 @@ class ImportCommitApiTest {
 
     @Test
     void regularUserCannotCommitCostAndFinanceCommitsTheWholeBatch() throws Exception {
-        jdbc.update("INSERT INTO sku(sku_code,product_name,current_cost,factory_price,enabled) VALUES('COST-1','成本一',10,20,TRUE)");
-        jdbc.update("INSERT INTO sku(sku_code,product_name,current_cost,factory_price,enabled) VALUES('COST-2','成本二',30,40,TRUE)");
+        jdbc.update("INSERT INTO sku(customer_part_number,product_name,current_cost,factory_price,enabled) VALUES('COST-1','成本一',10,20,TRUE)");
+        jdbc.update("INSERT INTO sku(customer_part_number,product_name,current_cost,factory_price,enabled) VALUES('COST-2','成本二',30,40,TRUE)");
         long batchId = repository.create(ImportType.COST, "cost.xlsx", "api-cost-permission", List.of(
-                row(Map.of("skuCode", "COST-1", "cost", new BigDecimal("100"), "factoryPrice", new BigDecimal("200"))),
-                row(Map.of("skuCode", "COST-2", "cost", new BigDecimal("300"), "factoryPrice", new BigDecimal("400")))));
+                row(Map.of("customerPartNumber", "COST-1", "cost", new BigDecimal("100"), "factoryPrice", new BigDecimal("200"))),
+                row(Map.of("customerPartNumber", "COST-2", "cost", new BigDecimal("300"), "factoryPrice", new BigDecimal("400")))));
 
         mvc.perform(post("/api/imports/{batchId}/commit", batchId).cookie(loginAs("regular-user")))
                 .andExpect(status().isBadRequest())
@@ -53,7 +53,7 @@ class ImportCommitApiTest {
 
         assertThat(jdbc.queryForObject("SELECT status FROM import_batch WHERE id=?", String.class, batchId)).isEqualTo("PREVIEW");
         assertThat(jdbc.queryForObject("SELECT committed_rows FROM import_batch WHERE id=?", Integer.class, batchId)).isZero();
-        assertThat(jdbc.queryForList("SELECT current_cost FROM sku ORDER BY sku_code", BigDecimal.class))
+        assertThat(jdbc.queryForList("SELECT current_cost FROM sku ORDER BY customer_part_number", BigDecimal.class))
                 .containsExactly(new BigDecimal("10.0000"), new BigDecimal("30.0000"));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku_cost_history", Integer.class)).isZero();
 
@@ -62,7 +62,7 @@ class ImportCommitApiTest {
                 .andExpect(jsonPath("$.data.status").value("COMMITTED"))
                 .andExpect(jsonPath("$.data.committedRows").value(2));
 
-        assertThat(jdbc.queryForList("SELECT current_cost FROM sku ORDER BY sku_code", BigDecimal.class))
+        assertThat(jdbc.queryForList("SELECT current_cost FROM sku ORDER BY customer_part_number", BigDecimal.class))
                 .containsExactly(new BigDecimal("100.0000"), new BigDecimal("300.0000"));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku_cost_history", Integer.class)).isEqualTo(2);
     }
@@ -74,7 +74,7 @@ class ImportCommitApiTest {
                 new ParsedImportRow("Sheet1", 1, ImportRowStatus.VALID, Map.of("customerName", "普通客户"), null)));
         long inventoryBatch = repository.create(ImportType.INVENTORY, "inventory.xlsx", "api-inventory-user", List.of(
                 new ParsedImportRow("Sheet1", 1, ImportRowStatus.VALID, Map.of(
-                        "skuCode", "INV-USER", "model", "P90", "actualQuantity", 1,
+                        "customerPartNumber", "INV-USER", "model", "P90", "actualQuantity", 1,
                         "lockedQuantity", 0, "inTransitQuantity", 0), null)));
 
         mvc.perform(post("/api/imports/{batchId}/commit", customerBatch).cookie(userSession))

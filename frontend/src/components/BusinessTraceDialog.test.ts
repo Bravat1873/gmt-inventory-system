@@ -11,11 +11,14 @@ it('does not render linked-order navigation in the business timeline', () => {
   expect(wrapper.find('[data-test="trace-link"]').exists()).toBe(false)
 })
 
-it('uses the shared overflow text treatment for every detail cell', () => {
+it('renders complete detail values in a product panel', () => {
   const wrapper = mount(BusinessTraceDialog, {
-    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ skuCode: 'BR_C51YZH60W', configuration: '一段很长的完整规格型号' }], timeline: [] } }
+    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ customerPartNumber: 'BR_C51YZH60W', configuration: '一段很长的完整规格型号' }], timeline: [] } }
   })
-  expect(wrapper.findAll('[data-test="overflow-text"]')).toHaveLength(2)
+  expect(wrapper.findAll('.trace-detail-panel')).toHaveLength(1)
+  expect(wrapper.get('.trace-detail-panel').text()).toContain('BR_C51YZH60W')
+  expect(wrapper.get('.trace-detail-panel').text()).toContain('一段很长的完整规格型号')
+  expect(wrapper.findAll('[data-test="overflow-text"]')).toHaveLength(0)
 })
 it('labels sales order quantities consistently', () => {
   const wrapper = mount(BusinessTraceDialog, {
@@ -31,9 +34,10 @@ it('labels sales order quantities consistently', () => {
 })
 it('uses 客户料号 as the business-trace field label', () => {
   const wrapper = mount(BusinessTraceDialog, {
-    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ skuCode: 'BR_C51YZH60W' }], timeline: [] } }
+    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ customerPartNumber: 'BR_C51YZH60W' }], timeline: [] } }
   })
 
   expect(wrapper.text()).toContain('客户料号')
   expect(wrapper.text()).not.toContain(legacyMaterialNumber)
 })
+

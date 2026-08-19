@@ -1,6 +1,7 @@
 export type ImportType = 'CUSTOMER' | 'COST' | 'INVENTORY' | 'SUPPLIER' | 'PRODUCT' | 'ORDER'
 export type ProductConflictAction = 'KEEP' | 'SKIP'
 export type SupplierImportMode = 'OVERWRITE' | 'REPLACE_ALL'
+export type ImportConflictAction = 'OVERWRITE' | 'SKIP'
 export type ImportRowStatus = 'VALID' | 'ERROR' | 'IGNORED'
 
 export interface ImportRow {
@@ -62,9 +63,10 @@ export function updateImportRow(id: number, rowId: number, data: Record<string, 
   return request(`/api/imports/${id}/rows/${rowId}`, jsonOptions('PUT', data))
 }
 
-export function commitImport(id: number, supplierMode?: SupplierImportMode): Promise<ImportBatch> {
-  const options = supplierMode
-    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ supplierMode }) }
+export function commitImport(id: number, supplierMode?: SupplierImportMode, conflictActions?: Record<number, ImportConflictAction>): Promise<ImportBatch> {
+  const data = { ...(supplierMode ? { supplierMode } : {}), ...(conflictActions ? { conflictActions } : {}) }
+  const options = Object.keys(data).length > 0
+    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }
     : { method: 'POST' }
   return request(`/api/imports/${id}/commit`, options)
 }

@@ -21,3 +21,13 @@ it('closes the teleported options when horizontal scrolling moves the input outs
   expect(document.body.querySelector('.fuzzy-picker-options')).toBeNull()
   wrapper.unmount()
 })
+
+it('uses a compact selected label without changing the option label', async () => {
+  const wrapper = mount(FuzzyPicker, { attachTo: document.body, props: { modelValue: null, placeholder: '选择产品', options: [{ id: 7, label: '产品编号：BR_A71\n客户料号：G8A71HS001\n型号：A71', selectedLabel: 'BR_A71', searchText: 'BR_A71 G8A71HS001 A71' }] } })
+  await wrapper.get('input').trigger('focus')
+  expect(document.body.querySelector('[data-test="fuzzy-option-7"]')?.textContent).toContain('客户料号：G8A71HS001')
+  document.body.querySelector<HTMLElement>('[data-test="fuzzy-option-7"]')?.click()
+  await flushPromises()
+  expect((wrapper.get('input').element as HTMLInputElement).value).toBe('BR_A71')
+  wrapper.unmount()
+})

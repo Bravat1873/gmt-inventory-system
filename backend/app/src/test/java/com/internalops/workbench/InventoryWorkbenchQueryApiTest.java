@@ -67,9 +67,9 @@ class InventoryWorkbenchQueryApiTest {
                 .andExpect(jsonPath("$.data.items[0].inTransitQuantity").value(5))
                 .andExpect(jsonPath("$.data.items[0].availableQuantity").value(5))
                 .andExpect(jsonPath("$.data.items[0].pendingDeliveryQuantity").value(6))
-                .andExpect(jsonPath("$.data.items[0].supplyDemandBalance").value(19))
+                .andExpect(jsonPath("$.data.items[0].supplyDemandSurplus").value(19))
                 .andExpect(jsonPath("$.data.items[0].purchaseShortageQuantity").value(0))
-                .andExpect(jsonPath("$.data.items[1].supplyDemandBalance").value(-6))
+                .andExpect(jsonPath("$.data.items[1].supplyDemandSurplus").value(-6))
                 .andExpect(jsonPath("$.data.items[1].purchaseShortageQuantity").value(6));
     }
     @Test
@@ -162,3 +162,4 @@ class InventoryWorkbenchQueryApiTest {
         }
     }
 }
+

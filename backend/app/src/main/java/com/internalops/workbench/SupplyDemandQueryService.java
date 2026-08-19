@@ -57,10 +57,10 @@ public class SupplyDemandQueryService {
 
         Map<Long, SupplyDemandSnapshot> result = new LinkedHashMap<>();
         values.forEach((skuId, value) -> {
-            int balance = value.actual + value.inTransit - value.pending;
+            int surplus = value.actual + value.inTransit - value.pending;
             result.put(skuId, new SupplyDemandSnapshot(
                     value.actual, value.available, value.inTransit, value.pending,
-                    balance, Math.max(-balance, 0)));
+                    surplus, Math.max(-surplus, 0)));
         });
         return result;
     }
@@ -77,7 +77,7 @@ public class SupplyDemandQueryService {
             int availableQuantity,
             int inTransitQuantity,
             int pendingDeliveryQuantity,
-            int supplyDemandBalance,
+            int supplyDemandSurplus,
             int purchaseShortageQuantity) { }
 
     private static final class MutableSnapshot {
@@ -87,3 +87,5 @@ public class SupplyDemandQueryService {
         private int pending;
     }
 }
+
+

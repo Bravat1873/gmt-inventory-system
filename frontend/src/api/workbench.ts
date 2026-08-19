@@ -107,7 +107,7 @@ export function createOrder(data: Record<string, unknown>) {
 export function getOrder(id: number) { return request<Record<string, unknown>>(`/api/orders/${id}`) }
 export interface OrderSku {
   id: number
-  skuCode?: string | null
+  customerPartNumber?: string | null
   productCode?: string | null
   currentCost?: number | null
   factoryPrice?: number | null
@@ -125,7 +125,7 @@ export interface OrderSku {
   availableQuantity: number
   inTransitQuantity: number
   pendingDeliveryQuantity: number
-  supplyDemandBalance: number
+  supplyDemandSurplus: number
   purchaseShortageQuantity: number
   salesMinimumOrderQuantity: number
 }
@@ -150,7 +150,7 @@ export async function loadContractPrice(customerId: number, skuId: number) {
   const data = await request<{ salePrice?: number | null }>(`/api/orders/contract-price?customerId=${customerId}&skuId=${skuId}`)
   return data.salePrice == null ? null : Number(data.salePrice)
 }
-export interface CustomerContractPrice { skuId:number; salePrice:number; skuCode?:string; productName?:string }
+export interface CustomerContractPrice { skuId:number; salePrice:number; customerPartNumber?:string; productName?:string }
 export interface CustomerContract { id?:number; contractNo:string; startDate:string; endDate:string; remark?:string; prices:CustomerContractPrice[] }
 export interface CustomerCommand {
   customerCode?:string; customerType:'DOMESTIC'|'EXPORT'; customerName:string; address?:string
@@ -194,7 +194,7 @@ export interface SupplierOption {
 
 export interface SupplierProductOption {
   id: number
-  skuCode?: string
+  customerPartNumber?: string
   productName?: string
   model?: string
   configuration?: string
@@ -297,8 +297,10 @@ export function payPurchaseByNumber(purchaseNo: string, data: PurchasePaymentDat
 }
 
 export interface PurchaseReceiptItem {
+  productCode?: string
+  model?: string
   id: number
-  skuCode?: string
+  customerPartNumber?: string
   productName?: string
   quantity: number
   receivedQuantity: number
@@ -325,7 +327,7 @@ export function receivePurchase(id: number, items: { purchaseOrderItemId: number
 
 export interface UnconfiguredProcurementShortage {
   skuId: number
-  skuCode?: string | null
+  customerPartNumber?: string | null
   productName?: string | null
   shortageQuantity: number
   orderNumbers: string[]
@@ -334,9 +336,11 @@ export function loadUnconfiguredProcurementShortages() {
   return request<UnconfiguredProcurementShortage[]>('/api/procurement/unconfigured-shortages')
 }
 export interface ProcurementSuggestionItem {
+  productCode?: string
+  model?: string
   id: number
   skuId: number
-  skuCode?: string
+  customerPartNumber?: string
   productName?: string
   shortageQuantity: number
   minimumOrderQuantity: number
@@ -392,7 +396,8 @@ export function deleteProductCodeRule(id: number) {
   return request<void>(`/api/product-code-rules/${id}`, { method: 'DELETE' })
 }
 export interface OrderAllocationItem {
-  lineNo: number; skuCode?: string; productName?: string; quantity: number; shippedQuantity: number
+  productCode?: string; model?: string
+  lineNo: number; customerPartNumber?: string; productName?: string; quantity: number; shippedQuantity: number
   lockedQuantity: number; uncoveredQuantity: number; actualQuantity: number; availableQuantity: number
 }
 export interface OrderAllocation { id: number; version: number; status: string; adjustable: boolean; items: OrderAllocationItem[] }
@@ -400,3 +405,4 @@ export function loadOrderAllocations(id: number) { return request<OrderAllocatio
 export function updateOrderAllocations(id: number, version: number, items: { lineNo: number; lockedQuantity: number }[]) {
   return request<OrderAllocation>(`/api/orders/${id}/allocations`, { method: 'PUT', body: JSON.stringify({ version, items }) })
 }
+

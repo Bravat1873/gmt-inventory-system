@@ -84,10 +84,10 @@ public class ProcurementWorkflowService {
                     (int) num(row,"moq"), (int) num(row,"lead_time_days"))).toList();
             var recommendation = recommendations.recommend(skuEntry.getKey(), shortage, candidates);
             if (recommendation.isEmpty()) {
-                Map<String, Object> sku = jdbc.queryForMap("SELECT id,sku_code,product_name FROM sku WHERE id=?", skuEntry.getKey());
+                Map<String, Object> sku = jdbc.queryForMap("SELECT id,customer_part_number,product_name FROM sku WHERE id=?", skuEntry.getKey());
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("skuId", num(sku, "id"));
-                item.put("skuCode", val(sku, "sku_code"));
+                item.put("customerPartNumber", val(sku, "customer_part_number"));
                 item.put("productName", val(sku, "product_name"));
                 item.put("shortageQuantity", shortage);
                 item.put("orderNumbers", skuEntry.getValue().stream()
@@ -190,7 +190,7 @@ public class ProcurementWorkflowService {
 
     public List<Map<String, Object>> unconfiguredShortages() {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT s.id AS sku_id,s.sku_code,s.product_name,o.order_no,
+                SELECT s.id AS sku_id,s.customer_part_number,s.product_name,o.order_no,
                        i.uncovered_quantity-COALESCE(c.covered_quantity,0) AS shortage_quantity
                 FROM sales_order_item i
                 JOIN sales_order o ON o.id=i.sales_order_id
@@ -223,7 +223,7 @@ public class ProcurementWorkflowService {
             Map<String, Object> item = grouped.computeIfAbsent(skuId, ignored -> {
                 Map<String, Object> created = new LinkedHashMap<>();
                 created.put("skuId", skuId);
-                created.put("skuCode", val(row, "sku_code"));
+                created.put("customerPartNumber", val(row, "customer_part_number"));
                 created.put("productName", val(row, "product_name"));
                 created.put("shortageQuantity", 0);
                 created.put("orderNumbers", new LinkedHashSet<String>());
@@ -278,7 +278,7 @@ public class ProcurementWorkflowService {
         if (headers.isEmpty()) throw new IllegalArgumentException("待确认采购不存在");
         var header=headers.get(0);
         List<Map<String,Object>> items=jdbc.query("""
-                SELECT psi.id,psi.sku_id,s.sku_code,s.product_name,psi.shortage_quantity,
+                SELECT psi.id,psi.sku_id,s.product_code,s.customer_part_number,s.model,s.product_name,psi.shortage_quantity,
                        psi.suggested_quantity,psi.purchase_price,psi.expected_arrival_date,
                        psi.supplier_purchase_info_id,pi.moq
                 FROM procurement_suggestion_item psi
@@ -288,7 +288,7 @@ public class ProcurementWorkflowService {
                 """,(rs,n)->{
             Map<String,Object> item=new LinkedHashMap<>();
             item.put("id",rs.getLong("id")); item.put("skuId",rs.getLong("sku_id"));
-            item.put("skuCode",rs.getString("sku_code")); item.put("productName",rs.getString("product_name"));
+            item.put("productCode",rs.getString("product_code")); item.put("customerPartNumber",rs.getString("customer_part_number")); item.put("model",rs.getString("model")); item.put("productName",rs.getString("product_name"));
             item.put("shortageQuantity",rs.getInt("shortage_quantity"));
             item.put("minimumOrderQuantity",rs.getInt("moq"));
             item.put("suggestedQuantity",rs.getInt("suggested_quantity"));
@@ -546,7 +546,7 @@ public class ProcurementWorkflowService {
         result.put("supplierName", val(source, "supplier_name"));
         result.put("totalAmount", val(source, "total_amount"));
         List<Map<String, Object>> itemRows = jdbc.queryForList("""
-                SELECT poi.id,s.sku_code,s.product_name,poi.quantity,poi.received_quantity,
+                SELECT poi.id,s.product_code,s.customer_part_number,s.model,s.product_name,poi.quantity,poi.received_quantity,
                        poi.quantity-poi.received_quantity AS remaining_quantity
                 FROM purchase_order_item poi JOIN sku s ON s.id=poi.sku_id
                 WHERE poi.purchase_order_id=? ORDER BY poi.line_no
@@ -555,7 +555,9 @@ public class ProcurementWorkflowService {
         for (Map<String, Object> row : itemRows) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", num(row, "id"));
-            item.put("skuCode", val(row, "sku_code"));
+            item.put("productCode", val(row, "product_code"));
+            item.put("customerPartNumber", val(row, "customer_part_number"));
+            item.put("model", val(row, "model"));
             item.put("productName", val(row, "product_name"));
             item.put("quantity", num(row, "quantity"));
             item.put("receivedQuantity", num(row, "received_quantity"));

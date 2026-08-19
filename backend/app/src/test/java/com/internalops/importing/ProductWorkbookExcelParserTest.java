@@ -43,15 +43,22 @@ class ProductWorkbookExcelParserTest {
                     .containsEntry("model", "D51-GEN2")
                     .containsEntry("materialSpecification", "7068锁体")
                     .containsEntry("salesMinimumOrderQuantity", java.math.BigDecimal.ONE)
-                    .containsEntry("supplierTaxPrice", java.math.BigDecimal.ZERO));
+                    .containsEntry("supplierTaxPrice", java.math.BigDecimal.ZERO)
+                    .containsEntry("actualQuantity", 12)
+                    .containsEntry("lockedQuantity", 3)
+                    .containsEntry("inTransitQuantity", 4)
+                    .containsEntry("sourceSupplierName", "测试供应商")
+                    .containsEntry("inventoryRemark", "现货"));
         }
     }
 
     private void addHeadersAndBlankCodeProduct(org.apache.poi.ss.usermodel.Sheet sheet) {
         var header = sheet.createRow(0);
         String[] headers = {"产品编号（不用写）", "客户料号", "品牌", "型号\n（系列号+第几代）",
-                "物料规格\n（不用写，会自动生成）", "产品配置", "销售最小起订量", "供应商含税价"};
+                "物料规格\n（不用写，会自动生成）", "产品配置", "供应商名称", "供应商含税价"};
+        String[] inventoryHeaders = {"实际库存数量", "已锁定数量", "在途数量", "库存备注"};
         for (int index = 0; index < headers.length; index++) header.createCell(index).setCellValue(headers[index]);
+        for (int index = 0; index < inventoryHeaders.length; index++) header.createCell(headers.length + index).setCellValue(inventoryHeaders[index]);
 
         var product = sheet.createRow(1);
         product.createCell(1).setCellValue("D1213K-D51");
@@ -59,6 +66,11 @@ class ProductWorkbookExcelParserTest {
         product.createCell(3).setCellValue("D51-GEN2");
         product.createCell(4).setCellValue("7068锁体");
         product.createCell(5).setCellValue("一字锁");
+        product.createCell(6).setCellValue("测试供应商");
+        product.createCell(8).setCellValue(12);
+        product.createCell(9).setCellValue(3);
+        product.createCell(10).setCellValue(4);
+        product.createCell(11).setCellValue("现货");
     }
 
     @Test

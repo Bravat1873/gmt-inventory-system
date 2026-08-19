@@ -120,21 +120,21 @@ it('修改产品时客户编号可编辑且不显示重复的旧颜色和锁体�
     props: {
       module: 'product',
       currentUserRole: 'FINANCE',
-      row: { id: 7, customerCode: 'OLD-CODE', model: 'D51', color: '11', lockBody: '11', version: 2 }
+      row: { id: 7, customerPartNumber: 'OLD-CODE', model: 'D51', color: '11', lockBody: '11', version: 2 }
     }
   })
   await flushPromises()
 
-  const customerCode = wrapper.get('[data-test="customer-code"]')
-  expect(customerCode.attributes('disabled')).toBeUndefined()
+  const customerPartNumber = wrapper.get('[data-test="customer-part-number"]')
+  expect(customerPartNumber.attributes('disabled')).toBeUndefined()
   expect(wrapper.find('[data-test="product-legacy-color"]').exists()).toBe(false)
   expect(wrapper.find('[data-test="product-legacy-lock-body"]').exists()).toBe(false)
 
-  await customerCode.setValue('NEW-CODE')
+  await customerPartNumber.setValue('NEW-CODE')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
 
-  expect(api.updateEntity).toHaveBeenLastCalledWith('product', 7, expect.objectContaining({ customerCode: 'NEW-CODE' }))
+  expect(api.updateEntity).toHaveBeenLastCalledWith('product', 7, expect.objectContaining({ customerPartNumber: 'NEW-CODE' }))
   expect(api.updateEntity.mock.calls.at(-1)?.[2]).not.toHaveProperty('color')
   expect(api.updateEntity.mock.calls.at(-1)?.[2]).not.toHaveProperty('lockBody')
 })
@@ -304,7 +304,7 @@ it('库存弹窗使用页面库存字段而不暴露内部调整原因', () => {
 it('库存修改弹窗以动态列表编辑任意地点锁定数量', async () => {
   api.updateEntity.mockResolvedValue({ id: 7 })
   const wrapper = mount(EntityDialog, { props: { module: 'inventory', row: {
-    id: 7, skuId: 1, skuCode: 'P50', actualQuantity: 20, availableQuantity: 10,
+    id: 7, skuId: 1, customerPartNumber: 'P50', actualQuantity: 20, availableQuantity: 10,
     lockedQuantity: 10, inTransitQuantity: 0, version: 2,
     lockedAllocations: [{ lockSource: '新加坡', quantity: 2 }, { lockSource: '越南', quantity: 3 }]
   } } })
@@ -326,11 +326,23 @@ it('库存修改弹窗以动态列表编辑任意地点锁定数量', async () =
     lockedAllocations: [{ lockSource: '越南', quantity: 3 }, { lockSource: '香港', quantity: 4 }]
   }))
 })
+it('shows inventory product search results with product code first', async () => {
+  api.loadOrderSkus.mockResolvedValue([{ id: 19, productCode: 'BR_D51', customerPartNumber: 'D1213K-D51', model: 'D51-GEN2' }])
+  const wrapper = mount(EntityDialog, { attachTo: document.body, props: { module: 'inventory' } })
+  await flushPromises()
+  await wrapper.get('[data-test="inventory-product-picker"] input').setValue('BR_D51')
+  expect(document.body.querySelector('[data-test="fuzzy-option-19"]')?.textContent)
+    .toMatch(/产品编号：BR_D51[\s\S]*客户料号：D1213K-D51[\s\S]*型号：D51-GEN2/)
+  document.body.querySelector<HTMLElement>('[data-test="fuzzy-option-19"]')?.click()
+  await flushPromises()
+  expect((wrapper.get('[data-test="inventory-product-picker"] input').element as HTMLInputElement).value).toBe('BR_D51')
+  wrapper.unmount()
+})
 it('新增库存从产品管理同步只读产品资料并提交产品关联', async () => {
   api.loadOrderSkus.mockResolvedValue([{
     id: 18,
     productCode: 'SXSEL_P90',
-    skuCode: 'SKU-P90',
+    customerPartNumber: 'SKU-P90',
     productName: 'P90 智能锁',
     model: 'P90',
     productType: 'SMART_LOCK',
@@ -366,7 +378,7 @@ it('新增库存从产品管理同步只读产品资料并提交产品关联', a
 
   expect(api.createEntity).toHaveBeenCalledWith('inventory', expect.objectContaining({
     skuId: 18,
-    skuCode: 'SXSEL_P90',
+    customerPartNumber: 'SXSEL_P90',
     productType: 'ENTRY_DOOR',
     availableQuantity: 12
   }))
@@ -421,13 +433,15 @@ it('limits and submits a twelve digit EAN starting with 69', async () => {
 })
 it('shows unlocked stock and read-only supply-demand values in inventory editor', async () => {
   const wrapper = mount(EntityDialog, { props: { module: 'inventory', row: {
-    id: 7, skuId: 1, skuCode: 'P50', actualQuantity: 20, availableQuantity: 10,
+    id: 7, skuId: 1, customerPartNumber: 'P50', actualQuantity: 20, availableQuantity: 10,
     lockedQuantity: 10, inTransitQuantity: 4, pendingDeliveryQuantity: 25,
-    supplyDemandBalance: -1, version: 2
+    supplyDemandSurplus: -1, version: 2
   } } })
   await flushPromises()
   expect(wrapper.text()).toContain('未锁定库存数量')
   expect(wrapper.text()).not.toContain('可用库存数量')
   expect(wrapper.get('[data-test="inventory-pending-delivery-quantity"]').attributes('disabled')).toBeDefined()
-  expect(wrapper.get('[data-test="inventory-supply-demand-balance"]').attributes('disabled')).toBeDefined()
+  expect(wrapper.get('[data-test="inventory-supply-demand-surplus"]').attributes('disabled')).toBeDefined()
 })
+
+

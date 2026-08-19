@@ -18,8 +18,8 @@ class ProductCodeSchemaTest {
     void createsRulesAndMakesCustomerCodeNullableAndNonUnique() throws Exception {
         String sql = migration();
         assertTrue(sql.contains("CREATE TABLE product_code_rule"));
-        assertTrue(sql.contains("DROP INDEX uk_sku_code"));
-        assertTrue(sql.contains("MODIFY COLUMN sku_code VARCHAR(80) NULL"));
+        assertTrue(sql.contains("DROP INDEX uk_customer_part_number"));
+        assertTrue(sql.contains("MODIFY COLUMN customer_part_number VARCHAR(80) NULL"));
         assertTrue(sql.contains("CONSTRAINT uk_product_code_rule_category_code UNIQUE (category, code)"));
     }
 

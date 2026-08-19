@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { BusinessTrace } from '../api/workbench'
-import OverflowText from './OverflowText.vue'
+import ProductIdentityDisplay from './ProductIdentityDisplay.vue'
 
 const props = defineProps<{ trace: BusinessTrace }>()
 const emit = defineEmits<{ close: [] }>()
 
 const labels: Record<string, string> = {
-  skuCode: '客户料号', productName: '物料名称', model: '型号', configuration: '规格型号', unit: '单位',
+  productCode: '产品编号', customerPartNumber: '客户料号', productName: '物料名称', model: '型号', configuration: '规格型号', unit: '单位',
   quantity: '数量', shippedQuantity: '已发货数量', remainingQuantity: '剩余数量', availableQuantity: '可用库存', lockedQuantity: '锁定数量', uncoveredQuantity: '缺货数量',
   salePrice: '含税单价', receivedQuantity: '已入库数量', purchasePrice: '采购单价'
 }
@@ -48,9 +48,21 @@ function header(key: string) { const raw = props.trace.header[key]; return key =
         </section>
         <section class="trace-section">
           <h3>{{ trace.type === 'order' ? '订单明细' : '采购明细' }}</h3>
-          <div class="trace-table-wrap"><table class="trace-table"><thead><tr><th v-for="key in detailKeys()" :key="key">{{ detailLabel(key) }}</th></tr></thead><tbody><tr v-for="(row, rowIndex) in trace.details" :key="rowIndex"><td v-for="key in detailKeys()" :key="key"><OverflowText :value="value(row[key])" /></td></tr><tr v-if="!trace.details.length"><td class="trace-empty" :colspan="Math.max(1, detailKeys().length)">暂无明细</td></tr></tbody></table></div>
+          <div v-if="trace.details.length" class="trace-detail-panels">
+            <article v-for="(row, rowIndex) in trace.details" :key="rowIndex" class="trace-detail-panel">
+              <div class="trace-detail-identity">
+                 <ProductIdentityDisplay compact :product-code="String(row.productCode ?? '')" :customer-part-number="String(row.customerPartNumber ?? '')" :model="String(row.model ?? '')" />
+                 <div v-for="key in detailKeys().filter(value => ['configuration','unit'].includes(value))" :key="key"><span>{{ detailLabel(key) }}</span><strong>{{ value(row[key]) }}</strong></div>
+              </div>
+              <div class="trace-detail-metrics">
+                <div v-for="key in detailKeys().filter(value => !['productCode','customerPartNumber','productName','model','configuration','unit'].includes(value))" :key="key"><span>{{ detailLabel(key) }}</span><strong>{{ value(row[key]) }}</strong></div>
+              </div>
+            </article>
+          </div>
+          <p v-else class="trace-empty">暂无明细</p>
         </section>
       </div>
     </section>
   </div>
 </template>
+

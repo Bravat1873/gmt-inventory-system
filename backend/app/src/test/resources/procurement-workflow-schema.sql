@@ -29,7 +29,9 @@ CREATE TABLE supplier(
 );
 CREATE TABLE sku(
     id BIGINT PRIMARY KEY,
-    sku_code VARCHAR(80),
+    product_code VARCHAR(80),
+    customer_part_number VARCHAR(80),
+    model VARCHAR(100),
     product_name VARCHAR(200) NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     current_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
@@ -196,8 +198,8 @@ CREATE TABLE inventory_transaction(
 );
 
 INSERT INTO warehouse VALUES(1, TRUE, TRUE);
-INSERT INTO sku(id,sku_code,product_name,enabled,current_cost,factory_price) VALUES(101, 'P90-001', 'P90', TRUE,8.0000,10.0000);
-INSERT INTO sku(id,sku_code,product_name,enabled,current_cost,factory_price) VALUES(102, 'D51-001', 'D51', TRUE,9.0000,10.0000);
+INSERT INTO sku(id,product_code,customer_part_number,model,product_name,enabled,current_cost,factory_price) VALUES(101, 'BR_P90', 'P90-001', 'P90', 'P90', TRUE,8.0000,10.0000);
+INSERT INTO sku(id,product_code,customer_part_number,model,product_name,enabled,current_cost,factory_price) VALUES(102, 'BR_D51', 'D51-001', 'D51', 'D51', TRUE,9.0000,10.0000);
 INSERT INTO supplier(id,supplier_name,enabled) VALUES(201, '供应商一',TRUE);
 INSERT INTO sales_order(id,order_no,status,receipt_confirmed_at) VALUES(1,'DD20260800001','WAITING_STOCK',CURRENT_TIMESTAMP);
 INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity)
@@ -209,3 +211,4 @@ ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;
 
 DROP TABLE IF EXISTS document_number_sequence;
 CREATE TABLE document_number_sequence (document_type VARCHAR(32) NOT NULL, year_month CHAR(6) NOT NULL, current_value INT NOT NULL, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(document_type,year_month), CONSTRAINT ck_document_number_value CHECK(current_value BETWEEN 0 AND 99999));
+

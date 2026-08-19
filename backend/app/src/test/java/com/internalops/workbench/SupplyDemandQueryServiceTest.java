@@ -32,7 +32,7 @@ class SupplyDemandQueryServiceTest {
         assertEquals(7, value.availableQuantity());
         assertEquals(4, value.inTransitQuantity());
         assertEquals(6, value.pendingDeliveryQuantity());
-        assertEquals(8, value.supplyDemandBalance());
+        assertEquals(8, value.supplyDemandSurplus());
         assertEquals(0, value.purchaseShortageQuantity());
     }
 
@@ -47,7 +47,7 @@ class SupplyDemandQueryServiceTest {
         assertEquals(0, value.availableQuantity());
         assertEquals(0, value.inTransitQuantity());
         assertEquals(9, value.pendingDeliveryQuantity());
-        assertEquals(-9, value.supplyDemandBalance());
+        assertEquals(-9, value.supplyDemandSurplus());
         assertEquals(9, value.purchaseShortageQuantity());
     }
 
@@ -61,3 +61,4 @@ class SupplyDemandQueryServiceTest {
                 orderId, skuId, quantity, shippedQuantity);
     }
 }
+

@@ -5,8 +5,8 @@ import ManualPurchaseDialog from './ManualPurchaseDialog.vue'
 const api = vi.hoisted(() => ({
   createManualPurchase: vi.fn().mockResolvedValue({ purchaseNo: 'PO-001' }),
   loadOrderSkus: vi.fn().mockResolvedValue([
-    { id: 101, currentCost: 100, factoryPrice: 120, skuCode: 'P90-001', productName: 'P90 智能锁', model: 'P90', unit: '件', actualQuantity: 2, availableQuantity: 2, inTransitQuantity: 3, pendingDeliveryQuantity: 10, supplyDemandBalance: -5, purchaseShortageQuantity: 5 },
-    { id: 102, currentCost: 80, factoryPrice: 95, skuCode: 'P50-001', productName: 'P50 智能锁', model: 'P50', unit: '件', actualQuantity: 12, availableQuantity: 10, inTransitQuantity: 3, pendingDeliveryQuantity: 5, supplyDemandBalance: 10, purchaseShortageQuantity: 0 }
+    { id: 101, currentCost: 100, factoryPrice: 120, customerPartNumber: 'P90-001', productName: 'P90 智能锁', model: 'P90', unit: '件', actualQuantity: 2, availableQuantity: 2, inTransitQuantity: 3, pendingDeliveryQuantity: 10, supplyDemandSurplus: -5, purchaseShortageQuantity: 5 },
+    { id: 102, currentCost: 80, factoryPrice: 95, customerPartNumber: 'P50-001', productName: 'P50 智能锁', model: 'P50', unit: '件', actualQuantity: 12, availableQuantity: 10, inTransitQuantity: 3, pendingDeliveryQuantity: 5, supplyDemandSurplus: 10, purchaseShortageQuantity: 0 }
   ]),
   loadProductSuppliers: vi.fn().mockResolvedValue([
     { supplierId: 201, supplierName: '贝朗供应商', purchaseInfos: [
@@ -18,6 +18,16 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../api/workbench', () => api)
 
+it('shows searchable products with product code first', async () => {
+  api.loadOrderSkus.mockResolvedValueOnce([{ id: 201, productCode: 'BR_P90', customerPartNumber: 'P90-001', model: 'P90' }])
+  const wrapper = mount(ManualPurchaseDialog)
+  await flushPromises()
+  await wrapper.get('[data-test="product-search"]').trigger('focus')
+  expect(wrapper.get('[data-test="product-option-201"]').text())
+    .toMatch(/产品编号：BR_P90[\s\S]*客户料号：P90-001[\s\S]*型号：P90/)
+  await wrapper.get('[data-test="product-option-201"]') .trigger('click')
+  expect((wrapper.get('[data-test="product-search"]') .element as HTMLInputElement).value).toBe('BR_P90')
+})
 it('selects a product first and then its configured supplier', async () => {
   const wrapper = mount(ManualPurchaseDialog)
   await flushPromises()
@@ -71,3 +81,4 @@ it('does not show purchase guidance for a nonnegative balance', async () => {
   expect(wrapper.text()).toContain('供需余量 10')
   expect(wrapper.text()).not.toContain('建议采购')
 })
+

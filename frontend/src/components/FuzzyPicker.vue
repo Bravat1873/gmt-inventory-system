@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 export interface FuzzyPickerOption {
   id: number
   label: string
+  selectedLabel?: string
   searchText?: string
 }
 
@@ -33,7 +34,7 @@ const filteredOptions = computed(() => {
 })
 
 watch(selected, option => {
-  if (!open.value) query.value = option?.label ?? ''
+  if (!open.value) query.value = option?.selectedLabel ?? option?.label ?? ''
 }, { immediate: true })
 
 watch([open, filteredOptions], () => {
@@ -70,12 +71,12 @@ function showOptions() {
 }
 
 function search() {
-  if (selected.value?.label !== query.value) emit('update:modelValue', null)
+  if ((selected.value?.selectedLabel ?? selected.value?.label) !== query.value) emit('update:modelValue', null)
   showOptions()
 }
 
 function choose(option: FuzzyPickerOption) {
-  query.value = option.label
+  query.value = option.selectedLabel ?? option.label
   emit('update:modelValue', option.id)
   open.value = false
 }

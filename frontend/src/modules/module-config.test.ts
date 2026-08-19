@@ -83,7 +83,7 @@ it('labels unlocked stock and places demand metrics after in-transit stock', () 
   const availableIndex = inventory.fields.indexOf('availableQuantity')
   const transitIndex = inventory.fields.indexOf('inTransitQuantity')
   expect(inventory.columns[availableIndex]).toBe('未锁定库存数量')
-  expect(inventory.fields.slice(transitIndex, transitIndex + 3)).toEqual(['inTransitQuantity', 'pendingDeliveryQuantity', 'supplyDemandBalance'])
+  expect(inventory.fields.slice(transitIndex, transitIndex + 3)).toEqual(['inTransitQuantity', 'pendingDeliveryQuantity', 'supplyDemandSurplus'])
   expect(inventory.columns.slice(transitIndex, transitIndex + 3)).toEqual(['在途数量', '未发货数量', '供需余量'])
 })
 it('replaces fixed product price columns with supplier quotes while keeping sales minimum', () => {
@@ -93,15 +93,27 @@ it('replaces fixed product price columns with supplier quotes while keeping sale
   expect(product.fields).toContain('salesMinimumOrderQuantity')
   expect(product.fields).not.toEqual(expect.arrayContaining(['currentCost', 'factoryPrice', 'priceDifference']))
 })
+
+it('shows inventory fields inside the product module list', () => {
+  const product = moduleDefinitions.find(item => item.key === 'product')!
+  const inventoryIndex = product.fields.indexOf('actualQuantity')
+
+  expect(product.fields.slice(inventoryIndex, inventoryIndex + 5)).toEqual([
+    'actualQuantity', 'lockedQuantity', 'inTransitQuantity', 'sourceSupplierName', 'inventoryRemark'
+  ])
+  expect(product.columns.slice(inventoryIndex, inventoryIndex + 5)).toEqual([
+    '实际库存数量', '已锁定数量', '在途数量', '库存供应商', '库存备注'
+  ])
+})
 it('enables sorting for short management fields and excludes long display fields', () => {
   const expected: Record<string, string[]> = {
     customer: ['customerCode', 'customerName', 'orderContactName', 'orderContactPhone', 'contractStatus', 'contractEndDate', 'updatedAt'],
     user: ['username', 'displayName', 'role', 'updatedAt'],
-    product: ['productCode', 'customerCode', 'brand', 'model', 'productType', 'materialType', 'salesMinimumOrderQuantity', 'updatedAt'],
+    product: ['productCode', 'customerPartNumber', 'brand', 'model', 'productType', 'materialType', 'salesMinimumOrderQuantity', 'updatedAt'],
     supplier: ['manufacturerCategory', 'manufacturerType', 'supplierLocation', 'productAttribute', 'shortName', 'supplierName', 'contactName', 'contactTitle', 'phone', 'currency', 'taxRegistrationNo', 'bankAddress', 'bankAccount', 'productCount', 'updatedAt'],
     order: ['orderNo', 'customerName', 'orderType', 'totalAmount', 'status', 'orderDate', 'salesperson', 'createdAt', 'updatedAt'],
     afterSales: ['afterSalesNo', 'orderNo', 'customerName', 'orderType', 'afterSalesType', 'returnQuantity', 'replacementQuantity', 'status', 'applicationDate', 'updatedAt'],
-    inventory: ['productCode', 'model', 'productType', 'unit', 'actualQuantity', 'availableQuantity', 'oldestStockDate', 'inventoryAgeDays', 'lockedQuantity', 'inTransitQuantity', 'pendingDeliveryQuantity', 'supplyDemandBalance', 'sourceSupplierName', 'updatedAt'],
+    inventory: ['productCode', 'model', 'productType', 'unit', 'actualQuantity', 'availableQuantity', 'oldestStockDate', 'inventoryAgeDays', 'lockedQuantity', 'inTransitQuantity', 'pendingDeliveryQuantity', 'supplyDemandSurplus', 'sourceSupplierName', 'updatedAt'],
     purchase: ['purchaseNo', 'supplierName', 'totalAmount', 'paymentStatus', 'receiptStatus', 'status', 'expectedArrivalDate', 'updatedAt'],
     finance: ['businessNo', 'businessType', 'counterparty', 'amount', 'settledAmount', 'outstandingAmount', 'status', 'updatedAt']
   }
@@ -124,3 +136,4 @@ it('places order type after customer in order and after-sales lists', () => {
     expect(module.columns[customerIndex + 1]).toBe('订单类型')
   }
 })
+
