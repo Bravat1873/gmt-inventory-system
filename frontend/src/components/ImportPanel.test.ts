@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ImportPanel from './ImportPanel.vue'
 import type { ImportBatch } from '../api/imports'
 
-const { previewImport, commitImport, commitProductReplace, updateImportRow } = vi.hoisted(() => ({ previewImport: vi.fn(), commitImport: vi.fn(), commitProductReplace: vi.fn(), updateImportRow: vi.fn() }))
-vi.mock('../api/imports', () => ({ previewImport, commitImport, commitProductReplace, updateImportRow }))
+const { previewImport, commitImport, commitProductReplace, getImportBatch, updateImportRow } = vi.hoisted(() => ({ previewImport: vi.fn(), commitImport: vi.fn(), commitProductReplace: vi.fn(), getImportBatch: vi.fn(), updateImportRow: vi.fn() }))
+vi.mock('../api/imports', () => ({ previewImport, commitImport, commitProductReplace, getImportBatch, updateImportRow }))
 
 const batch = {
   batchId: 8, importType: 'CUSTOMER', originalFilename: 'customers.xlsx', status: 'PREVIEW',
@@ -82,6 +82,7 @@ describe('simple Excel import', () => {
     vi.restoreAllMocks()
     vi.clearAllMocks()
     previewImport.mockResolvedValue(structuredClone(batch))
+    getImportBatch.mockResolvedValue(structuredClone(batch))
     commitImport.mockResolvedValue({ ...structuredClone(batch), status: 'COMMITTED', committedRows: 103 })
     commitProductReplace.mockResolvedValue({ ...structuredClone(productConflictBatch), status: 'COMMITTED', committedRows: 1 })
   })
@@ -135,7 +136,7 @@ describe('simple Excel import', () => {
 
   it('filters customer review rows by conflicts, errors, and resolved decisions', async () => {
     const preview = structuredClone(customerConflictBatch)
-    preview.rows.push({ id: 43, sheetName: '客户', rowNumber: 4, status: 'ERROR', data: { customerName: '' }, errorMessage: '客户名称不能为空', manualEntry: false })
+    preview.rows.push({ id: 43, sheetName: '客户', rowNumber: 4, status: 'ERROR', data: { customerName: '' }, errorMessage: null, manualEntry: false })
     preview.totalRows = 3
     preview.errorRows = 1
     previewImport.mockResolvedValue(preview)
@@ -224,6 +225,25 @@ describe('simple Excel import', () => {
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('客户余额不会自动扣减'))
     expect(commitImport).toHaveBeenCalledWith(18)
     expect(commitProductReplace).not.toHaveBeenCalled()
+  })
+
+  it('applies an existing-order decision to every conflicting line in that order', async () => {
+    const conflictedOrders = structuredClone(orderBatch)
+    for (const row of conflictedOrders.rows.slice(0, 2)) {
+      Object.assign(row.data, { _conflict: true, _conflictGroup: 'EXT-001', _conflictField: 'externalOrderNo' })
+    }
+    previewImport.mockResolvedValue(conflictedOrders)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(wrapper, 'orders.xlsx')
+
+    expect(wrapper.get('[data-test="commit-order-import"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-test="order-conflict-overwrite-EXT-001"]').trigger('click')
+    expect(wrapper.get('[data-test="commit-order-import"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-test="commit-order-import"]').trigger('click')
+    await flushPromises()
+
+    expect(commitImport).toHaveBeenCalledWith(18, undefined, { 31: 'OVERWRITE', 32: 'OVERWRITE' })
   })
 
   it('keeps failed ORDER groups visible and reports a partial commit', async () => {
