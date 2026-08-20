@@ -167,7 +167,7 @@ public class SalesOrderImportCommitService {
         return new SalesOrderRequest(
                 requiredLong(first, "_customerId"), externalOrderNo,
                 LocalDate.parse(text(first, "orderDate")), text(first, "orderType"),
-                text(first, "_normalizedStatus"), text(first, "salesperson"),
+                "DRAFT", text(first, "salesperson"),
                 orderContactName, orderContactPhone,
                 text(first, "businessContactName"), text(first, "businessContactPhone"),
                 orderContactName, orderContactPhone,

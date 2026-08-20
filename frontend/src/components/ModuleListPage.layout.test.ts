@@ -13,7 +13,7 @@ it('reserves enough width for all order action buttons', async () => {
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')! } })
   await flushPromises()
 
-  expect(wrapper.get('colgroup col:last-child').attributes('style')).toContain('390px')
+  expect(wrapper.get('colgroup col:last-child').attributes('style')).toContain('470px')
 })
 
 it('reserves enough width for all after-sales action buttons', async () => {

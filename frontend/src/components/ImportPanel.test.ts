@@ -230,7 +230,7 @@ describe('simple Excel import', () => {
     expect(empty.get('[data-test="commit-order-import"]').attributes('disabled')).toBeDefined()
   })
 
-  it('confirms ORDER inventory and customer-funds consequences before using commitImport', async () => {
+  it('explains that ORDER imports remain drafts before using commitImport', async () => {
     previewImport.mockResolvedValue(structuredClone(orderBatch))
     commitImport.mockResolvedValue({ ...structuredClone(orderBatch), status: 'COMMITTED', committedRows: 2 })
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -240,9 +240,9 @@ describe('simple Excel import', () => {
     await wrapper.get('[data-test="commit-order-import"]').trigger('click')
     await flushPromises()
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('正式订单将按现有逻辑锁定库存'))
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('草稿不锁定'))
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('客户余额不会自动扣减'))
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('所有导入订单将保存为草稿'))
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('不锁定库存'))
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('人工复核'))
     expect(commitImport).toHaveBeenCalledWith(18)
     expect(commitProductImport).not.toHaveBeenCalled()
   })

@@ -10,7 +10,7 @@ const api = vi.hoisted(() => ({
   loadModule: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 }),
   postAction: vi.fn(),
   createManualPurchase: vi.fn(),
-  createEntity: vi.fn(), updateEntity: vi.fn(), createOrder: vi.fn(), updateOrder: vi.fn(), getOrder: vi.fn(),
+  createEntity: vi.fn(), updateEntity: vi.fn(), createOrder: vi.fn(), updateOrder: vi.fn(), getOrder: vi.fn(), reviewOrder: vi.fn(), deleteOrder: vi.fn(),
   loadSupplierOptions: vi.fn().mockResolvedValue([]), loadSupplierProducts: vi.fn().mockResolvedValue([]),
   loadOrderSkus: vi.fn().mockResolvedValue([]), createSupplier: vi.fn(), updateSupplier: vi.fn(), getSupplier: vi.fn(),
   loadProductCodeRules: vi.fn().mockResolvedValue([]), createProductCodeRule: vi.fn(), updateProductCodeRule: vi.fn(), deleteProductCodeRule: vi.fn()
@@ -132,6 +132,22 @@ describe('连续导航和浏览器地址状态', () => {
     wrapper.getComponent(ModuleListPage).vm.$emit('import')
     await flushPromises()
     expect(wrapper.find('[aria-label="Excel 导入面板"]').exists()).toBe(false)
+  })
+
+  it('confirms and forwards order review and deletion actions', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(App)
+    await flushPromises()
+
+    wrapper.getComponent(ModuleListPage).vm.$emit('reviewOrder', { id: 7, orderNo: 'DD20260800007' })
+    await flushPromises()
+    wrapper.getComponent(ModuleListPage).vm.$emit('deleteOrder', { id: 7, orderNo: 'DD20260800007' })
+    await flushPromises()
+
+    expect(api.reviewOrder).toHaveBeenCalledWith(7)
+    expect(api.deleteOrder).toHaveBeenCalledWith(7)
+    expect(confirm).toHaveBeenCalledTimes(2)
+    confirm.mockRestore()
   })
 
   it('opens SupplierDialog instead of EntityDialog for a supplier manual add', async () => {

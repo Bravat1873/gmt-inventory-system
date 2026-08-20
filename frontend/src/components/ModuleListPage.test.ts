@@ -81,6 +81,21 @@ it.each(['order', 'purchase', 'finance'] as const)('provides a 查看 button for
   expect(wrapper.get('[data-test="view-details"]').text()).toBe('查看')
 })
 
+it('shows review and delete actions for draft orders and delete for reviewed orders', async () => {
+  loadModule.mockResolvedValue({ items: [
+    { id: 1, status: 'DRAFT' },
+    { id: 2, status: 'READY_TO_SHIP' }
+  ], total: 2, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')! } })
+  await flushPromises()
+
+  const actions = wrapper.findAll('.row-actions')
+  expect(actions[0].text()).toContain('复核')
+  expect(actions[0].text()).toContain('删除')
+  expect(actions[1].text()).not.toContain('复核')
+  expect(actions[1].text()).toContain('删除')
+})
+
 it('uses the exact same red and green shipment status dot for purchase status', async () => {
   loadModule.mockResolvedValue({ items: [{ id: 1, status: 'RECEIVED', recordType: 'PURCHASE' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })

@@ -17,6 +17,51 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SalesOrderCommandApiTest {
     @Autowired MockMvc mvc;
     @SpyBean JdbcTemplate jdbc;
+
+    @Test void createsOrdersAsDraftThenReviewsThemToAllocateInventory() throws Exception {
+        jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
+        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]}";
+        String created=mvc.perform(post("/api/orders").contentType("application/json").content(order))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andReturn().getResponse().getContentAsString();
+        long id=new com.fasterxml.jackson.databind.ObjectMapper().readTree(created).path("data").path("id").asLong();
+
+        org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1",Integer.class));
+        mvc.perform(post("/api/orders/{id}/review",id))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("READY_TO_SHIP"));
+        org.junit.jupiter.api.Assertions.assertEquals(5,jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1",Integer.class));
+    }
+
+    @Test void deletesAnUnpaidUnshippedReviewedOrderAndReleasesItsInventory() throws Exception {
+        jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
+        String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]}";
+        String created=mvc.perform(post("/api/orders").contentType("application/json").content(order)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long id=new com.fasterxml.jackson.databind.ObjectMapper().readTree(created).path("data").path("id").asLong();
+        mvc.perform(post("/api/orders/{id}/review",id)).andExpect(status().isOk());
+
+        mvc.perform(delete("/api/orders/{id}",id)).andExpect(status().isOk());
+
+        org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM sales_order WHERE id=?",Integer.class,id));
+        org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1",Integer.class));
+    }
+
+    @Test void refusesToDeleteAnOrderThatAlreadyHasAReceipt() throws Exception {
+        jdbc.update("INSERT INTO sales_order(id,order_no,customer_id,status,total_amount,order_date) VALUES(90,'DD20260800090',1,'READY_TO_SHIP',0,CURRENT_DATE)");
+        jdbc.update("INSERT INTO customer_receipt(sales_order_id,amount,payment_method,received_at,confirmed_by) VALUES(90,1,'银行转账',CURRENT_TIMESTAMP,1)");
+
+        mvc.perform(delete("/api/orders/90"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("已确认收款的订单不可删除"));
+    }
+
+    @Test void refusesToDeleteAnOrderThatAlreadyHasShipments() throws Exception {
+        jdbc.update("INSERT INTO sales_order(id,order_no,customer_id,status,total_amount,order_date) VALUES(91,'DD20260800091',1,'SHIPPED',0,CURRENT_DATE)");
+        jdbc.update("INSERT INTO sales_shipment(id,shipment_no,sales_order_id,delivery_address,operator_name) VALUES(91,'SH20260800091',91,'深圳','管理员')");
+
+        mvc.perform(delete("/api/orders/91"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("当前订单状态不可删除"));
+    }
     @Test void listsEachSkuOnceWithPrimaryImageAndAggregatedInventory() throws Exception {
         jdbc.update("INSERT INTO warehouse VALUES(2,'SECOND','Second',FALSE,TRUE)");
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,3,2,0)");

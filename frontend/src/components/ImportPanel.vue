@@ -285,7 +285,7 @@ function orderStatusLabel(row: ImportRow) {
 async function confirmOrderImport() {
   const batch = previewBatch.value
   if (!batch || busy.value || !orderCanCommit.value) return
-  const warning = '确认提交订单导入？正式订单将按现有逻辑锁定库存，草稿不锁定，客户余额不会自动扣减。'
+  const warning = '确认提交订单导入？所有导入订单将保存为草稿，不锁定库存，也不会生成采购建议；请在订单列表中人工复核。'
   if (!window.confirm(warning)) return
   const actions = Object.fromEntries(conflictRows.value.map(row => [row.id, rowActions.value[row.id]])) as Record<number, ImportConflictAction>
   await commitPreview(() => conflictRows.value.length > 0

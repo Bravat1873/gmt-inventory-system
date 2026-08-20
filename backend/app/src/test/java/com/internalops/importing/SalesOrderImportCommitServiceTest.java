@@ -113,19 +113,19 @@ class SalesOrderImportCommitServiceTest {
     }
 
     @Test
-    void formalOrderReusesInventoryAllocationAndLocksStock() {
+    void importsFormalMarkedOrdersAsDraftWithoutLockingStock() {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
         long batch = batch("formal", List.of(row(2,
                 order("EXT-FORMAL", "PENDING_CUSTOMER_PAYMENT", 1, 4, "12.50"))));
 
         commitService.commit(batch);
 
-        assertEquals(4, jdbc.queryForObject(
+        assertEquals(0, jdbc.queryForObject(
                 "SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
-        assertEquals(4, jdbc.queryForObject(
+        assertEquals(0, jdbc.queryForObject(
                 "SELECT locked_quantity FROM sales_order_item", Integer.class));
         assertEquals(1, jdbc.queryForObject(
-                "SELECT COUNT(*) FROM inventory_transaction WHERE transaction_type='ALLOCATE' AND business_type='SALES_ORDER'", Integer.class));
+                "SELECT COUNT(*) FROM sales_order WHERE status='DRAFT'", Integer.class));
     }
 
     @Test
@@ -205,7 +205,7 @@ class SalesOrderImportCommitServiceTest {
     }
 
     @Test
-    void explicitOverwriteUpdatesTheExistingExternalOrderAndReallocatesInventory() {
+    void explicitOverwriteKeepsTheImportedOrderAsDraftWithoutInventoryLocks() {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
         insertExistingOrder("EXT-OVERWRITE");
         long existingId = jdbc.queryForObject("SELECT id FROM sales_order WHERE external_order_no='EXT-OVERWRITE'", Long.class);
@@ -218,7 +218,7 @@ class SalesOrderImportCommitServiceTest {
         assertEquals(1, count("sales_order"));
         assertEquals(existingId, jdbc.queryForObject("SELECT id FROM sales_order WHERE external_order_no='EXT-OVERWRITE'", Long.class));
         assertEquals(4, jdbc.queryForObject("SELECT quantity FROM sales_order_item WHERE sales_order_id=?", Integer.class, existingId));
-        assertEquals(4, jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
         assertEquals(1, result.committedRows());
         assertEquals(0, result.errorRows());
     }
@@ -253,7 +253,7 @@ class SalesOrderImportCommitServiceTest {
         assertEquals(null, secondFailure);
         assertEquals(1, count("sales_order"));
         assertEquals(1, count("sales_order_item"));
-        assertEquals(4, jdbc.queryForObject(
+        assertEquals(0, jdbc.queryForObject(
                 "SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
         assertEquals(List.of("COMMITTED", "COMMITTED"), List.of(
                 repository.status(firstBatch), repository.status(secondBatch)).stream().sorted().toList());
@@ -277,9 +277,9 @@ class SalesOrderImportCommitServiceTest {
         assertEquals(List.of("EXT-SECOND", "EXT-FIRST"), jdbc.queryForList(
                 "SELECT external_order_no FROM sales_order ORDER BY id", String.class));
         assertEquals(1, count("sales_order_item"));
-        assertEquals(4, jdbc.queryForObject(
+        assertEquals(0, jdbc.queryForObject(
                 "SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1", Integer.class));
-        assertEquals(1, jdbc.queryForObject(
+        assertEquals(0, jdbc.queryForObject(
                 "SELECT COUNT(*) FROM inventory_transaction WHERE transaction_type='ALLOCATE'", Integer.class));
         assertEquals("COMMITTED", repository.status(batch));
         assertEquals(1, result.committedRows());

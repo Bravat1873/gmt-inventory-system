@@ -17,6 +17,8 @@ public class SalesOrderController {
     @GetMapping("/contract-price") public ApiResponse<Map<String,Object>> contractPrice(@RequestParam long customerId,@RequestParam long skuId){return ApiResponse.ok(service.contractPrice(customerId,skuId));}
     @GetMapping("/{id}") public ApiResponse<Map<String,Object>> get(@PathVariable long id){return ApiResponse.ok(service.get(id));}
     @PutMapping("/{id}") public ApiResponse<Map<String,Object>> update(@PathVariable long id,@RequestBody SalesOrderRequest r){return ApiResponse.ok(service.update(id,r));}
+    @PostMapping("/{id}/review") public ApiResponse<Map<String,Object>> review(@PathVariable long id){return ApiResponse.ok(service.review(id));}
+    @DeleteMapping("/{id}") public ApiResponse<Object> delete(@PathVariable long id){service.delete(id);return ApiResponse.ok(null);}
     @GetMapping("/{id}/allocations") public ApiResponse<Map<String,Object>> allocations(@PathVariable long id){return ApiResponse.ok(allocationService.view(id));}
     @PutMapping("/{id}/allocations") public ApiResponse<Map<String,Object>> updateAllocations(@PathVariable long id,@RequestBody OrderAllocationRequest r){return ApiResponse.ok(allocationService.update(id,r));}
     @PutMapping("/{id}/shipment-quantities") public ApiResponse<Map<String,Object>> updateShipmentQuantities(@PathVariable long id,@RequestBody ShipmentQuantityRequest r){return ApiResponse.ok(shipmentQuantityService.update(id,r));}

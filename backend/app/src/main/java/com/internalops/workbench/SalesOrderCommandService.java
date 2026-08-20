@@ -21,7 +21,8 @@ import java.util.Set;
 @Service
 public class SalesOrderCommandService {
     // 发货、库存锁定和开票状态必须由对应的业务动作推进，避免手工改状态绕过出入库流水。
-    private static final Set<String> EDITABLE_STATUSES = Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT");
+    private static final Set<String> EDITABLE_STATUSES = Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT", "READY_TO_SHIP", "WAITING_STOCK");
+    private static final Set<String> DELETABLE_STATUSES = Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT", "READY_TO_SHIP", "WAITING_STOCK");
     private static final Set<String> ORDER_TYPES = Set.of("\u5de5\u7a0b\u8ba2\u5355", "\u96f6\u552e\u8ba2\u5355", "\u524d\u7f6e\u8ba2\u5355");
     private final JdbcTemplate jdbc;
     private final InventoryAllocationService allocation;
@@ -49,7 +50,7 @@ public class SalesOrderCommandService {
                 blankToNull(request.remark()), blankToNull(request.deliveryAddress()), blankToNull(request.deliveryContact()), blankToNull(request.deliveryPhone()), blankToNull(request.shippingMethod()));
         insertItems(id, request.items());
         if ("PENDING_CUSTOMER_PAYMENT".equals(status(request))) allocation.allocate(id);
-        autoProcurement.requestRecalculation();
+        if (!"DRAFT".equals(status(request))) autoProcurement.requestRecalculation();
         return get(id);
     }
 
@@ -227,20 +228,57 @@ public class SalesOrderCommandService {
         validate(request);
         if (request.version() == null) throw new IllegalArgumentException("缺少数据版本，请重新打开后再试");
         String currentStatus = jdbc.queryForObject("SELECT status FROM sales_order WHERE id=? FOR UPDATE", String.class, id);
-        if (!Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT", "READY_TO_SHIP", "WAITING_STOCK").contains(currentStatus)) throw new IllegalStateException("确认收款后不可直接修改，只能走异常处理");
-        allocation.releaseAll(id, "ORDER_EDIT_RELEASE");
+        if (!EDITABLE_STATUSES.contains(currentStatus)) throw new IllegalStateException("确认收款后不可直接修改，只能走异常处理");
+        if (!"DRAFT".equals(currentStatus)) allocation.releaseAll(id, "ORDER_EDIT_RELEASE");
         String orderContactName = firstNonBlank(request.orderContactName(), request.customerContact());
         String orderContactPhone = firstNonBlank(request.orderContactPhone(), request.customerPhone());
         int changed = jdbc.update("UPDATE sales_order SET external_order_no=?,customer_id=?,status=?,total_amount=?,order_date=?,order_type=?,salesperson=?,customer_contact=?,customer_phone=?,business_contact_name=?,business_contact_phone=?,order_contact_name=?,order_contact_phone=?,finance_contact_name=?,finance_contact_phone=?,order_remark=?,delivery_address=?,delivery_contact=?,delivery_phone=?,shipping_method=?,version=version+1 WHERE id=? AND version=?",
-                blankToNull(request.externalOrderNo()), request.customerId(), status(request), total(request), request.orderDate(), trim(request.orderType()), trim(request.salesperson()), orderContactName, orderContactPhone,
+                blankToNull(request.externalOrderNo()), request.customerId(), requestedStatusOrCurrent(request, currentStatus), total(request), request.orderDate(), trim(request.orderType()), trim(request.salesperson()), orderContactName, orderContactPhone,
                 blankToNull(request.businessContactName()), blankToNull(request.businessContactPhone()), orderContactName, orderContactPhone, blankToNull(request.financeContactName()), blankToNull(request.financeContactPhone()),
                 blankToNull(request.remark()), blankToNull(request.deliveryAddress()), blankToNull(request.deliveryContact()), blankToNull(request.deliveryPhone()), blankToNull(request.shippingMethod()), id, request.version());
         if (changed == 0) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
         jdbc.update("DELETE FROM sales_order_item WHERE sales_order_id=?", id);
         insertItems(id, request.items());
-        if ("PENDING_CUSTOMER_PAYMENT".equals(status(request))) allocation.allocate(id);
+        if (!"DRAFT".equals(requestedStatusOrCurrent(request, currentStatus))) {
+            allocation.allocate(id);
+            autoProcurement.requestRecalculation();
+        }
+        return get(id);
+    }
+
+    @Transactional
+    public Map<String, Object> review(long id) {
+        String currentStatus = jdbc.queryForObject("SELECT status FROM sales_order WHERE id=? FOR UPDATE", String.class, id);
+        if (!"DRAFT".equals(currentStatus)) throw new IllegalStateException("仅草稿订单可以复核");
+        allocation.allocate(id);
         autoProcurement.requestRecalculation();
         return get(id);
+    }
+
+    @Transactional
+    public void delete(long id) {
+        String currentStatus = jdbc.queryForObject("SELECT status FROM sales_order WHERE id=? FOR UPDATE", String.class, id);
+        if (!DELETABLE_STATUSES.contains(currentStatus)) throw new IllegalStateException("当前订单状态不可删除");
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM customer_receipt WHERE sales_order_id=?", Integer.class, id) > 0) {
+            throw new IllegalStateException("已确认收款的订单不可删除");
+        }
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM sales_shipment WHERE sales_order_id=?", Integer.class, id) > 0) {
+            throw new IllegalStateException("已发货的订单不可删除");
+        }
+        if (jdbc.queryForObject("""
+                SELECT COUNT(*) FROM shortage_coverage sc
+                JOIN procurement_suggestion_item psi ON psi.id=sc.suggestion_item_id
+                JOIN procurement_suggestion ps ON ps.id=psi.suggestion_id
+                WHERE sc.active=TRUE AND ps.status='CONFIRMED'
+                  AND sc.sales_order_item_id IN (SELECT id FROM sales_order_item WHERE sales_order_id=?)
+                """, Integer.class, id) > 0) {
+            throw new IllegalStateException("已生成采购单的订单不可删除");
+        }
+        if (!"DRAFT".equals(currentStatus)) allocation.releaseAll(id, "ORDER_DELETE_RELEASE");
+        jdbc.update("UPDATE shortage_coverage SET active=FALSE WHERE sales_order_item_id IN (SELECT id FROM sales_order_item WHERE sales_order_id=?)", id);
+        jdbc.update("DELETE FROM sales_order_item WHERE sales_order_id=?", id);
+        jdbc.update("DELETE FROM sales_order WHERE id=?", id);
+        autoProcurement.requestRecalculation();
     }
 
     private void validate(SalesOrderRequest request) {
@@ -248,7 +286,7 @@ public class SalesOrderCommandService {
         if (request.orderDate() == null) throw new IllegalArgumentException("请选择订单日期");
         if (!ORDER_TYPES.contains(trim(request.orderType()))) throw new IllegalArgumentException("\u8ba2\u5355\u7c7b\u578b\u53ea\u80fd\u9009\u62e9\u5de5\u7a0b\u8ba2\u5355\u3001\u96f6\u552e\u8ba2\u5355\u6216\u524d\u7f6e\u8ba2\u5355");
         if (blankToNull(request.salesperson()) == null) throw new IllegalArgumentException("请填写销售员");
-        if (!EDITABLE_STATUSES.contains(status(request))) throw new IllegalArgumentException("不支持的订单状态");
+        if (!Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT").contains(status(request))) throw new IllegalArgumentException("不支持的订单状态");
         if (request.items() == null || request.items().isEmpty()) throw new IllegalArgumentException("订单至少需要一条产品明细");
         for (SalesOrderRequest.Item item : request.items()) {
             if (item.skuId() == null || jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE id=? AND enabled=TRUE", Integer.class, item.skuId()) == 0) throw new IllegalArgumentException("订单中存在无效产品");
@@ -276,7 +314,10 @@ public class SalesOrderCommandService {
         return value == null ? blankToNull(fallback) : value;
     }
     private String trim(String value) { return value == null ? null : value.trim(); }
-    private String status(SalesOrderRequest request) { return blankToNull(request.status()) == null ? "PENDING_CUSTOMER_PAYMENT" : request.status().trim(); }
+    private String requestedStatusOrCurrent(SalesOrderRequest request, String currentStatus) {
+        return blankToNull(request.status()) == null ? currentStatus : request.status().trim();
+    }
+    private String status(SalesOrderRequest request) { return blankToNull(request.status()) == null ? "DRAFT" : request.status().trim(); }
 }
 
 

@@ -17,7 +17,6 @@ const form = reactive({
   externalOrderNo: String(props.row?.externalOrderNo ?? ''),
   orderDate: String(props.row?.orderDate ?? today).slice(0, 10),
   orderType: ['\u5de5\u7a0b\u8ba2\u5355', '\u96f6\u552e\u8ba2\u5355', '\u524d\u7f6e\u8ba2\u5355'].includes(String(props.row?.orderType ?? '')) ? String(props.row?.orderType) : '',
-  status: String(props.row?.status ?? 'PENDING_CUSTOMER_PAYMENT'),
   salesperson: String(props.row?.salesperson ?? props.defaultSalesperson ?? ''),
   customerContact: snapshotValue('customerContact'),
   customerPhone: snapshotValue('customerPhone'),
@@ -171,7 +170,6 @@ onMounted(async () => {
             <label><span>订单编号</span><input :value="String(row?.orderNo ?? '保存后自动生成')" disabled></label>
             <label :class="{ 'field-invalid': hasError('请选择订单日期') }"><span>订单日期 <small v-if="hasError('请选择订单日期')" data-test="date-error" class="field-error">请选择订单日期</small></span><ChineseDatePicker v-model="form.orderDate" placeholder="请选择订单日期" /></label>
             <label :class="{ 'field-invalid': hasError('请选择订单类型') }"><span>订单类型 <small v-if="hasError('请选择订单类型')" data-test="order-type-error" class="field-error">请选择订单类型</small></span><select v-model="form.orderType" data-test="order-type-select"><option value="">请选择订单类型</option><option value="工程订单">工程订单</option><option value="零售订单">零售订单</option><option value="前置订单">前置订单</option></select></label>
-            <label><span>订单状态</span><select v-model="form.status"><option value="DRAFT">草稿</option><option value="PENDING_CUSTOMER_PAYMENT">确认订单并分配库存</option></select></label>
             <label :class="{ 'field-invalid': hasError('请填写销售员') }"><span>销售员 <small v-if="hasError('请填写销售员')" data-test="salesperson-error" class="field-error">请填写销售员</small></span><input v-model.trim="form.salesperson"></label>
           </div>
         </section>

@@ -26,7 +26,7 @@ import AfterSalesReceiptDialog from './components/AfterSalesReceiptDialog.vue'
 import AfterSalesShipmentDialog from './components/AfterSalesShipmentDialog.vue'
 import AfterSalesRefundDialog from './components/AfterSalesRefundDialog.vue'
 import { cancelAfterSales, loadAfterSales, type AfterSalesDetail } from './api/after-sales'
-import { getOrder, loadBusinessTrace, loadOrderAllocations, loadPurchase, postAction, type BusinessTrace, type OrderAllocation, type PurchaseDetail } from './api/workbench'
+import { deleteOrder, getOrder, loadBusinessTrace, loadOrderAllocations, loadPurchase, postAction, reviewOrder, type BusinessTrace, type OrderAllocation, type PurchaseDetail } from './api/workbench'
 import { moduleDefinitions, type ModuleKey } from './modules/module-config'
 import { useGlobalDialogCloseGuard } from './composables/useUnsavedChangesGuard'
 
@@ -222,6 +222,16 @@ async function shipment(row: Record<string, unknown>) {
   try { shipmentOrder.value = await getOrder(Number(row.id)); shipmentOpen.value = true }
   catch (cause) { showMessage(cause instanceof Error ? cause.message : '璇诲彇璁㈠崟鍙戣揣淇℃伅澶辫触', 'error') }
 }
+async function reviewOrderRow(row: Record<string, unknown>) {
+  if (!window.confirm(`确认复核订单“${String(row.orderNo ?? '')}”吗？复核后将锁定可用库存，并生成采购建议。`)) return
+  try { await reviewOrder(Number(row.id)); showMessage('订单已复核'); list.value?.reload() }
+  catch (cause) { showMessage(cause instanceof Error ? cause.message : '订单复核失败', 'error') }
+}
+async function deleteOrderRow(row: Record<string, unknown>) {
+  if (!window.confirm(`确认删除订单“${String(row.orderNo ?? '')}”吗？已锁定库存将释放，采购建议会重新计算。`)) return
+  try { await deleteOrder(Number(row.id)); showMessage('订单已删除'); list.value?.reload() }
+  catch (cause) { showMessage(cause instanceof Error ? cause.message : '订单删除失败', 'error') }
+}
 
 async function openAfterSalesReceipt(row: Record<string, unknown>) { try { afterSalesDetail.value=await loadAfterSales(Number(row.id)); afterSalesReceiptOpen.value=true } catch(cause){ showMessage(cause instanceof Error?cause.message:'读取售后单失败','error') } }
 async function openAfterSalesShipment(row: Record<string, unknown>) { try { afterSalesDetail.value=await loadAfterSales(Number(row.id)); afterSalesShipmentOpen.value=true } catch(cause){ showMessage(cause instanceof Error?cause.message:'读取售后单失败','error') } }
@@ -235,7 +245,7 @@ async function workflow(row: Record<string, unknown>) {
       procurementReviewId.value = id
       return
     }
-    showMessage('草稿订单请先修改为确认订单')
+    showMessage('草稿订单请在订单列表中复核')
     return
   }
   if (status === 'READY_TO_SHIP') {
@@ -280,7 +290,7 @@ async function saved(closeDialog = true) {
     </aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><DashboardPage v-if="activeModule === 'dashboard'" @navigate="navigateFromDashboard" /><ProductCodeRulesDialog v-else-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @import="openImport" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
+    <main><div class="content"><DashboardPage v-if="activeModule === 'dashboard'" @navigate="navigateFromDashboard" /><ProductCodeRulesDialog v-else-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @import="openImport" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @review-order="reviewOrderRow" @delete-order="deleteOrderRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
     <div v-if="importOpen && currentModule.importType && canUseCurrentModuleImport" class="dialog-mask import-dialog-mask"><ImportPanel :type="currentModule.importType" :title="currentModule.importActionLabel ?? currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <CustomerDialog v-if="entityOpen && activeModule === 'customer'" :row="editRow" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />

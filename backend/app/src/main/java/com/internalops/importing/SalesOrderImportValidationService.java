@@ -167,7 +167,9 @@ public class SalesOrderImportValidationService {
         }
         throw new DateTimeParseException("订单日期格式错误", value, 0);
     }
-    private String normalizedStatus(String value) { return value.isBlank() || "正式订单".equals(value) ? "PENDING_CUSTOMER_PAYMENT" : "草稿".equals(value) ? "DRAFT" : null; }
+    private String normalizedStatus(String value) {
+        return value.isBlank() || "草稿".equals(value) || "正式订单".equals(value) ? "DRAFT" : null;
+    }
     private String text(Map<String, Object> data, String key) { Object value = data.get(key); return value == null ? "" : value.toString().trim(); }
     private ParsedImportRow error(ParsedImportRow row, Map<String, Object> data, String message) { return new ParsedImportRow(row.sheetName(), row.rowNumber(), ImportRowStatus.ERROR, data, message); }
     private record Sku(long id, String customerPartNumber) { }

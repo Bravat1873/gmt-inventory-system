@@ -7,7 +7,7 @@ import OverflowText from './OverflowText.vue'
 import ProcurementConfigurationAlert from './ProcurementConfigurationAlert.vue'
 
 const props = defineProps<{ module: ModuleDefinition; currentUserRole?: UserRole }>()
-const emit = defineEmits<{ action: []; import: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; funds: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesRefund: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; navigateSupplier: []; message: [text: string, kind?: 'success' | 'error'] }>()
+const emit = defineEmits<{ action: []; import: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; funds: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; reviewOrder: [row: Record<string, unknown>]; deleteOrder: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesRefund: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; navigateSupplier: []; message: [text: string, kind?: 'success' | 'error'] }>()
 const keyword = ref('')
 const loading = ref(false)
 const data = ref<PageResult>({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
@@ -30,7 +30,7 @@ function text(value: unknown, field?: string) {
   if (field === 'materialType') return ({ FINISHED_PRODUCT: '成品', PART: '零件' } as Record<string, string>)[String(value)] ?? String(value)
   if (field === 'role') return ({ ADMIN: '管理员', FINANCE: '财务', USER: '普通用户' } as Record<string, string>)[String(value)] ?? String(value)
   if (field === 'createdAt' || field === 'updatedAt' || field === 'oldestStockDate') { const matched = String(value).match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2})/); if (matched) return `${matched[1]} ${matched[2]}` }
-  const statuses: Record<string, string> = { DRAFT: '草稿', PENDING_CUSTOMER_PAYMENT: '确认订单并分配库存', WAITING_STOCK: '等待齐货', READY_TO_SHIP: '等待发货', SHIPPED: '已发货', PENDING_SUPPLIER_PAYMENT: '待登记付款', EXECUTING: '采购执行中', RECEIVED: '已入库', COMPLETED: '已完成', UNPAID: '未付款', PARTIALLY_PAID: '部分付款', PAID: '已付清', UNRECEIVED: '未收货', PARTIALLY_RECEIVED: '部分收货', RECEIVABLE: '收', PAYABLE: '付' }
+  const statuses: Record<string, string> = { DRAFT: '草稿', PENDING_CUSTOMER_PAYMENT: '正式订单', WAITING_STOCK: '等待齐货', READY_TO_SHIP: '等待发货', SHIPPED: '已发货', PENDING_SUPPLIER_PAYMENT: '待登记付款', EXECUTING: '采购执行中', RECEIVED: '已入库', COMPLETED: '已完成', UNPAID: '未付款', PARTIALLY_PAID: '部分付款', PAID: '已付清', UNRECEIVED: '未收货', PARTIALLY_RECEIVED: '部分收货', RECEIVABLE: '收', PAYABLE: '付' }
   const afterSales: Record<string,string> = { RETURN:'退货', EXCHANGE:'换货', WAITING_RETURN:'待收退货', RETURN_RECEIVED:'已收退货', WAITING_REPLACEMENT:'待发换货', COMPLETED:'已完成', CANCELLED:'已取消' }
   return afterSales[String(value)] ?? statuses[String(value)] ?? String(value)
 }
@@ -74,7 +74,7 @@ function columnWidth(field: string) {
 }
 const actionColumnWidth = computed(() => {
   if (props.module.key === 'customer') return 190
-  if (props.module.key === 'order') return 390
+  if (props.module.key === 'order') return 470
   if (props.module.key === 'purchase') return 240
   if (props.module.key === 'afterSales') return 300
   if (props.module.key === 'finance') return 210
@@ -123,6 +123,8 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
               <td class="row-actions">
                 <button v-if="['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')" data-test="view-details" @click="emit('details', row)">查看</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('receipt', row)">登记收款</button>
+                <button v-if="module.key === 'order' && row.status === 'DRAFT'" data-test="review-order" @click="emit('reviewOrder', row)">复核</button>
+                <button v-if="module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT', 'READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))" data-test="delete-order" class="danger-action" @click="emit('deleteOrder', row)">删除</button>
                 <button v-if="module.key === 'order' && ['READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))" data-test="order-allocation" @click="emit('allocation', row)">分配库存</button>
                 <button v-if="module.key === 'customer'" data-test="customer-funds" @click="emit('funds', row)">资金管理</button>
                 <button v-if="canEditRow() && (['customer', 'user', 'product', 'supplier', 'inventory'].includes(module.key) || (module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT', 'READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))))" @click="emit('edit', row)">修改</button>

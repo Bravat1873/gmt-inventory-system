@@ -165,6 +165,12 @@ export function updateCustomer(id:number,data:CustomerCommand) { return request<
 export function updateOrder(id: number, data: Record<string, unknown>) {
   return request<Record<string, unknown>>(`/api/orders/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 }
+export function reviewOrder(id: number) {
+  return request<Record<string, unknown>>(`/api/orders/${id}/review`, { method: 'POST', body: JSON.stringify({}) })
+}
+export function deleteOrder(id: number) {
+  return request<void>(`/api/orders/${id}`, { method: 'DELETE' })
+}
 export interface ShipmentQuantityItem { lineNo: number; shippedQuantity: number }
 export function updateShipmentQuantities(orderId: number, deliveryAddress: string, items: ShipmentQuantityItem[], remark?: string) {
   return request<Record<string, unknown>>(`/api/orders/${orderId}/shipment-quantities`, {

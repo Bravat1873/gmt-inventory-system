@@ -68,7 +68,7 @@ class SalesOrderImportValidationServiceTest {
         assertThat(result.status()).isEqualTo(ImportRowStatus.VALID);
         assertThat(result.data()).containsEntry("_customerId", 1L)
                 .containsEntry("_skuId", 10L)
-                .containsEntry("_normalizedStatus", "PENDING_CUSTOMER_PAYMENT")
+                .containsEntry("_normalizedStatus", "DRAFT")
                 .containsEntry("quantity", 2)
                 .containsEntry("salePrice", new BigDecimal("10.50"));
     }
