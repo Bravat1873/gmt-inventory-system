@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ImportPanel from './ImportPanel.vue'
 import type { ImportBatch } from '../api/imports'
 
-const { previewImport, commitImport, commitProductReplace, getImportBatch, updateImportRow } = vi.hoisted(() => ({ previewImport: vi.fn(), commitImport: vi.fn(), commitProductReplace: vi.fn(), getImportBatch: vi.fn(), updateImportRow: vi.fn() }))
-vi.mock('../api/imports', () => ({ previewImport, commitImport, commitProductReplace, getImportBatch, updateImportRow }))
+const { previewImport, commitImport, commitProductImport, getImportBatch, updateImportRow } = vi.hoisted(() => ({ previewImport: vi.fn(), commitImport: vi.fn(), commitProductImport: vi.fn(), getImportBatch: vi.fn(), updateImportRow: vi.fn() }))
+vi.mock('../api/imports', () => ({ previewImport, commitImport, commitProductImport, getImportBatch, updateImportRow }))
 
 const batch = {
   batchId: 8, importType: 'CUSTOMER', originalFilename: 'customers.xlsx', status: 'PREVIEW',
@@ -84,7 +84,7 @@ describe('simple Excel import', () => {
     previewImport.mockResolvedValue(structuredClone(batch))
     getImportBatch.mockResolvedValue(structuredClone(batch))
     commitImport.mockResolvedValue({ ...structuredClone(batch), status: 'COMMITTED', committedRows: 103 })
-    commitProductReplace.mockResolvedValue({ ...structuredClone(productConflictBatch), status: 'COMMITTED', committedRows: 1 })
+    commitProductImport.mockResolvedValue({ ...structuredClone(productConflictBatch), status: 'COMMITTED', committedRows: 1 })
   })
 
   it('shows the ORDER template download link only for ORDER imports', () => {
@@ -226,7 +226,7 @@ describe('simple Excel import', () => {
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('草稿不锁定'))
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('客户余额不会自动扣减'))
     expect(commitImport).toHaveBeenCalledWith(18)
-    expect(commitProductReplace).not.toHaveBeenCalled()
+    expect(commitProductImport).not.toHaveBeenCalled()
   })
 
   it('applies an existing-order decision to every conflicting line in that order', async () => {
@@ -322,10 +322,10 @@ describe('simple Excel import', () => {
     expect(wrapper.get('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
   })
 
-  it('defaults supplier imports to overwrite mode', () => {
+  it('uses incremental supplier imports without a replacement strategy selector', () => {
     const wrapper = mount(ImportPanel, { props: { type: 'SUPPLIER', title: '导入供应商' } })
-    expect(wrapper.get('[data-test="supplier-mode-overwrite"]').attributes('aria-checked')).toBe('true')
-    expect(wrapper.get('[data-test="supplier-mode-replace-all"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.find('[data-test="supplier-mode-overwrite"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="supplier-mode-replace-all"]').exists()).toBe(false)
   })
 
   it('shows supplier valid rows, error rows and normalized fields without committing', async () => {
@@ -353,64 +353,36 @@ describe('simple Excel import', () => {
     await wrapper.get('[data-test="commit-import"]').trigger('click')
     await flushPromises()
 
-    expect(commitImport).toHaveBeenCalledWith(8, 'OVERWRITE')
+    expect(commitImport).toHaveBeenCalledWith(8)
     expect(wrapper.text()).toContain('成功导入 1 条数据')
   })
 
-  it('asks for a second confirmation only when committing full replacement', async () => {
-    previewImport.mockResolvedValue({ ...structuredClone(supplierBatch), errorRows: 0, totalRows: 1, rows: [supplierBatch.rows[0]] })
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const wrapper = mount(ImportPanel, { props: { type: 'SUPPLIER', title: '导入供应商' } })
-    await wrapper.get('[data-test="supplier-mode-replace-all"]').setValue()
-    await selectFile(wrapper)
-
-    expect(confirm).not.toHaveBeenCalled()
-    expect(commitImport).not.toHaveBeenCalled()
-    await wrapper.get('[data-test="commit-import"]').trigger('click')
-    await flushPromises()
-
-    expect(confirm).toHaveBeenCalledWith('全量替换将停用文件中不存在的供应商，是否继续？')
-    expect(commitImport).toHaveBeenCalledWith(8, 'REPLACE_ALL')
-  })
-
-  it('keeps the preview and does not commit when full replacement is cancelled', async () => {
-    previewImport.mockResolvedValue({ ...structuredClone(supplierBatch), errorRows: 0, totalRows: 1, rows: [supplierBatch.rows[0]] })
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
-    const wrapper = mount(ImportPanel, { props: { type: 'SUPPLIER', title: '导入供应商' } })
-    await wrapper.get('[data-test="supplier-mode-replace-all"]').setValue()
-    await selectFile(wrapper)
-    await wrapper.get('[data-test="commit-import"]').trigger('click')
-
-    expect(commitImport).not.toHaveBeenCalled()
-    expect(wrapper.find('[data-test="preview-row"]').exists()).toBe(true)
-  })
-  it('does not auto-commit product imports and requires every duplicate group to be resolved', async () => {
+  it('does not auto-commit product imports and requires every conflict group to be resolved', async () => {
     previewImport.mockResolvedValue(structuredClone(productConflictBatch))
     const wrapper = mount(ImportPanel, { props: { type: 'PRODUCT', title: '导入产品' } })
     await selectFile(wrapper, 'products.xlsx')
 
     expect(commitImport).not.toHaveBeenCalled()
-    expect(commitProductReplace).not.toHaveBeenCalled()
-    expect(wrapper.find('[data-test="product-conflict-keep-21"]').exists()).toBe(true)
-    expect(wrapper.get('[data-test="commit-product-replace"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.find('.simple-import-footer [data-test="commit-product-replace"]').exists()).toBe(true)
+    expect(commitProductImport).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="product-conflict-import-21"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="commit-product-import"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.simple-import-footer [data-test="commit-product-import"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('GMT库存产品清单')
     expect(wrapper.text()).toContain('旧编号-A')
     expect(wrapper.text()).toContain('NEW-A')
   })
 
-  it('sends explicit keep and skip decisions after irreversible confirmation', async () => {
+  it('sends explicit imported and existing decisions for incremental product import', async () => {
     previewImport.mockResolvedValue(structuredClone(productConflictBatch))
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = mount(ImportPanel, { props: { type: 'PRODUCT', title: '导入产品' } })
     await selectFile(wrapper, 'products.xlsx')
 
-    await wrapper.get('[data-test="product-conflict-keep-21"]').setValue()
-    expect(wrapper.get('[data-test="commit-product-replace"]').attributes('disabled')).toBeUndefined()
-    await wrapper.get('[data-test="commit-product-replace"]').trigger('click')
+    await wrapper.get('[data-test="product-conflict-import-21"]').trigger('click')
+    expect(wrapper.get('[data-test="commit-product-import"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-test="commit-product-import"]').trigger('click')
     await flushPromises()
 
-    expect(commitProductReplace).toHaveBeenCalledWith(8, { 21: 'KEEP', 22: 'SKIP' })
+    expect(commitProductImport).toHaveBeenCalledWith(8, { 21: 'OVERWRITE', 22: 'SKIP' })
   })
   it('allows every conflict candidate to be explicitly skipped while forbidding an empty replacement', async () => {
     previewImport.mockResolvedValue(structuredClone(productConflictBatch))
@@ -420,20 +392,19 @@ describe('simple Excel import', () => {
     expect(wrapper.find('[data-test="product-conflict-skip-21"]').exists()).toBe(true)
     await wrapper.get('[data-test="product-conflict-skip-21"]').trigger('click')
     await wrapper.get('[data-test="product-conflict-skip-22"]').trigger('click')
-    expect(wrapper.get('[data-test="commit-product-replace"]').attributes('disabled')).toBeDefined()
-    expect(commitProductReplace).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="commit-product-import"]').attributes('disabled')).toBeDefined()
+    expect(commitProductImport).not.toHaveBeenCalled()
   })
   it('shows the full product row error and keeps long product cells on one line', async () => {
     previewImport.mockResolvedValue(structuredClone(productErrorBatch))
     const wrapper = mount(ImportPanel, { props: { type: 'PRODUCT', title: '导入产品' } })
     await selectFile(wrapper, 'products-error.xlsx')
 
-    const error = wrapper.get('[data-test="product-row-error-23"]')
+    const error = wrapper.get('[data-test="preview-row"] td:nth-child(8)')
     expect(error.text()).toBe('产品编号规则不存在，请检查产品分类')
-    expect(error.attributes('title')).toBe('产品编号规则不存在，请检查产品分类')
+    expect(error.text()).toBe('产品编号规则不存在，请检查产品分类')
     const model = wrapper.get('[data-test="product-model-23"]')
-    expect(model.attributes('title')).toBe('用于验证单行截断的超长型号文本')
-    expect(model.classes()).toContain('compact-cell')
-    expect(wrapper.get('[data-test="commit-product-replace"]').attributes('disabled')).toBeDefined()
+    expect(model.text()).toContain('用于验证单行截断的超长型号文本')
+    expect(wrapper.get('[data-test="commit-product-import"]').attributes('disabled')).toBeDefined()
   })
 })

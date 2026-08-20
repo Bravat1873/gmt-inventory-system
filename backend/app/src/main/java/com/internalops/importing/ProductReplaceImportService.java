@@ -1,10 +1,7 @@
 package com.internalops.importing;
 
-import com.internalops.auth.CurrentUser;
-import com.internalops.auth.UserRole;
 import com.internalops.productcode.ProductCodeSelection;
 import com.internalops.productcode.ProductUniqueId;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -26,61 +23,52 @@ import java.util.Set;
 
 @Service
 public class ProductReplaceImportService {
-    private static final List<String> DELETE_ORDER = List.of(
-            "after_sales_replacement_line", "after_sales_event", "after_sales_return_line", "after_sales_order",
-            "sales_shipment_item", "sales_shipment", "customer_receipt", "sales_invoice", "exception_case",
-            "shortage_coverage", "goods_receipt_item", "goods_receipt", "supplier_payment",
-            "purchase_order_item", "purchase_order", "procurement_suggestion_item", "procurement_suggestion",
-            "sales_order_item", "sales_order",
-            "inventory_locked_allocation", "inventory_transaction", "inventory_balance",
-            "sku_cost_history", "customer_contract_price", "product_image",
-            "sku_supplier_purchase_info", "sku_supplier_config", "sku");
-
     private final JdbcTemplate jdbc;
     private final ImportBatchRepository repository;
     private final ProductImportCodeResolver codeResolver;
-    private final boolean replaceEnabled;
-
     public ProductReplaceImportService(JdbcTemplate jdbc, ImportBatchRepository repository,
-                                       ProductImportCodeResolver codeResolver,
-                                       @Value("${app.import.product-replace-enabled:false}") boolean replaceEnabled) {
+                                       ProductImportCodeResolver codeResolver) {
         this.jdbc = jdbc;
         this.repository = repository;
         this.codeResolver = codeResolver;
-        this.replaceEnabled = replaceEnabled;
     }
 
     @Transactional
     public ImportBatchView replace(ImportBatchView batch, Map<Long, ProductConflictAction> requestedActions) {
-        requireAllowed(batch);
+        requireImportable(batch);
         Map<Long, ProductConflictAction> actions = requestedActions == null ? Map.of() : Map.copyOf(requestedActions);
         List<SelectedProduct> selected = validateAndSelect(batch, actions);
         if (selected.isEmpty()) throw new IllegalArgumentException("没有可导入的产品");
 
-        DELETE_ORDER.forEach(table -> jdbc.update("DELETE FROM " + table));
+        int created = 0;
+        int updated = 0;
         for (SelectedProduct product : selected) {
-            long skuId = insertProduct(product.row(), product.resolved());
+            long skuId;
+            if (product.existingSkuId() == null) {
+                skuId = insertProduct(product.row(), product.resolved());
+                created++;
+            } else {
+                skuId = product.existingSkuId();
+                updateProduct(skuId, product.row(), product.resolved());
+                updated++;
+            }
             insertInventory(skuId, product.row().data());
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("created", selected.size());
-        result.put("updated", 0);
+        result.put("created", created);
+        result.put("updated", updated);
         result.put("committed", selected.size());
         result.put("skipped", batch.validRows() - selected.size());
         result.put("errors", 0);
         result.put("ignored", batch.ignoredRows());
-        result.put("mode", "PRODUCT_REPLACE_ALL");
+        result.put("mode", "PRODUCT_INCREMENTAL");
         repository.markCommitted(batch.batchId(), selected.size(), result);
         return repository.findBatch(batch.batchId());
     }
 
-    private void requireAllowed(ImportBatchView batch) {
-        if (!replaceEnabled) throw new IllegalStateException("当前环境未启用产品全量替换");
-        if (CurrentUser.required().role() != UserRole.ADMIN) {
-            throw new IllegalArgumentException("仅管理员可执行产品全量替换");
-        }
-        if (batch.importType() != ImportType.PRODUCT) throw new IllegalArgumentException("仅产品批次可执行产品全量替换");
+    private void requireImportable(ImportBatchView batch) {
+        if (batch.importType() != ImportType.PRODUCT) throw new IllegalArgumentException("仅产品批次可执行产品增量导入");
         if (!"PREVIEW".equals(batch.status())) throw new IllegalArgumentException("产品导入批次状态不允许提交");
         if (batch.errorRows() > 0 || batch.rows().stream().anyMatch(row -> row.status() == ImportRowStatus.ERROR)) {
             throw new IllegalArgumentException("产品导入存在错误行，请先修正");
@@ -107,7 +95,7 @@ public class ProductReplaceImportService {
                 throw new IllegalArgumentException("产品唯一ID已变化，请重新预览后再提交");
             }
             byBusinessUniqueId.computeIfAbsent(businessUniqueId, ignored -> new ArrayList<>())
-                    .add(new SelectedProduct(row, resolved));
+                    .add(new SelectedProduct(row, resolved, findExistingSkuId(businessUniqueId)));
         }
 
         List<SelectedProduct> selected = new ArrayList<>();
@@ -116,11 +104,11 @@ public class ProductReplaceImportService {
             if (group.size() == 1) {
                 SelectedProduct product = group.get(0);
                 ProductConflictAction action = actions.get(product.row().id());
-                if (action == ProductConflictAction.SKIP) usedActions.add(product.row().id());
-                else {
-                    if (action == ProductConflictAction.KEEP) usedActions.add(product.row().id());
-                    selected.add(product);
+                if (product.existingSkuId() != null && action == null) {
+                    throw new IllegalArgumentException("存在未处理的产品编码和客户料号组合冲突");
                 }
+                if (action != null) usedActions.add(product.row().id());
+                if (action != ProductConflictAction.SKIP) selected.add(product);
                 continue;
             }
             int kept = 0;
@@ -128,7 +116,7 @@ public class ProductReplaceImportService {
                 ProductConflictAction action = actions.get(product.row().id());
                 if (action == null) throw new IllegalArgumentException("存在未处理的产品编号和客户料号组合冲突");
                 usedActions.add(product.row().id());
-                if (action == ProductConflictAction.KEEP) {
+                if (action == ProductConflictAction.OVERWRITE || action == ProductConflictAction.KEEP) {
                     kept++;
                     selected.add(product);
                 }
@@ -188,6 +176,27 @@ public class ProductReplaceImportService {
         return keys.getKey().longValue();
     }
 
+    private void updateProduct(long skuId, ImportRowView row, ProductImportCodeResolver.ResolvedProductCode resolved) {
+        Map<String, Object> data = row.data();
+        ProductCodeSelection rules = resolved.selection();
+        String model = nullableText(data, "model");
+        String productConfiguration = nullableText(data, "productConfiguration");
+        jdbc.update("""
+                UPDATE sku SET product_code=?,business_unique_id=?,product_type=?,material_type=?,customer_part_number=?,code_suffix=?,
+                    model=?,product_name=?,color=?,lock_body=?,configuration=?,product_configuration=?,unit=?,
+                    sales_minimum_order_quantity=?,enabled=TRUE,brand_rule_id=?,series_rule_id=?,body_color_rule_id=?,
+                    lock_type_rule_id=?,connectivity_rule_id=?,sales_channel_rule_id=?,operating_entity_rule_id=?,language_rule_id=?
+                WHERE id=?
+                """, resolved.productCode(), ProductUniqueId.from(resolved.productCode(), text(data, "customerPartNumber")),
+                productType(text(data, "productCategory")), materialType(text(data, "materialType")), text(data, "customerPartNumber"),
+                nullableText(data, "codeSuffix"), model, firstNonBlank(model, productConfiguration, resolved.productCode()),
+                nullableText(data, "bodyColor"), nullableText(data, "lockType"), materialSpecification(rules, model), productConfiguration,
+                "件", positiveInt(data.get("salesMinimumOrderQuantity"), 1), rules.brandRuleId(), rules.seriesRuleId(),
+                rules.bodyColorRuleId(), rules.lockTypeRuleId(), rules.connectivityRuleId(), rules.salesChannelRuleId(),
+                rules.operatingEntityRuleId(), rules.languageRuleId(), skuId);
+        insertSupplierQuote(skuId, data);
+    }
+
     private void insertInventory(long skuId, Map<String, Object> data) {
         Long warehouseId = jdbc.queryForObject("SELECT id FROM warehouse WHERE is_default=TRUE ORDER BY id LIMIT 1", Long.class);
         if (warehouseId == null) throw new IllegalStateException("未配置默认仓库");
@@ -231,8 +240,12 @@ public class ProductReplaceImportService {
         BigDecimal purchasePrice = nullableDecimal(data.get("supplierTaxPrice"));
         Integer purchaseMoq = purchasePrice == null ? null : 1;
         Integer leadTimeDays = purchasePrice == null ? null : 0;
-        KeyHolder relationKeys = new GeneratedKeyHolder();
-        jdbc.update(connection -> {
+        List<Long> existingRelations = jdbc.query("SELECT id FROM sku_supplier_config WHERE sku_id=? AND supplier_id=?",
+                (rs, index) -> rs.getLong(1), skuId, suppliers.get(0));
+        long relationId;
+        if (existingRelations.isEmpty()) {
+            KeyHolder relationKeys = new GeneratedKeyHolder();
+            jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO sku_supplier_config(
                         sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled)
@@ -244,13 +257,22 @@ public class ProductReplaceImportService {
             statement.setObject(4, purchaseMoq);
             statement.setObject(5, leadTimeDays);
             return statement;
-        }, relationKeys);
-        long relationId = Objects.requireNonNull(relationKeys.getKey()).longValue();
-        jdbc.update("""
+            }, relationKeys);
+            relationId = Objects.requireNonNull(relationKeys.getKey()).longValue();
+        } else {
+            relationId = existingRelations.get(0);
+            jdbc.update("UPDATE sku_supplier_config SET purchase_price=?,moq=?,lead_time_days=?,enabled=TRUE WHERE id=?",
+                    purchasePrice, purchaseMoq, leadTimeDays, relationId);
+        }
+        List<Long> purchaseInfos = jdbc.query("SELECT id FROM sku_supplier_purchase_info WHERE supplier_product_config_id=?",
+                (rs, index) -> rs.getLong(1), relationId);
+        if (purchaseInfos.isEmpty()) jdbc.update("""
                 INSERT INTO sku_supplier_purchase_info(
                     supplier_product_config_id,purchase_price,moq,lead_time_days,enabled)
                 VALUES(?,?,?,?,TRUE)
                 """, relationId, purchasePrice, purchaseMoq, leadTimeDays);
+        else jdbc.update("UPDATE sku_supplier_purchase_info SET purchase_price=?,moq=?,lead_time_days=?,enabled=TRUE WHERE id=?",
+                purchasePrice, purchaseMoq, leadTimeDays, purchaseInfos.get(0));
     }
 
     private String materialSpecification(ProductCodeSelection rules, String model) {
@@ -347,5 +369,12 @@ public class ProductReplaceImportService {
         return value == null || value.isBlank() ? null : value;
     }
 
-    private record SelectedProduct(ImportRowView row, ProductImportCodeResolver.ResolvedProductCode resolved) { }
+    private Long findExistingSkuId(String businessUniqueId) {
+        List<Long> ids = jdbc.query("SELECT id FROM sku WHERE business_unique_id=?", (rs, index) -> rs.getLong(1), businessUniqueId);
+        if (ids.size() > 1) throw new IllegalStateException("产品唯一标识存在重复数据");
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private record SelectedProduct(ImportRowView row, ProductImportCodeResolver.ResolvedProductCode resolved,
+                                   Long existingSkuId) { }
 }

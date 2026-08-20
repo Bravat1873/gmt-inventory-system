@@ -3,7 +3,7 @@ import OverflowText from './OverflowText.vue'
 import { computed, ref } from 'vue'
 import {
   commitImport,
-  commitProductReplace,
+  commitProductImport,
   getImportBatch,
   previewImport,
   updateImportRow,
@@ -12,7 +12,6 @@ import {
   type ImportRow,
   type ImportType,
   type ProductConflictAction,
-  type SupplierImportMode
 } from '../api/imports'
 
 const props = defineProps<{ type: ImportType; title: string }>()
@@ -22,7 +21,6 @@ const busy = ref(false)
 const selectedFilename = ref('')
 const importedRows = ref<number | null>(null)
 const errorMessage = ref('')
-const supplierMode = ref<SupplierImportMode>('OVERWRITE')
 const previewBatch = ref<ImportBatch | null>(null)
 const productActions = ref<Record<number, ProductConflictAction>>({})
 type RowConflictAction = 'OVERWRITE' | 'SKIP'
@@ -47,8 +45,17 @@ const customerFieldLabels: Record<string, string> = {
   invoiceAddress: '开票地址', invoicePhone: '开票电话', bankName: '开户银行', bankAccount: '银行账号'
 }
 
+const productFieldLabels: Record<string, string> = {
+  sourceProductCode: '来源产品编号', productCode: '产品编码', customerPartNumber: '客户料号', productCategory: '产品分类',
+  materialType: '物料类型', brand: '品牌', series: '系列', bodyColor: '物料颜色', lockType: '锁体类型',
+  connectivity: '联网方式', salesChannel: '销售渠道', operatingEntity: '运营主体', language: '语言', codeSuffix: '编码后缀',
+  model: '型号', materialSpecification: '物料规格', productConfiguration: '产品配置', supplierName: '供应商名称',
+  supplierTaxPrice: '供应商含税价', actualQuantity: '实际库存数量', lockedQuantity: '已锁定数量',
+  inTransitQuantity: '在途数量', sourceSupplierName: '库存供应商', inventoryRemark: '库存备注'
+}
+
 function fieldLabel(key: string) {
-  return customerFieldLabels[key] ?? supplierFieldLabels[key] ?? key
+  return customerFieldLabels[key] ?? supplierFieldLabels[key] ?? productFieldLabels[key] ?? key
 }
 
 const productConflictGroups = computed(() => {
@@ -116,10 +123,10 @@ const productCanCommit = computed(() => {
   if (batch.rows.some(row => row.status === 'ERROR')) return false
   for (const group of productConflictGroups.value) {
     if (group.rows.some(row => !productActions.value[row.id])) return false
-    if (group.rows.filter(row => productActions.value[row.id] === 'KEEP').length > 1) return false
+    if (group.rows.filter(row => productActions.value[row.id] === 'OVERWRITE').length > 1) return false
   }
   const nonConflicts = batch.rows.filter(row => row.status === 'VALID' && !row.data._conflictGroup).length
-  const keptConflicts = Object.values(productActions.value).filter(action => action === 'KEEP').length
+  const keptConflicts = Object.values(productActions.value).filter(action => action === 'OVERWRITE').length
   return nonConflicts + keptConflicts > 0
 })
 
@@ -145,9 +152,9 @@ function value(row: ImportRow, key: string) {
   return raw === null || raw === undefined || raw === '' ? '—' : String(raw)
 }
 
-function chooseProductKeep(groupRows: ImportRow[], rowId: number) {
+function chooseProductImport(groupRows: ImportRow[], rowId: number) {
   const next = { ...productActions.value }
-  for (const row of groupRows) next[row.id] = row.id === rowId ? 'KEEP' : 'SKIP'
+  for (const row of groupRows) next[row.id] = row.id === rowId ? 'OVERWRITE' : 'SKIP'
   productActions.value = next
 }
 
@@ -229,9 +236,7 @@ async function onDrop(event: DragEvent) {
 async function confirmSupplierImport() {
   const batch = previewBatch.value
   if (!batch || busy.value) return
-  if (supplierMode.value === 'REPLACE_ALL'
-    && !window.confirm('全量替换将停用文件中不存在的供应商，是否继续？')) return
-  await commitPreview(() => persistConflictActions(batch).then(() => commitImport(batch.batchId, supplierMode.value)))
+  await commitPreview(() => persistConflictActions(batch).then(() => commitImport(batch.batchId)))
 }
 
 async function confirmCustomerImport() {
@@ -240,12 +245,10 @@ async function confirmCustomerImport() {
   await commitPreview(() => persistConflictActions(batch).then(() => commitImport(batch.batchId)))
 }
 
-async function confirmProductReplace() {
+async function confirmProductImport() {
   const batch = previewBatch.value
   if (!batch || busy.value || !productCanCommit.value) return
-  const warning = '产品全量替换将清空：订单、库存、采购、售后、发货、发票/收付款、合同价格、产品图片、供应商产品关系和成本历史。\n\n将保留：客户、供应商主体、用户权限、产品编号规则和客户资金流水。\n\n此操作不可单独撤销，是否继续？'
-  if (!window.confirm(warning)) return
-  await commitPreview(() => persistConflictActions(batch).then(() => commitProductReplace(batch.batchId, productActions.value)))
+  await commitPreview(() => persistConflictActions(batch).then(() => commitProductImport(batch.batchId, productActions.value)))
 }
 
 function orderStatusLabel(row: ImportRow) {
@@ -310,7 +313,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
     <header class="import-header">
       <div>
         <h2>{{ title }}</h2>
-        <p v-if="type === 'PRODUCT'">选择文件后先核对两张产品表、计算编号与冲突，再确认全量替换。</p>
+        <p v-if="type === 'PRODUCT'">选择文件后先核对产品编码与冲突，再确认增量导入。</p>
         <p v-else-if="type === 'SUPPLIER'">选择文件后先核对预览，再确认写入供应商资料。</p>
         <p v-else-if="type === 'ORDER'">选择文件后先按外部订单号核对分组预览，再确认提交订单。</p>
         <p v-else>选择 Excel 文件后，系统会自动解析并导入当前页面的数据。</p>
@@ -319,14 +322,6 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
     </header>
 
     <div class="simple-import-body">
-      <fieldset v-if="type === 'SUPPLIER'" class="supplier-import-strategy" :disabled="busy">
-        <legend>导入策略</legend>
-        <div class="supplier-import-options">
-          <label :class="{ selected: supplierMode === 'OVERWRITE' }"><input data-test="supplier-mode-overwrite" v-model="supplierMode" type="radio" value="OVERWRITE" :aria-checked="supplierMode === 'OVERWRITE'"><span><strong>覆盖更新</strong><small>更新同名供应商并新增文件中的其他供应商</small></span></label>
-          <label :class="{ selected: supplierMode === 'REPLACE_ALL' }"><input data-test="supplier-mode-replace-all" v-model="supplierMode" type="radio" value="REPLACE_ALL" :aria-checked="supplierMode === 'REPLACE_ALL'"><span><strong>全量替换</strong><small>同时停用文件中不存在的供应商</small></span></label>
-        </div>
-        <p v-if="supplierMode === 'REPLACE_ALL'" class="supplier-import-warning" role="note">全量替换会停用文件中不存在的供应商；确认导入时，系统会再次询问。</p>
-      </fieldset>
 
       <label data-test="import-dropzone" class="file-picker" :class="{ disabled: busy }" @dragover.prevent @drop="onDrop">
         <span>{{ busy ? '正在处理…' : '选择 Excel 文件' }}</span>
@@ -351,18 +346,18 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
         <div class="supplier-preview-actions"><p v-if="unresolvedConflictRows.length">还有 {{ unresolvedConflictRows.length }} 行冲突未处理。</p><button data-test="commit-import" type="button" class="primary-action" :disabled="busy || previewBatch.errorRows > 0 || unresolvedConflictRows.length > 0" @click="confirmCustomerImport">确认导入</button></div>
       </section>
 
-      <section v-else-if="previewBatch && importedRows === null && type === 'PRODUCT'" class="product-preview" aria-label="产品全量替换预览">
+      <section v-else-if="previewBatch && importedRows === null && type === 'PRODUCT'" class="product-preview" aria-label="产品增量导入预览">
         <div class="supplier-preview-summary"><span>总行数 <strong data-test="preview-total-count">{{ previewBatch.totalRows }}</strong></span><span>有效行 <strong data-test="preview-valid-count">{{ previewBatch.validRows }}</strong></span><span>错误行 <strong data-test="preview-error-count">{{ previewBatch.errorRows }}</strong></span><span>冲突组 <strong>{{ productConflictGroups.length }}</strong></span></div>
-        <p class="product-danger-note" role="note">当前仅为预览，尚未修改数据库。请先处理所有重复编号和错误行。</p>
-        <div class="supplier-preview-table-wrap"><table class="product-preview-table"><thead><tr><th>状态</th><th>来源</th><th>来源编号</th><th>计算编号</th><th>型号</th><th>产品配置</th><th>供应商</th><th>含税价</th><th>实际库存数量</th><th>已锁定数量</th><th>在途数量</th><th>库存供应商</th><th>库存备注</th><th>错误</th><th>冲突决定</th></tr></thead><tbody><tr v-for="row in previewBatch.rows" :key="row.id" data-test="preview-row"><td><span :class="['supplier-preview-status', row.status.toLowerCase()]">{{ row.status === 'VALID' ? '有效' : row.status === 'ERROR' ? '错误' : '忽略' }}</span></td><td class="compact-cell" :title="`${row.sheetName} · 第 ${row.rowNumber} 行`">{{ row.sheetName }} · 第 {{ row.rowNumber }} 行</td><td class="compact-cell" :title="value(row, 'sourceProductCode')">{{ value(row, 'sourceProductCode') }}</td><td class="compact-cell code-cell" :title="value(row, 'productCode')">{{ value(row, 'productCode') }}</td><td class="compact-cell" :data-test="`product-model-${row.id}`" :title="value(row, 'model')">{{ value(row, 'model') }}</td><td class="compact-cell" :title="value(row, 'productConfiguration')">{{ value(row, 'productConfiguration') }}</td><td class="compact-cell" :title="value(row, 'supplierName')">{{ value(row, 'supplierName') }}</td><td class="compact-cell" :title="value(row, 'supplierTaxPrice')">{{ value(row, 'supplierTaxPrice') }}</td><td class="compact-cell" :title="value(row, 'actualQuantity')">{{ value(row, 'actualQuantity') }}</td><td class="compact-cell" :title="value(row, 'lockedQuantity')">{{ value(row, 'lockedQuantity') }}</td><td class="compact-cell" :title="value(row, 'inTransitQuantity')">{{ value(row, 'inTransitQuantity') }}</td><td class="compact-cell" :title="value(row, 'sourceSupplierName')">{{ value(row, 'sourceSupplierName') }}</td><td class="compact-cell" :title="value(row, 'inventoryRemark')">{{ value(row, 'inventoryRemark') }}</td><td class="compact-cell product-error-cell" :data-test="`product-row-error-${row.id}`" :title="row.errorMessage ?? ''">{{ row.errorMessage ?? '—' }}</td><td><template v-if="row.data._conflictGroup"><label class="decision-control"><input :data-test="`product-conflict-keep-${row.id}`" type="radio" :name="`product-${row.data._conflictGroup}`" :checked="productActions[row.id] === 'KEEP'" :disabled="row.status !== 'VALID' || busy" @change="chooseProductKeep(productConflictGroups.find(group => group.code === String(row.data._conflictGroup))?.rows ?? [], row.id)">保留</label><button :data-test="`conflict-edit-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="startEditing(row)">修改</button><span v-if="productActions[row.id] === 'SKIP'" class="skip-state">跳过</span><span v-else-if="!productActions[row.id]" class="unresolved-state">未选择</span></template><span v-else>自动保留</span></td></tr><tr v-if="previewBatch.rows.length === 0"><td colspan="15">没有可预览的产品数据</td></tr></tbody></table></div>
-        <form v-if="editingRow" data-test="import-row-editor" class="import-row-editor" @submit.prevent><label v-for="(_, key) in editingData" :key="key">{{ key }}<input v-model="editingData[key]" :name="key"></label><button data-test="save-import-row-edit" type="button" class="primary-action" :disabled="busy" @click="saveEdit">保存并重新校验</button></form>
-        <div v-if="productConflictGroups.length" class="conflict-groups"><div v-for="group in productConflictGroups" :key="group.code"><span>重复编号 {{ group.code }}（{{ group.rows.length }} 行）</span><button type="button" class="secondary-action compact-action" :disabled="busy" @click="skipProductGroup(group.rows)">整组跳过</button></div></div>
+        <p class="product-danger-note" role="note">当前仅为预览，导入时仅新增产品或更新已选择的同编码、同客户料号产品。</p>
+        <div class="supplier-preview-table-wrap"><table class="product-preview-table"><thead><tr><th>状态</th><th>来源</th><th>来源编号</th><th>计算编号</th><th>型号</th><th>产品配置</th><th>供应商</th><th>错误</th><th>冲突处理</th></tr></thead><tbody><tr v-for="row in previewBatch.rows" :key="row.id" data-test="preview-row" :class="{ 'conflict-row': row.data._conflict || row.data._conflictGroup }"><td>{{ row.status === 'VALID' ? '有效' : row.status === 'ERROR' ? '错误' : '忽略' }}</td><td>{{ row.sheetName }} · 第 {{ row.rowNumber }} 行</td><td>{{ value(row, 'sourceProductCode') }}</td><td class="code-cell">{{ value(row, 'productCode') }}</td><td :data-test="`product-model-${row.id}`">{{ value(row, 'model') }}</td><td>{{ value(row, 'productConfiguration') }}</td><td>{{ value(row, 'supplierName') }}</td><td :data-test="`product-row-error-${row.id}`" :title="row.errorMessage ?? ''">{{ row.errorMessage ?? '—' }}</td><td><template v-if="row.data._conflictGroup"><button :data-test="`product-conflict-import-${row.id}`" type="button" class="secondary-action compact-action" :disabled="busy || row.status !== 'VALID'" @click="chooseProductImport(productConflictGroups.find(group => group.code === String(row.data._conflictGroup))?.rows ?? [], row.id)">采用导入</button><button type="button" class="secondary-action compact-action" :disabled="busy || row.status !== 'VALID'" @click="skipProductRow(row.id)">保留现有</button><button type="button" class="secondary-action compact-action" :disabled="busy" @click="startEditing(row)">修改</button><span v-if="productActions[row.id]" class="resolved-state">{{ productActions[row.id] === 'OVERWRITE' ? '将采用导入' : '将保留现有' }}</span></template><span v-else>新增</span></td></tr></tbody></table></div>
+        <form v-if="editingRow" data-test="import-row-editor" class="import-row-editor" @submit.prevent><label v-for="(_, key) in editingData" :key="key">{{ fieldLabel(String(key)) }}<input v-model="editingData[key]" :name="key"></label><button data-test="save-import-row-edit" type="button" class="primary-action" :disabled="busy" @click="saveEdit">保存并重新校验</button></form>
+        <div v-if="productConflictGroups.length" class="conflict-groups"><div v-for="group in productConflictGroups" :key="group.code"><span>冲突产品 {{ group.code }}（{{ group.rows.length }} 行）</span><button type="button" class="secondary-action compact-action" :disabled="busy" @click="skipProductGroup(group.rows)">整组保留现有</button></div></div>
         <div v-if="productConflictGroups.length" class="conflict-row-actions">
           <div v-for="group in productConflictGroups" :key="`${group.code}-rows`"><span>逐行跳过：</span>
             <button v-for="row in group.rows" :key="row.id" :data-test="`product-conflict-skip-${row.id}`" type="button" class="secondary-action compact-action" :disabled="row.status !== 'VALID' || busy" @click="skipProductRow(row.id)">第 {{ row.rowNumber }} 行</button>
           </div>
         </div>
-        <div class="supplier-preview-actions"><p v-if="previewBatch.errorRows > 0">存在错误行，不能执行全量替换。</p><p v-else-if="!productCanCommit">请完成所有冲突组的保留或跳过决定。</p></div>
+        <div class="supplier-preview-actions"><p v-if="previewBatch.errorRows > 0">存在错误行，不能导入。</p><p v-else-if="!productCanCommit">请完成所有冲突行的采用导入或保留现有决定。</p></div>
       </section>
 
       <section v-else-if="previewBatch && importedRows === null && type === 'ORDER'" class="order-preview" aria-label="订单导入预览">
@@ -386,8 +381,8 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
       <p v-else-if="errorMessage" class="simple-import-error">导入失败：{{ errorMessage }}</p>
     </div>
     <footer class="simple-import-footer">
-      <p v-if="previewBatch && importedRows === null && type === 'PRODUCT'" class="footer-submit-hint">{{ productCanCommit ? '已通过预览，确认后将执行全量替换。' : '请先处理预览中的错误或冲突。' }}</p>
-      <button v-if="previewBatch && importedRows === null && type === 'PRODUCT'" data-test="commit-product-replace" type="button" class="primary-action danger-action" :disabled="busy || !productCanCommit" @click="confirmProductReplace">确认全量替换</button>
+      <p v-if="previewBatch && importedRows === null && type === 'PRODUCT'" class="footer-submit-hint">{{ productCanCommit ? '已通过预览，确认后将执行增量导入。' : '请先处理预览中的错误或冲突。' }}</p>
+      <button v-if="previewBatch && importedRows === null && type === 'PRODUCT'" data-test="commit-product-import" type="button" class="primary-action" :disabled="busy || !productCanCommit" @click="confirmProductImport">确认增量导入</button>
       <button type="button" class="secondary-action" @click="emit('close')">完成</button>
     </footer>
   </section>

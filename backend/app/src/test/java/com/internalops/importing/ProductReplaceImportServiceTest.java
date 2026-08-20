@@ -18,7 +18,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@SpringBootTest(properties = "app.import.product-replace-enabled=true")
+@SpringBootTest
 @Sql(scripts = {"/import-schema.sql", "/product-replace-import-schema.sql"})
 class ProductReplaceImportServiceTest {
     @Autowired ImportBatchRepository repository;
@@ -42,28 +42,7 @@ class ProductReplaceImportServiceTest {
     void clearUser() { CurrentUser.clear(); }
 
     @Test
-    void rejectsReplaceWhenFeatureFlagIsDisabled() {
-        ProductReplaceImportService disabled = new ProductReplaceImportService(jdbc, repository,
-                new ProductImportCodeResolver(jdbc, new com.internalops.productcode.ProductCodeGenerator(jdbc)), false);
-        long batchId = batch(List.of(validRow("A")));
-
-        assertThatThrownBy(() -> disabled.replace(repository.findBatchForUpdate(batchId), Map.of()))
-                .hasMessageContaining("未启用产品全量替换");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class)).isOne();
-    }
-
-    @Test
-    void rejectsNonAdminBeforeDeletingAnything() {
-        CurrentUser.set(new CurrentUser(2, "finance", "财务", UserRole.FINANCE));
-        long batchId = batch(List.of(validRow("A")));
-
-        assertThatThrownBy(() -> service.replace(repository.findBatchForUpdate(batchId), Map.of()))
-                .hasMessageContaining("仅管理员");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class)).isOne();
-    }
-
-    @Test
-    void rejectsErrorsRuleChangesAndUnresolvedDuplicateGroupsBeforeDeleting() {
+    void rejectsErrorsRuleChangesAndUnresolvedDuplicateGroupsBeforeImporting() {
         long errorBatch = repository.create(ImportType.PRODUCT, "bad.xlsx", "bad", List.of(
                 new ParsedImportRow("GMT库存产品清单", 9, ImportRowStatus.ERROR, Map.of(), "编码错误")));
         assertThatThrownBy(() -> service.replace(repository.findBatchForUpdate(errorBatch), Map.of()))
@@ -84,30 +63,46 @@ class ProductReplaceImportServiceTest {
     @Test
     void rejectsActionsForRowsOutsideTheBatch() {
         long batchId = batch(List.of(validRow("A"), validRow("A")));
-        assertThatThrownBy(() -> service.replace(repository.findBatchForUpdate(batchId), Map.of(999L, ProductConflictAction.KEEP)))
+        assertThatThrownBy(() -> service.replace(repository.findBatchForUpdate(batchId), Map.of(999L, ProductConflictAction.OVERWRITE)))
                 .hasMessageContaining("不属于当前批次");
     }
 
     @Test
-    void deletesProductDependenciesInForeignKeyOrderAndPreservesMasterData() {
+    void incrementallyUpdatesMatchingSkuWithoutDeletingHistoricalData() {
+        jdbc.update("UPDATE sku SET product_code=?,business_unique_id=?,customer_part_number=? WHERE id=1",
+                "BR_P90YZH70WPZC-A", "BR_P90YZH70WPZC-A::CUS-P90", "CUS-P90");
+        long batchId = batch(List.of(validRow("A")));
+
+        long rowId = repository.findBatch(batchId).rows().get(0).id();
+        ImportBatchView result = service.replace(repository.findBatchForUpdate(batchId), Map.of(rowId, ProductConflictAction.OVERWRITE));
+
+        assertThat(result.status()).isEqualTo("COMMITTED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE id=1", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_order", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_order_item WHERE sku_id=1", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("SELECT product_name FROM sku WHERE id=1", String.class)).isEqualTo("P90");
+    }
+
+    @Test
+    void createsNewProductWithoutDeletingExistingProductsOrDependencies() {
         long batchId = batch(List.of(validRow("A")));
 
         ImportBatchView result = service.replace(repository.findBatchForUpdate(batchId), Map.of());
 
         assertThat(result.status()).isEqualTo("COMMITTED");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class)).isOne();
-        assertThat(jdbc.queryForObject("SELECT product_code FROM sku", String.class)).isEqualTo("BR_P90YZH70WPZC-A");
-        assertThat(jdbc.queryForObject("SELECT customer_part_number FROM sku", String.class)).isEqualTo("CUS-P90");
-        assertThat(jdbc.queryForObject("SELECT product_type FROM sku", String.class)).isEqualTo("SMART_LOCK");
-        assertThat(jdbc.queryForObject("SELECT configuration FROM sku", String.class)).isEqualTo("BRAVAT / P90 / 宇宙黑 / 7068 / 中文版");
-        assertThat(jdbc.queryForObject("SELECT product_configuration FROM sku", String.class)).isEqualTo("测试配置");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_balance", Integer.class)).isOne();
-        assertThat(jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance", Integer.class)).isEqualTo(12);
-        assertThat(jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance", Integer.class)).isEqualTo(3);
-        assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance", Integer.class)).isEqualTo(4);
-        assertThat(jdbc.queryForObject("SELECT source_supplier_name FROM inventory_balance", String.class)).isEqualTo("测试供应商");
-        assertThat(jdbc.queryForObject("SELECT inventory_remark FROM inventory_balance", String.class)).isEqualTo("现货");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_order", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT product_code FROM sku WHERE id<>1", String.class)).isEqualTo("BR_P90YZH70WPZC-A");
+        assertThat(jdbc.queryForObject("SELECT customer_part_number FROM sku WHERE id<>1", String.class)).isEqualTo("CUS-P90");
+        assertThat(jdbc.queryForObject("SELECT product_type FROM sku WHERE id<>1", String.class)).isEqualTo("SMART_LOCK");
+        assertThat(jdbc.queryForObject("SELECT configuration FROM sku WHERE id<>1", String.class)).isEqualTo("BRAVAT / P90 / 宇宙黑 / 7068 / 中文版");
+        assertThat(jdbc.queryForObject("SELECT product_configuration FROM sku WHERE id<>1", String.class)).isEqualTo("测试配置");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_balance", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance WHERE sku_id<>1", Integer.class)).isEqualTo(12);
+        assertThat(jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE sku_id<>1", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance WHERE sku_id<>1", Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT source_supplier_name FROM inventory_balance WHERE sku_id<>1", String.class)).isEqualTo("测试供应商");
+        assertThat(jdbc.queryForObject("SELECT inventory_remark FROM inventory_balance WHERE sku_id<>1", String.class)).isEqualTo("现货");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_order", Integer.class)).isOne();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM customer", Integer.class)).isOne();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM supplier", Integer.class)).isOne();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_code_rule", Integer.class)).isEqualTo(8);
@@ -119,14 +114,14 @@ class ProductReplaceImportServiceTest {
         List<ImportRowView> rows = repository.findBatch(batchId).rows();
 
         service.replace(repository.findBatchForUpdate(batchId), Map.of(
-                rows.get(0).id(), ProductConflictAction.KEEP,
+                rows.get(0).id(), ProductConflictAction.OVERWRITE,
                 rows.get(1).id(), ProductConflictAction.SKIP));
 
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class)).isOne();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class)).isEqualTo(2);
     }
 
     @Test
-    void rollsBackDeletesWhenSupplierLookupFailsDuringInsert() {
+    void rollsBackIncrementalImportWhenSupplierLookupFails() {
         Map<String,Object> row = validData("A");
         row.put("supplierName", "不存在供应商");
         long batchId = batch(List.of(new ParsedImportRow("GMT库存产品清单", 9, ImportRowStatus.VALID, row, null)));

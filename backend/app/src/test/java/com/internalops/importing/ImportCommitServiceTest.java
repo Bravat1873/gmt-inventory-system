@@ -186,17 +186,6 @@ class ImportCommitServiceTest {
                 "SELECT product_code FROM sku WHERE customer_part_number='G1TEST0001'", String.class));
     }
 
-    @Test
-    void rejectsProductBatchFromGenericCommitPathWhenReplaceFeatureIsDisabledByDefault() {
-        long batch = repository.create(ImportType.PRODUCT, "product.xlsx", "hash-product", List.of(
-                row(ImportRowStatus.VALID, Map.of("brand", "BR"), null)));
-
-        IllegalStateException exception = assertThrows(IllegalStateException.class,
-                () -> commitService.commit(batch));
-
-        assertEquals("当前环境未启用产品全量替换", exception.getMessage());
-    }
-
     private ParsedImportRow row(ImportRowStatus status, Map<String, Object> data, String error) {
         return new ParsedImportRow("Sheet1", 1, status, data, error);
     }

@@ -115,6 +115,32 @@ class ProductWorkbookExcelParserTest {
         }
     }
 
+    @Test
+    void readsTheCalculatedValueOfProductCodeFormulas() throws Exception {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            var sheet = workbook.createSheet("GMT库存产品清单");
+            var header = sheet.createRow(0);
+            header.createCell(0).setCellValue("产品编号（不用写）");
+            header.createCell(1).setCellValue("客户料号");
+            header.createCell(2).setCellValue("品牌");
+            header.createCell(3).setCellValue("系列");
+
+            var product = sheet.createRow(1);
+            product.createCell(0).setCellFormula("C2&\"_\"&D2");
+            product.createCell(1).setCellValue("客户料号-001");
+            product.createCell(2).setCellValue("G");
+            product.createCell(3).setCellValue("T5");
+
+            var output = new ByteArrayOutputStream();
+            workbook.write(output);
+            List<ParsedImportRow> rows = new ExcelImportParser().parse(
+                    ImportType.PRODUCT, new java.io.ByteArrayInputStream(output.toByteArray()));
+
+            assertThat(rows).singleElement().extracting(row -> row.data().get("sourceProductCode"))
+                    .isEqualTo("G_T5");
+        }
+    }
+
     private void addLeadingLegendAndFirstCodeOnlyProduct(org.apache.poi.ss.usermodel.Sheet sheet) {
         var header = sheet.createRow(0);
         header.createCell(0).setCellValue("品牌");

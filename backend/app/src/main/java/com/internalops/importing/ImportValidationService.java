@@ -20,7 +20,7 @@ public class ImportValidationService {
 
     public ImportValidationService(JdbcTemplate jdbc) {
         this(jdbc, new ProductImportValidationService(
-                new ProductImportCodeResolver(jdbc, new ProductCodeGenerator(jdbc))));
+                new ProductImportCodeResolver(jdbc, new ProductCodeGenerator(jdbc)), jdbc));
     }
 
     @Autowired

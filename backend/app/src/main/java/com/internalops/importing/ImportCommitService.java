@@ -108,7 +108,7 @@ public class ImportCommitService {
         }
         if ("COMMITTED".equals(batch.status())) return batch;
         if (batch.importType() == ImportType.PRODUCT) {
-            if (productReplaceImportService == null) throw new IllegalStateException("产品全量替换服务未配置");
+            if (productReplaceImportService == null) throw new IllegalStateException("产品增量导入服务未配置");
             return productReplaceImportService.replace(batch, productConflictActions);
         }
         if (repository.isAppendOnly(batchId)) {
@@ -161,9 +161,6 @@ public class ImportCommitService {
     }
 
     private ImportBatchView commitSuppliers(ImportBatchView batch, ImportCommitRequest.SupplierMode mode) {
-        if (mode == ImportCommitRequest.SupplierMode.REPLACE_ALL && batch.errorRows() > 0) {
-            throw new IllegalArgumentException("全量替换前必须修正所有错误行");
-        }
         jdbc.queryForList("SELECT id FROM supplier FOR UPDATE", Long.class);
         Map<String, Long> existingByName = new LinkedHashMap<>();
         for (Map<String, Object> supplier : jdbc.queryForList("SELECT id,supplier_name FROM supplier ORDER BY id")) {
@@ -202,14 +199,6 @@ public class ImportCommitService {
                 updated++;
             }
         }
-        int disabled = 0;
-        if (mode == ImportCommitRequest.SupplierMode.REPLACE_ALL) {
-            for (Long id : jdbc.queryForList("SELECT id FROM supplier", Long.class)) {
-                if (!importedIds.contains(id)) {
-                    disabled += jdbc.update("UPDATE supplier SET enabled=FALSE WHERE id=? AND enabled=TRUE", id);
-                }
-            }
-        }
         int committed = created + updated;
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("created", created);
@@ -218,8 +207,8 @@ public class ImportCommitService {
         result.put("errors", batch.errorRows());
         result.put("ignored", batch.ignoredRows());
         result.put("skipped", skipped);
-        result.put("disabled", disabled);
-        result.put("mode", mode.name());
+        result.put("disabled", 0);
+        result.put("mode", "INCREMENTAL_UPSERT");
         repository.markCommitted(batch.batchId(), committed, result);
         return repository.findBatch(batch.batchId());
     }

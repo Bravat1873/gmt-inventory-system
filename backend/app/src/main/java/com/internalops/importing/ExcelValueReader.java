@@ -3,6 +3,7 @@ package com.internalops.importing;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.FormulaEvaluator;
 
 import java.math.BigDecimal;
 
@@ -14,6 +15,10 @@ final class ExcelValueReader {
 
     static String text(Cell cell) {
         if (cell == null) return "";
+        if (cell.getCellType() == CellType.FORMULA) {
+            FormulaEvaluator evaluator = cell.getSheet().getWorkbook().getCreationHelper().createFormulaEvaluator();
+            return FORMATTER.formatCellValue(cell, evaluator).trim();
+        }
         return FORMATTER.formatCellValue(cell).trim();
     }
 

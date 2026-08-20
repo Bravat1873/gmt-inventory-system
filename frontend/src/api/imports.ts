@@ -1,5 +1,5 @@
 export type ImportType = 'CUSTOMER' | 'COST' | 'INVENTORY' | 'SUPPLIER' | 'PRODUCT' | 'ORDER'
-export type ProductConflictAction = 'KEEP' | 'SKIP'
+export type ProductConflictAction = 'OVERWRITE' | 'SKIP' | 'KEEP'
 export type SupplierImportMode = 'OVERWRITE' | 'REPLACE_ALL'
 export type ImportConflictAction = 'OVERWRITE' | 'SKIP'
 export type ImportRowStatus = 'VALID' | 'ERROR' | 'IGNORED'
@@ -70,12 +70,17 @@ export function commitImport(id: number, supplierMode?: SupplierImportMode, conf
     : { method: 'POST' }
   return request(`/api/imports/${id}/commit`, options)
 }
-export function commitProductReplace(id: number, actions: Record<number, ProductConflictAction>): Promise<ImportBatch> {
+export function commitProductImport(id: number, actions: Record<number, ProductConflictAction>): Promise<ImportBatch> {
   return request(`/api/imports/${id}/commit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ productConflictActions: actions })
   })
+}
+
+/** @deprecated Use commitProductImport with OVERWRITE or SKIP. */
+export function commitProductReplace(id: number, actions: Record<number, ProductConflictAction>): Promise<ImportBatch> {
+  return commitProductImport(id, actions)
 }
 
 export async function downloadImportErrors(id: number): Promise<Blob> {

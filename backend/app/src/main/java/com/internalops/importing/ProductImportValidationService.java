@@ -1,6 +1,8 @@
 package com.internalops.importing;
 
 import com.internalops.productcode.ProductUniqueId;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -13,9 +15,16 @@ import java.util.Map;
 @Service
 public class ProductImportValidationService {
     private final ProductImportCodeResolver codeResolver;
+    private final JdbcTemplate jdbc;
+
+    @Autowired
+    public ProductImportValidationService(ProductImportCodeResolver codeResolver, JdbcTemplate jdbc) {
+        this.codeResolver = codeResolver;
+        this.jdbc = jdbc;
+    }
 
     public ProductImportValidationService(ProductImportCodeResolver codeResolver) {
-        this.codeResolver = codeResolver;
+        this(codeResolver, null);
     }
 
     public ParsedImportRow validate(int ignoredIndex, String sheetName, int rowNumber, Map<String, Object> source) {
@@ -65,12 +74,16 @@ public class ProductImportValidationService {
                 data.remove("_conflictAction");
             } else {
                 String businessUniqueId = text(data, "_businessUniqueId");
-                boolean conflict = duplicateRows.get(businessUniqueId).size() > 1;
+                boolean duplicateInWorkbook = duplicateRows.get(businessUniqueId).size() > 1;
+                Long existingSkuId = existingSkuId(businessUniqueId);
+                boolean conflict = duplicateInWorkbook || existingSkuId != null;
                 data.put("_conflict", conflict);
                 if (conflict) {
                     data.put("_conflictGroup", businessUniqueId);
                     data.put("_conflictField", "productCode+customerPartNumber");
                     data.put("_conflictLabel", "产品编码：" + text(data, "productCode") + " / 客户料号：" + text(data, "customerPartNumber"));
+                    data.put("_conflictKind", duplicateInWorkbook ? "WORKBOOK_DUPLICATE" : "EXISTING_PRODUCT");
+                    if (existingSkuId != null) data.put("_existingSkuId", existingSkuId);
                     data.put("_conflictAction", "UNRESOLVED");
                 } else {
                     data.remove("_conflictGroup");
@@ -82,6 +95,13 @@ public class ProductImportValidationService {
             result.add(new ParsedImportRow(row.sheetName(), row.rowNumber(), row.status(), data, row.errorMessage()));
         }
         return result;
+    }
+
+    private Long existingSkuId(String businessUniqueId) {
+        if (jdbc == null) return null;
+        List<Long> ids = jdbc.query("SELECT id FROM sku WHERE business_unique_id=?", (rs, index) -> rs.getLong(1), businessUniqueId);
+        if (ids.size() > 1) throw new IllegalStateException("产品唯一标识存在重复数据");
+        return ids.isEmpty() ? null : ids.get(0);
     }
 
     private String text(Map<String, Object> data, String key) {
