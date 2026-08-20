@@ -61,6 +61,42 @@ class ProcurementWorkflowApiTest {
     }
 
     @Test
+    void subtractsAvailableInTransitQuantityBeforeCreatingAPurchaseSuggestion() throws Exception {
+        Cookie session = login();
+        jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,101,0,0,2,0)");
+
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.count").value(1));
+
+        assertThat(jdbc.queryForObject("SELECT shortage_quantity FROM procurement_suggestion_item", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT covered_quantity FROM shortage_coverage", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT suggested_quantity FROM procurement_suggestion_item", Integer.class)).isEqualTo(10);
+    }
+
+    @Test
+    void rebuildsSystemDraftQuantityWhenAWaitingOrderIsDeleted() throws Exception {
+        Cookie session = login();
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+        jdbc.update("INSERT INTO sales_order(id,order_no,status) VALUES(2,'DD20260800002','WAITING_STOCK')");
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity) VALUES(2,2,1,101,2,0,2)");
+
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT shortage_quantity FROM procurement_suggestion_item", Integer.class)).isEqualTo(5);
+
+        jdbc.update("DELETE FROM shortage_coverage WHERE sales_order_item_id=2");
+        jdbc.update("DELETE FROM sales_order_item WHERE id=2");
+        jdbc.update("DELETE FROM sales_order WHERE id=2");
+        mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("SELECT shortage_quantity FROM procurement_suggestion_item", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion WHERE status='DRAFT'", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
     void draftSuggestionRemainsVisibleInPurchaseWorkbenchUntilConfirmed() throws Exception {
         Cookie session = login();
         mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))

@@ -41,7 +41,7 @@ public class ProcurementWorkflowService {
 
     @Transactional
     public Map<String, Object> generate() {
-        closeResolvedSystemSuggestions();
+        List<Long> systemDraftSuggestionIds = clearSystemDraftCoverage();
         var missing = jdbc.queryForList("""
                 SELECT i.id AS item_id, i.sku_id, o.order_no,
                        i.uncovered_quantity-COALESCE(c.covered_quantity,0) AS uncovered_quantity
@@ -55,10 +55,30 @@ public class ProcurementWorkflowService {
                   AND i.uncovered_quantity-COALESCE(c.covered_quantity,0)>0
                 ORDER BY i.sku_id,i.id
                 """);
-        if (missing.isEmpty()) return generationResult(List.of(), List.of());
+        if (missing.isEmpty()) {
+            rejectUnusedSystemDraftSuggestions(systemDraftSuggestionIds, List.of());
+            return generationResult(List.of(), List.of());
+        }
+
+        Map<Long, List<Map<String, Object>>> demandRowsBySku = new LinkedHashMap<>();
+        for (var row : missing) demandRowsBySku.computeIfAbsent(num(row, "sku_id"), ignored -> new ArrayList<>()).add(row);
 
         Map<Long, List<Map<String, Object>>> rowsBySku = new LinkedHashMap<>();
-        for (var row : missing) rowsBySku.computeIfAbsent(num(row, "sku_id"), ignored -> new ArrayList<>()).add(row);
+        for (var entry : demandRowsBySku.entrySet()) {
+            int remainingInTransit = availableInTransitQuantity(entry.getKey());
+            List<Map<String, Object>> netShortageRows = new ArrayList<>();
+            for (var row : entry.getValue()) {
+                int uncovered = (int) num(row, "uncovered_quantity");
+                int netShortage = Math.max(0, uncovered - remainingInTransit);
+                remainingInTransit = Math.max(0, remainingInTransit - uncovered);
+                if (netShortage > 0) {
+                    Map<String, Object> netRow = new LinkedHashMap<>(row);
+                    netRow.put("uncovered_quantity", netShortage);
+                    netShortageRows.add(netRow);
+                }
+            }
+            if (!netShortageRows.isEmpty()) rowsBySku.put(entry.getKey(), netShortageRows);
+        }
 
         Map<Long, List<ProcurementRecommendationService.Recommendation>> groups = new LinkedHashMap<>();
         List<Map<String, Object>> unconfiguredItems = new ArrayList<>();
@@ -107,7 +127,7 @@ public class ProcurementWorkflowService {
                     SELECT DISTINCT ps.id
                     FROM procurement_suggestion ps
                     JOIN procurement_suggestion_item psi ON psi.suggestion_id=ps.id
-                    WHERE ps.status='DRAFT' AND psi.supplier_id=?
+                    WHERE ps.status='DRAFT' AND ps.system_managed=TRUE AND psi.supplier_id=?
                     ORDER BY ps.id LIMIT 1
                     """, Long.class, group.getKey());
             long suggestionId;
@@ -116,37 +136,19 @@ public class ProcurementWorkflowService {
                 suggestionId = insert("INSERT INTO procurement_suggestion(suggestion_no,status,system_managed,created_by) VALUES(?,'DRAFT',TRUE,1)", suggestionNo);
             } else {
                 suggestionId = existingSuggestions.get(0);
+                jdbc.update("DELETE FROM procurement_suggestion_item WHERE suggestion_id=?", suggestionId);
             }
             for (var recommendation : group.getValue()) {
                 LocalDate eta = LocalDate.now().plusDays(recommendation.leadTimeDays());
-                List<Map<String,Object>> existingItems = jdbc.queryForList("""
-                        SELECT id,shortage_quantity FROM procurement_suggestion_item
-                        WHERE suggestion_id=? AND sku_id=?
-                        ORDER BY id LIMIT 1 FOR UPDATE
-                        """, suggestionId, recommendation.skuId());
-                long suggestionItemId;
-                if (existingItems.isEmpty()) {
-                    suggestionItemId = insert("""
-                                    INSERT INTO procurement_suggestion_item(
-                                        suggestion_id,sku_id,supplier_id,shortage_quantity,suggested_quantity,
-                                        confirmed_quantity,purchase_price,expected_arrival_date,supplier_purchase_info_id)
-                                    VALUES(?,?,?,?,?,NULL,?,?,?)
-                                    """,
-                            suggestionId, recommendation.skuId(), recommendation.supplierId(),
-                            recommendation.shortageQuantity(), recommendation.suggestedQuantity(),
-                            recommendation.purchasePrice(), eta, recommendation.purchaseInfoId());
-                } else {
-                    suggestionItemId = num(existingItems.get(0), "id");
-                    int totalShortage = (int) num(existingItems.get(0), "shortage_quantity") + recommendation.shortageQuantity();
-                    int suggestedQuantity = Math.max(totalShortage, recommendation.minimumOrderQuantity());
-                    jdbc.update("""
-                            UPDATE procurement_suggestion_item
-                            SET shortage_quantity=?,suggested_quantity=?,supplier_id=?,purchase_price=?,
-                                expected_arrival_date=?,supplier_purchase_info_id=?
-                            WHERE id=?
-                            """, totalShortage, suggestedQuantity, recommendation.supplierId(),
-                            recommendation.purchasePrice(), eta, recommendation.purchaseInfoId(), suggestionItemId);
-                }
+                long suggestionItemId = insert("""
+                                INSERT INTO procurement_suggestion_item(
+                                    suggestion_id,sku_id,supplier_id,shortage_quantity,suggested_quantity,
+                                    confirmed_quantity,purchase_price,expected_arrival_date,supplier_purchase_info_id)
+                                VALUES(?,?,?,?,?,NULL,?,?,?)
+                                """,
+                        suggestionId, recommendation.skuId(), recommendation.supplierId(),
+                        recommendation.shortageQuantity(), recommendation.suggestedQuantity(),
+                        recommendation.purchasePrice(), eta, recommendation.purchaseInfoId());
                 for (var item : rowsBySku.get(recommendation.skuId())) {
                     jdbc.update("""
                                     INSERT INTO shortage_coverage(
@@ -157,6 +159,7 @@ public class ProcurementWorkflowService {
             }
             suggestions.add(suggestionId);
         }
+        rejectUnusedSystemDraftSuggestions(systemDraftSuggestionIds, suggestions);
         return generationResult(suggestions, unconfiguredItems);
     }
 
@@ -168,23 +171,42 @@ public class ProcurementWorkflowService {
         result.put("unconfiguredItems", unconfiguredItems);
         return result;
     }
-    private void closeResolvedSystemSuggestions() {
-        List<Long> resolved = jdbc.queryForList("""
-                SELECT ps.id
-                FROM procurement_suggestion ps
-                WHERE ps.status='DRAFT' AND ps.system_managed=TRUE
-                  AND NOT EXISTS (
-                    SELECT 1 FROM procurement_suggestion_item psi
-                    JOIN shortage_coverage sc ON sc.suggestion_item_id=psi.id AND sc.active=TRUE
-                    JOIN sales_order_item soi ON soi.id=sc.sales_order_item_id
-                    JOIN sales_order so ON so.id=soi.sales_order_id
-                    WHERE psi.suggestion_id=ps.id
-                      AND so.status='WAITING_STOCK' AND soi.uncovered_quantity>0
-                  )
-                """, Long.class);
-        for (long suggestionId : resolved) {
-            jdbc.update("UPDATE procurement_suggestion SET status='REJECTED',review_reason='供需余量已恢复，无需采购',version=version+1 WHERE id=?", suggestionId);
-            jdbc.update("UPDATE shortage_coverage SET active=FALSE WHERE suggestion_item_id IN (SELECT id FROM procurement_suggestion_item WHERE suggestion_id=?)", suggestionId);
+
+    private int availableInTransitQuantity(long skuId) {
+        Integer inTransit = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(balance.in_transit_quantity),0)
+                FROM inventory_balance balance
+                JOIN warehouse warehouse ON warehouse.id=balance.warehouse_id
+                WHERE balance.sku_id=? AND warehouse.is_default=TRUE AND warehouse.enabled=TRUE
+                """, Integer.class, skuId);
+        Integer committedCoverage = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(coverage.covered_quantity),0)
+                FROM shortage_coverage coverage
+                JOIN procurement_suggestion_item item ON item.id=coverage.suggestion_item_id
+                JOIN procurement_suggestion suggestion ON suggestion.id=item.suggestion_id
+                WHERE coverage.active=TRUE AND suggestion.status='CONFIRMED' AND item.sku_id=?
+                """, Integer.class, skuId);
+        return Math.max(0, Objects.requireNonNullElse(inTransit, 0) - Objects.requireNonNullElse(committedCoverage, 0));
+    }
+
+    private List<Long> clearSystemDraftCoverage() {
+        List<Long> suggestionIds = jdbc.queryForList("SELECT id FROM procurement_suggestion WHERE status='DRAFT' AND system_managed=TRUE FOR UPDATE", Long.class);
+        if (suggestionIds.isEmpty()) return suggestionIds;
+        jdbc.update("""
+                DELETE FROM shortage_coverage
+                WHERE suggestion_item_id IN (
+                    SELECT id FROM procurement_suggestion_item
+                    WHERE suggestion_id IN (SELECT id FROM procurement_suggestion WHERE status='DRAFT' AND system_managed=TRUE)
+                )
+                """);
+        return suggestionIds;
+    }
+
+    private void rejectUnusedSystemDraftSuggestions(List<Long> systemDraftSuggestionIds, List<Long> activeSuggestionIds) {
+        for (long suggestionId : systemDraftSuggestionIds) {
+            if (!activeSuggestionIds.contains(suggestionId)) {
+                jdbc.update("UPDATE procurement_suggestion SET status='REJECTED',review_reason='供需余量已恢复，无需采购',version=version+1 WHERE id=?", suggestionId);
+            }
         }
     }
 
