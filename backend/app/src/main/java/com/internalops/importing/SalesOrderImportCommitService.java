@@ -91,18 +91,19 @@ public class SalesOrderImportCommitService {
         for (ImportRowView row : batch.rows()) {
             if (row.status() != ImportRowStatus.VALID
                     || "SKIP".equals(conflictActions.get(row.id()))) continue;
-            String externalOrderNo = SalesOrderImportGroupKey.from(row.data());
-            rowsByOrder.computeIfAbsent(externalOrderNo, ignored -> new ArrayList<>()).add(row);
+            String groupKey = SalesOrderImportGroupKey.from(row.data());
+            rowsByOrder.computeIfAbsent(groupKey, ignored -> new ArrayList<>()).add(row);
         }
 
         return rowsByOrder;
     }
 
     private void commitOrder(String externalOrderNo, List<ImportRowView> rows, Map<Long, String> actions) {
-        List<Map<String, Object>> existing = jdbc.queryForList(
+        boolean automaticOrder = externalOrderNo.startsWith("AUTO|");
+        List<Map<String, Object>> existing = automaticOrder ? List.of() : jdbc.queryForList(
                 "SELECT id,version FROM sales_order WHERE external_order_no=? FOR UPDATE", externalOrderNo);
         if (existing.isEmpty()) {
-            salesOrders.create(request(externalOrderNo, rows, null));
+            salesOrders.create(request(automaticOrder ? null : externalOrderNo, rows, null));
             return;
         }
         if (rows.stream().anyMatch(row -> !"OVERWRITE".equals(actions.get(row.id())))) {

@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -106,12 +107,13 @@ public class SalesOrderImportValidationService {
 
     private ParsedImportRow validate(ParsedImportRow row) {
         Map<String, Object> data = new LinkedHashMap<>(row.data());
+        resolveCustomerCode(data);
         String required = required(data);
         if (required != null) return error(row, data, required);
         LocalDate date;
         int quantity;
         BigDecimal price;
-        try { date = LocalDate.parse(text(data, "orderDate")); } catch (DateTimeParseException exception) { return error(row, data, "订单日期格式错误"); }
+        try { date = parseDate(text(data, "orderDate")); } catch (DateTimeParseException exception) { return error(row, data, "订单日期格式错误"); }
         if (!List.of("工程订单", "零售订单", "前置订单").contains(text(data, "orderType"))) return error(row, data, "订单类型必须为工程订单、零售订单或前置订单");
         String normalizedStatus = normalizedStatus(text(data, "orderStatus"));
         if (normalizedStatus == null) return error(row, data, "订单状态必须为草稿或正式订单");
@@ -147,6 +149,23 @@ public class SalesOrderImportValidationService {
         String[][] fields = {{"customerCode", "客户编码"}, {"orderDate", "订单日期"}, {"orderType", "订单类型"}, {"salesperson", "销售员"}, {"productCode", "产品编号"}, {"quantity", "订单数量"}, {"salePrice", "含税单价"}};
         for (String[] field : fields) if (text(data, field[0]).isBlank()) return field[1] + "不能为空";
         return null;
+    }
+
+    private void resolveCustomerCode(Map<String, Object> data) {
+        if (!text(data, "customerCode").isBlank() || text(data, "customerName").isBlank()) return;
+        List<String> codes = jdbc.query("SELECT customer_code FROM customer WHERE customer_name=? AND enabled=TRUE",
+                (rs, index) -> rs.getString(1), text(data, "customerName"));
+        if (codes.size() == 1) data.put("customerCode", codes.get(0));
+    }
+
+    private LocalDate parseDate(String value) {
+        String normalized = value.trim().replace('/', '-').replace('.', '-');
+        for (DateTimeFormatter formatter : List.of(
+                DateTimeFormatter.ISO_LOCAL_DATE,
+                DateTimeFormatter.ofPattern("yyyy-M-d"))) {
+            try { return LocalDate.parse(normalized, formatter); } catch (DateTimeParseException ignored) { }
+        }
+        throw new DateTimeParseException("订单日期格式错误", value, 0);
     }
     private String normalizedStatus(String value) { return value.isBlank() || "正式订单".equals(value) ? "PENDING_CUSTOMER_PAYMENT" : "草稿".equals(value) ? "DRAFT" : null; }
     private String text(Map<String, Object> data, String key) { Object value = data.get(key); return value == null ? "" : value.toString().trim(); }

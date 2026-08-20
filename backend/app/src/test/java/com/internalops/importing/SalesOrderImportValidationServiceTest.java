@@ -26,7 +26,7 @@ class SalesOrderImportValidationServiceTest {
         jdbc.execute("DROP TABLE IF EXISTS sku");
         jdbc.execute("DROP TABLE IF EXISTS customer");
         jdbc.execute("DROP TABLE IF EXISTS sales_order");
-        jdbc.execute("CREATE TABLE customer (id BIGINT PRIMARY KEY, customer_code VARCHAR(64), enabled BOOLEAN)");
+        jdbc.execute("CREATE TABLE customer (id BIGINT PRIMARY KEY, customer_code VARCHAR(64), customer_name VARCHAR(128), enabled BOOLEAN)");
         jdbc.execute("CREATE TABLE sku (id BIGINT PRIMARY KEY, product_code VARCHAR(64), customer_part_number VARCHAR(64), enabled BOOLEAN, sales_minimum_order_quantity DECIMAL(18,2))");
         jdbc.execute("CREATE TABLE sales_order (id BIGINT PRIMARY KEY, external_order_no VARCHAR(100))");
         validation = new SalesOrderImportValidationService(jdbc);
@@ -71,6 +71,19 @@ class SalesOrderImportValidationServiceTest {
                 .containsEntry("_normalizedStatus", "PENDING_CUSTOMER_PAYMENT")
                 .containsEntry("quantity", 2)
                 .containsEntry("salePrice", new BigDecimal("10.50"));
+    }
+
+    @Test
+    void resolvesLegacyCustomerNameAndSlashDate() {
+        jdbc.update("INSERT INTO customer(id, customer_code, customer_name, enabled) VALUES (?, ?, ?, ?)", 1, "C-001", "客户一", true);
+        sku(10, "P-001", "CM-001", true, 1);
+
+        ParsedImportRow result = validation.validateAll(List.of(row(Map.of(
+                "customerCode", "", "customerName", "客户一", "orderDate", "2026/01/01")))).get(0);
+
+        assertThat(result.status()).isEqualTo(ImportRowStatus.VALID);
+        assertThat(result.data()).containsEntry("customerCode", "C-001")
+                .containsEntry("orderDate", "2026-01-01");
     }
 
     @Test
@@ -235,7 +248,7 @@ class SalesOrderImportValidationServiceTest {
     }
 
     private void customer(long id, String code, boolean enabled) {
-        jdbc.update("INSERT INTO customer(id, customer_code, enabled) VALUES (?, ?, ?)", id, code, enabled);
+        jdbc.update("INSERT INTO customer(id, customer_code, customer_name, enabled) VALUES (?, ?, ?, ?)", id, code, code, enabled);
     }
 
     private void sku(long id, String productCode, String customerPartNumber, boolean enabled, int minimumQuantity) {

@@ -12,6 +12,65 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class SalesOrderExcelParserTest {
     @Test
+    void acceptsLegacyOrderExportHeadersAndFillsSafeDefaults() throws Exception {
+        try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("Sheet1");
+            String[] headers = {"客户名称", "外部订单号", "订单日期", "订单类型", "产品编号", "客户料号", "数量", "含税单价", "收货地址", "联系人", "联系电话", "发货方式", "订单备注"};
+            var header = sheet.createRow(0);
+            for (int index = 0; index < headers.length; index++) header.createCell(index).setCellValue(headers[index]);
+            var row = sheet.createRow(1);
+            row.createCell(0).setCellValue("客户一");
+            row.createCell(2).setCellValue("2026/01/01");
+            row.createCell(3).setCellValue("工程订单");
+            row.createCell(4).setCellValue("P-001");
+            row.createCell(5).setCellValue("CM-001");
+            row.createCell(6).setCellValue(2);
+            row.createCell(7).setCellValue(10.5);
+            workbook.write(output);
+
+            ParsedImportRow parsed = new ExcelImportParser().parse(ImportType.ORDER,
+                    new ByteArrayInputStream(output.toByteArray())).get(0);
+
+            assertThat(parsed.data()).containsEntry("customerName", "客户一")
+                    .containsEntry("customerCode", "")
+                    .containsEntry("quantity", "2")
+                    .containsEntry("orderStatus", "正式订单")
+                    .containsEntry("salesperson", "Excel导入");
+        }
+    }
+
+    @Test
+    void acceptsTheFirstNonEmptySheetWhenWorkbookUsesSheet1AndReadsExcelDates() throws Exception {
+        try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("Sheet1");
+            String[] headers = {"客户编码", "订单日期", "订单类型", "订单状态", "销售员", "客户料号", "产品编号", "订单数量", "含税单价"};
+            var header = sheet.createRow(0);
+            for (int index = 0; index < headers.length; index++) header.createCell(index).setCellValue(headers[index]);
+            var row = sheet.createRow(1);
+            row.createCell(0).setCellValue("C-001");
+            var date = row.createCell(1);
+            date.setCellValue(java.sql.Date.valueOf(LocalDate.of(2026, 1, 1)));
+            date.setCellStyle(workbook.createCellStyle());
+            date.getCellStyle().setDataFormat(workbook.getCreationHelper().createDataFormat().getFormat("yyyy-mm-dd"));
+            row.createCell(2).setCellValue("工程订单");
+            row.createCell(3).setCellValue("正式订单");
+            row.createCell(4).setCellValue("张三");
+            row.createCell(5).setCellValue("CM-001");
+            row.createCell(6).setCellValue("P-001");
+            row.createCell(7).setCellValue(2);
+            row.createCell(8).setCellValue(10.5);
+            workbook.write(output);
+
+            List<ParsedImportRow> rows = new ExcelImportParser().parse(ImportType.ORDER,
+                    new ByteArrayInputStream(output.toByteArray()));
+
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).data()).containsEntry("orderDate", "2026-01-01")
+                    .containsEntry("externalOrderNo", "");
+        }
+    }
+
+    @Test
     void parsesThreeOrderDetailRowsUsingTheOrderImportHeaders() throws Exception {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("订单导入");

@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
@@ -90,8 +91,10 @@ class SalesOrderImportCommitServiceTest {
 
         assertEquals(1, count("sales_order"));
         assertEquals(2, count("sales_order_item"));
-        assertEquals("AUTO|C1|2026-08-17|工程订单", jdbc.queryForObject(
+        assertEquals(null, jdbc.queryForObject(
                 "SELECT external_order_no FROM sales_order", String.class));
+        assertTrue(jdbc.queryForObject("SELECT order_no FROM sales_order", String.class)
+                .matches("DD202608\\d{5}"));
         assertEquals(2, committed.committedRows());
     }
 
