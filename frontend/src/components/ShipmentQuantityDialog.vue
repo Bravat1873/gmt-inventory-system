@@ -20,6 +20,7 @@ const props = defineProps<{ order: ShipmentOrder }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
 const shipmentValues = ref<Record<number, number>>({})
 const deliveryAddress = ref('')
+const shipmentRemark = ref('')
 const historyExpanded = ref(false)
 const saving = ref(false)
 
@@ -27,6 +28,7 @@ function defaultAddress() { return props.order.defaultShipmentAddress || props.o
 function reset() {
   shipmentValues.value = Object.fromEntries(props.order.items.map(item => [item.lineNo, 0]))
   deliveryAddress.value = defaultAddress()
+  shipmentRemark.value = ''
   historyExpanded.value = false
 }
 watch(() => props.order, reset, { immediate: true, deep: true })
@@ -66,7 +68,7 @@ async function save() {
     await updateShipmentQuantities(props.order.id, deliveryAddress.value.trim(), props.order.items.map(item => ({
       lineNo: item.lineNo,
       shippedQuantity: Number(item.shippedQuantity ?? 0) + current(item)
-    })))
+    })), shipmentRemark.value.trim() || undefined)
     emit('message', '发货数量已保存，库存已按本次差额同步', 'success')
     emit('saved')
   } catch (error) {
@@ -97,6 +99,10 @@ async function save() {
           <textarea id="shipment-address" v-model="deliveryAddress" data-test="shipment-address" rows="2" placeholder="请输入本批收货地址" />
           <button type="button" data-test="use-order-address" :disabled="!defaultAddress()" @click="deliveryAddress = defaultAddress()">使用订单地址</button>
         </div>
+        <label class="shipment-remark-field" for="shipment-remark">
+          <span>发货备注</span>
+          <textarea id="shipment-remark" v-model="shipmentRemark" data-test="shipment-remark" rows="2" maxlength="500" placeholder="选填，例如送货要求、包装说明" />
+        </label>
 
         <section v-if="order.shipments?.length" class="shipment-history-section">
           <button type="button" class="shipment-history-toggle" data-test="shipment-history-toggle" :aria-expanded="historyExpanded" aria-controls="shipment-history" @click="historyExpanded = !historyExpanded">

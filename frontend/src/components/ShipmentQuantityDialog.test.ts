@@ -36,15 +36,16 @@ it('limits this shipment to order remaining when it is lower than reserved quant
   expect((wrapper.get('[aria-label="本次发货数量"]').element as HTMLInputElement).max).toBe('2')
 })
 
-it('submits the original cumulative quantity plus this shipment', async () => {
+it('submits the original cumulative quantity plus this shipment and its remark', async () => {
   updateShipmentQuantities.mockResolvedValue({})
   const wrapper = mountDialog({ id: 12 })
 
   await wrapper.get('[aria-label="本次发货数量"]').setValue('5')
+  await wrapper.get('[data-test="shipment-remark"]').setValue('客户要求下午送达')
   await wrapper.get('footer .primary-action').trigger('click')
   await flushPromises()
 
-  expect(updateShipmentQuantities).toHaveBeenCalledWith(12, '默认收货地址', [{ lineNo: 10000, shippedQuantity: 8 }])
+  expect(updateShipmentQuantities).toHaveBeenCalledWith(12, '默认收货地址', [{ lineNo: 10000, shippedQuantity: 8 }], '客户要求下午送达')
 })
 
 it('updates the remaining quantity from the current shipment value', async () => {
