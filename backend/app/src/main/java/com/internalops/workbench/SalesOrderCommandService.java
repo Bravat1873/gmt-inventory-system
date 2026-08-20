@@ -253,9 +253,6 @@ public class SalesOrderCommandService {
         for (SalesOrderRequest.Item item : request.items()) {
             if (item.skuId() == null || jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE id=? AND enabled=TRUE", Integer.class, item.skuId()) == 0) throw new IllegalArgumentException("订单中存在无效产品");
             if (item.quantity() == null || item.quantity() <= 0) throw new IllegalArgumentException("产品数量必须为正数");
-            Map<String, Object> sku = jdbc.queryForMap("SELECT customer_part_number,sales_minimum_order_quantity FROM sku WHERE id=?", item.skuId());
-            int minimum = ((Number) sku.get("sales_minimum_order_quantity")).intValue();
-            if (item.quantity() < minimum) throw new IllegalArgumentException("产品 " + sku.get("customer_part_number") + " 的订单数量不能小于销售最小起订量 " + minimum);
             if (item.salePrice() == null || item.salePrice().signum() < 0) throw new IllegalArgumentException("销售单价不能为负数");
         }
     }

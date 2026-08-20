@@ -58,7 +58,6 @@ const customerOptions = computed<FuzzyPickerOption[]>(() => customers.value.map(
 const skuOptions = computed<FuzzyPickerOption[]>(() => skus.value.map(sku => ({ id: sku.id, label: skuLabel(sku), selectedLabel: String(sku.productCode ?? '').trim() || '未设置产品编号', searchText: [sku.productCode, sku.customerPartNumber, sku.model].filter(Boolean).join(' ') })))
 
 function skuFor(line: Line) { return skus.value.find(sku => sku.id === line.skuId) }
-function salesMinimum(line: Line) { return Math.max(Number(skuFor(line)?.salesMinimumOrderQuantity ?? 1), 1) }
 function postOrderSupplyDemandSurplus(line: Line, index: number) {
   const sku = skuFor(line)
   if (!sku) return 0
@@ -126,8 +125,6 @@ function validationMessage() {
   if (invalidSku >= 0) return `请选择第 ${invalidSku + 1} 条明细的客户料号`
   const invalidQuantity = form.items.findIndex(line => !Number.isFinite(line.quantity) || line.quantity <= 0)
   if (invalidQuantity >= 0) return `第 ${invalidQuantity + 1} 条明细的订单数量必须大于 0`
-  const belowMinimum = form.items.findIndex(line => line.skuId && line.quantity < salesMinimum(line))
-  if (belowMinimum >= 0) return `第 ${belowMinimum + 1} 条明细的订单数量不能小于销售最小起订量 ${salesMinimum(form.items[belowMinimum])}`
   const invalidPrice = form.items.findIndex(line => !Number.isFinite(line.salePrice) || line.salePrice < 0)
   if (invalidPrice >= 0) return `第 ${invalidPrice + 1} 条明细的含税单价不能小于 0`
   return ''
@@ -136,12 +133,11 @@ function hasError(message: string) { return error.value === message }
 function lineError(index: number, field: 'sku' | 'quantity' | 'price') {
   const number = index + 1
   if (field === 'sku') return hasError(`请选择第 ${number} 条明细的客户料号`)
-  if (field === 'quantity') return hasError(`第 ${number} 条明细的订单数量必须大于 0`) || hasError(`第 ${number} 条明细的订单数量不能小于销售最小起订量 ${salesMinimum(form.items[index])}`)
+  if (field === 'quantity') return hasError(`第 ${number} 条明细的订单数量必须大于 0`)
   return hasError(`第 ${number} 条明细的含税单价不能小于 0`)
 }
 function quantityErrorMessage(index: number) {
-  return hasError(`第 ${index + 1} 条明细的订单数量必须大于 0`) ? '数量须大于 0' : `不能小于 ${salesMinimum(form.items[index])}`
-
+  return hasError(`第 ${index + 1} 条明细的订单数量必须大于 0`) ? '数量须大于 0' : ''
 }
 async function save() {
   error.value = validationMessage()
@@ -215,7 +211,7 @@ onMounted(async () => {
                 <div><span>单位</span><strong>{{ skuFor(line)?.unit || '—' }}</strong></div>
               </div>
               <div class="order-line-fields">
-                <label :class="{ 'field-invalid': lineError(index, 'quantity') }"><span>订单数量 <small v-if="lineError(index, 'quantity')" :data-test="`quantity-error-${index}`" class="field-error">{{ quantityErrorMessage(index) }}</small></span><input v-model.number="line.quantity" type="number" :min="salesMinimum(line)"></label>
+                <label :class="{ 'field-invalid': lineError(index, 'quantity') }"><span>订单数量 <small v-if="lineError(index, 'quantity')" :data-test="`quantity-error-${index}`" class="field-error">{{ quantityErrorMessage(index) }}</small></span><input v-model.number="line.quantity" type="number" min="1"></label>
                 <label :class="{ 'field-invalid': lineError(index, 'price') }"><span>含税单价 <small v-if="lineError(index, 'price')" :data-test="`price-error-${index}`" class="field-error">单价不可为负</small></span><input v-model.number="line.salePrice" type="number" min="0" step="0.01"></label>
                 <div><span>已发货数量</span><strong>{{ line.shippedQuantity ?? 0 }}</strong></div>
                 <div><span>未发货数量</span><strong>{{ line.remainingQuantity ?? line.quantity }}</strong></div>
@@ -224,7 +220,6 @@ onMounted(async () => {
                 <div><span>实际库存</span><strong>{{ skuFor(line)?.actualQuantity ?? 0 }}</strong></div>
                 <div><span>在途数量</span><strong>{{ skuFor(line)?.inTransitQuantity ?? 0 }}</strong></div>
                 <div><span>全局未发货</span><strong>{{ skuFor(line)?.pendingDeliveryQuantity ?? 0 }}</strong></div>
-                <div><span>销售最小起订量</span><strong>{{ salesMinimum(line) }}</strong></div>
                 <div :class="{ negative: (skuFor(line)?.supplyDemandSurplus ?? 0) < 0 }"><span>供需余量</span><strong>{{ skuFor(line)?.supplyDemandSurplus ?? 0 }}</strong></div>
                 <div :class="{ negative: postOrderSupplyDemandSurplus(line, index) < 0 }"><span>下单后供需余量</span><strong>{{ postOrderSupplyDemandSurplus(line, index) }}</strong><small v-if="postOrderSupplyDemandSurplus(line, index) < 0">下单后采购缺口 {{ Math.abs(postOrderSupplyDemandSurplus(line, index)) }}</small></div>
               </div>

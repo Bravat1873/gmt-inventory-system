@@ -99,6 +99,20 @@ class SalesOrderImportCommitServiceTest {
     }
 
     @Test
+    void importsSalesOrdersBelowTheLegacySalesMinimumQuantity() {
+        jdbc.update("UPDATE sku SET sales_minimum_order_quantity=1000 WHERE id=1");
+        long batch = batch("legacy-sales-minimum", List.of(row(2,
+                order("EXT-LEGACY-MINIMUM", "DRAFT", 1, 8, "12.50"))));
+
+        ImportBatchView committed = commitService.commit(batch);
+
+        assertEquals(1, count("sales_order"));
+        assertEquals(8, jdbc.queryForObject("SELECT quantity FROM sales_order_item", Integer.class));
+        assertEquals(1, committed.committedRows());
+        assertEquals(0, committed.errorRows());
+    }
+
+    @Test
     void formalOrderReusesInventoryAllocationAndLocksStock() {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
         long batch = batch("formal", List.of(row(2,

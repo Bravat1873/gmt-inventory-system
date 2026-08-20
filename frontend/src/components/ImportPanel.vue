@@ -71,11 +71,31 @@ const productConflictGroups = computed(() => {
 const orderGroups = computed(() => {
   const groups = new Map<string, ImportRow[]>()
   for (const row of previewBatch.value?.rows ?? []) {
-    const orderNo = String(row.data.externalOrderNo ?? '未填写外部订单号')
-    groups.set(orderNo, [...(groups.get(orderNo) ?? []), row])
+    const key = orderGroupKey(row)
+    groups.set(key, [...(groups.get(key) ?? []), row])
   }
-  return [...groups.entries()].map(([externalOrderNo, rows]) => ({ externalOrderNo, rows, header: rows[0] }))
+  return [...groups.entries()].map(([key, rows]) => ({
+    key,
+    externalOrderNo: externalOrderNo(rows[0]),
+    automatic: key.startsWith('AUTO|'),
+    rows,
+    header: rows[0]
+  }))
 })
+
+function externalOrderNo(row: ImportRow) {
+  return String(row.data.externalOrderNo ?? '').trim()
+}
+
+function orderGroupKey(row: ImportRow) {
+  const explicitOrderNo = externalOrderNo(row)
+  if (explicitOrderNo) return explicitOrderNo
+  return ['AUTO', normalizedOrderGroupValue(row, 'customerCode'), normalizedOrderGroupValue(row, 'orderDate'), normalizedOrderGroupValue(row, 'orderType')].join('|')
+}
+
+function normalizedOrderGroupValue(row: ImportRow, key: string) {
+  return String(row.data[key] ?? '').trim().replace(/\s+/g, ' ')
+}
 
 const conflictRows = computed(() => (previewBatch.value?.rows ?? []).filter(row => Boolean(row.data._conflict || row.data._conflictGroup)))
 const hasConflictRows = computed(() => conflictRows.value.length > 0)
@@ -116,6 +136,10 @@ const orderCommitResult = computed<OrderCommitResult | null>(() => {
 
 const orderCommitHasSuccess = computed(() => Boolean(orderCommitResult.value
   && (orderCommitResult.value.createdOrders > 0 || orderCommitResult.value.committed > 0)))
+
+function orderGroupError(key: string) {
+  return orderCommitResult.value?.orderErrors.find(item => item.externalOrderNo === key)?.error ?? ''
+}
 
 const productCanCommit = computed(() => {
   const batch = previewBatch.value
@@ -315,7 +339,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
         <h2>{{ title }}</h2>
         <p v-if="type === 'PRODUCT'">选择文件后先核对产品编码与冲突，再确认增量导入。</p>
         <p v-else-if="type === 'SUPPLIER'">选择文件后先核对预览，再确认写入供应商资料。</p>
-        <p v-else-if="type === 'ORDER'">选择文件后先按外部订单号核对分组预览，再确认提交订单。</p>
+        <p v-else-if="type === 'ORDER'">选择文件后先核对订单分组与明细，再确认增量导入。</p>
         <p v-else>选择 Excel 文件后，系统会自动解析并导入当前页面的数据。</p>
       </div>
       <button data-test="close-panel" type="button" class="dialog-close" @click="emit('close')">关闭</button>
@@ -370,9 +394,10 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
           <a data-test="download-import-errors" :href="`/api/imports/${previewBatch.batchId}/errors.xlsx`" download>下载错误清单</a>
         </div>
         <div class="supplier-preview-summary"><span>订单数 <strong data-test="order-preview-count">{{ orderGroups.length }}</strong></span><span>总行数 <strong data-test="preview-total-count">{{ previewBatch.totalRows }}</strong></span><span>有效行 <strong data-test="preview-valid-count">{{ previewBatch.validRows }}</strong></span><span>错误行 <strong data-test="preview-error-count">{{ previewBatch.errorRows }}</strong></span></div>
-        <section v-for="group in orderGroups" :key="group.externalOrderNo" class="order-preview-group" :data-test="`order-preview-group-${group.externalOrderNo}`">
-          <header><strong>外部订单号：{{ group.externalOrderNo }}</strong><span>客户编码：{{ value(group.header, 'customerCode') }}</span><span>订单日期：{{ value(group.header, 'orderDate') }}</span><span>订单类型：{{ value(group.header, 'orderType') }}</span><span>状态：{{ orderStatusLabel(group.header) }}</span><template v-if="group.rows.some(row => row.data._conflict)"><button :data-test="`order-conflict-overwrite-${group.externalOrderNo}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseOrderGroup(group.rows, 'OVERWRITE')">采用导入</button><button :data-test="`order-conflict-skip-${group.externalOrderNo}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseOrderGroup(group.rows, 'SKIP')">保留现有</button><span v-if="rowActions[group.header.id]" class="resolved-state">{{ rowActions[group.header.id] === 'OVERWRITE' ? '将采用导入' : '将保留现有' }}</span></template></header>
-          <div class="supplier-preview-table-wrap"><table class="order-preview-table"><thead><tr><th>产品编号</th><th>客户料号</th><th>数量</th><th>含税单价</th><th>状态</th><th>错误</th></tr></thead><tbody><tr v-for="row in group.rows" :key="row.id" data-test="order-preview-row" :class="{ 'conflict-row': row.data._conflict }"><td>{{ value(row, 'productCode') }}</td><td>{{ value(row, 'customerPartNumber') }}</td><td>{{ value(row, 'model') }}</td><td>{{ value(row, 'quantity') }}</td><td>{{ value(row, 'salePrice') }}</td><td>{{ row.status === 'VALID' ? '有效' : row.status === 'ERROR' ? '错误' : '忽略' }}</td><td>{{ row.errorMessage ?? '—' }}</td></tr></tbody></table></div>
+        <section v-for="group in orderGroups" :key="group.key" class="order-preview-group" :data-test="`order-preview-group-${group.key}`">
+          <header><strong>{{ group.automatic ? '系统自动编号（DD年月序列号）' : `外部订单号：${group.externalOrderNo}` }}</strong><span>客户编码：{{ value(group.header, 'customerCode') }}</span><span>订单日期：{{ value(group.header, 'orderDate') }}</span><span>订单类型：{{ value(group.header, 'orderType') }}</span><span>状态：{{ orderStatusLabel(group.header) }}</span><template v-if="group.rows.some(row => row.data._conflict)"><button :data-test="`order-conflict-overwrite-${group.key}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseOrderGroup(group.rows, 'OVERWRITE')">采用导入</button><button :data-test="`order-conflict-skip-${group.key}`" type="button" class="secondary-action compact-action" :disabled="busy" @click="chooseOrderGroup(group.rows, 'SKIP')">保留现有</button><span v-if="rowActions[group.header.id]" class="resolved-state">{{ rowActions[group.header.id] === 'OVERWRITE' ? '将采用导入' : '将保留现有' }}</span></template></header>
+          <p v-if="orderGroupError(group.key)" class="order-group-error">{{ orderGroupError(group.key) }}</p>
+          <div class="supplier-preview-table-wrap"><table class="order-preview-table"><thead><tr><th>产品编号</th><th>客户料号</th><th>型号</th><th>数量</th><th>含税单价</th><th>状态</th><th>错误</th></tr></thead><tbody><tr v-for="row in group.rows" :key="row.id" data-test="order-preview-row" :class="{ 'conflict-row': row.data._conflict }"><td>{{ value(row, 'productCode') }}</td><td>{{ value(row, 'customerPartNumber') }}</td><td>{{ value(row, 'model') }}</td><td>{{ value(row, 'quantity') }}</td><td>{{ value(row, 'salePrice') }}</td><td>{{ row.status === 'VALID' ? '有效' : row.status === 'ERROR' ? '错误' : '忽略' }}</td><td>{{ orderGroupError(group.key) ? '—' : row.errorMessage ?? '—' }}</td></tr></tbody></table></div>
         </section>
         <div class="supplier-preview-actions"><p v-if="!orderCanCommit">{{ previewBatch.errorRows > 0 ? '存在错误行，不能提交订单。' : '没有有效订单，不能提交。' }}</p><button data-test="commit-order-import" type="button" class="primary-action" :disabled="busy || !orderCanCommit" @click="confirmOrderImport">确认导入订单</button></div>
       </section>
@@ -411,7 +436,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
 .supplier-import-strategy{padding:16px;border:1px solid #dde3e8;border-radius:6px;background:#fafbfc}.supplier-import-strategy legend{padding:0 7px;color:#34414c;font-size:13px;font-weight:700}.supplier-import-options label{border-radius:5px}
 .supplier-preview,.product-preview,.order-preview{padding-top:18px}.supplier-preview-summary{gap:8px}.supplier-preview-summary span{border-color:#e0e5e9;border-radius:4px;background:#f6f8f9;color:#59636c}.supplier-preview-summary strong{color:#202a33}
 .supplier-preview-table-wrap{border-color:#dce3e8;border-radius:5px}.supplier-preview-table th,.product-preview-table th,.order-preview-table th{background:#f5f7f8;color:#44515c;font-weight:700}
-.supplier-preview-table tbody tr:hover,.product-preview-table tbody tr:hover,.order-preview-table tbody tr:hover{background:#fafcfd}.product-danger-note{border-radius:0 4px 4px 0}.order-preview-group{border-color:#dce3e8;border-radius:5px}
+.supplier-preview-table tbody tr:hover,.product-preview-table tbody tr:hover,.order-preview-table tbody tr:hover{background:#fafcfd}.product-danger-note{border-radius:0 4px 4px 0}.order-preview-group{border-color:#dce3e8;border-radius:5px}.order-preview-group>header{align-items:center;border-bottom:1px solid #e7ebee;background:#f6f8f9}.order-preview-group>header strong{margin-right:auto;font-size:13px}.order-preview-group>header span{color:#59656f}.order-group-error{margin:0;padding:10px 12px;border-bottom:1px solid #efc4bd;background:#fff6f4;color:#963d32;font-size:12px;font-weight:650}.order-preview-table{min-width:840px}.order-preview-table th:nth-child(4),.order-preview-table td:nth-child(4),.order-preview-table th:nth-child(5),.order-preview-table td:nth-child(5),.order-preview-table th:nth-child(6),.order-preview-table td:nth-child(6){white-space:nowrap}
 .review-filters{display:flex;flex-wrap:wrap;gap:8px}.review-filters button{min-height:32px;padding:0 11px;border:1px solid #d5dde3;border-radius:4px;background:#fff;color:#58646e;font-size:12px}.review-filters button:hover{border-color:#7898b2;background:#f4f8fa}.review-filters button.selected{border-color:#315d82;background:#315d82;color:#fff}
 .inline-editor-row td{padding:0!important;background:#f4f8fb}.import-row-editor{padding:16px 18px;border-left:3px solid #315d82}.inline-editor-heading{display:flex;align-items:baseline;gap:10px;margin-bottom:14px;color:#25333f}.inline-editor-heading strong{font-size:14px}.inline-editor-heading span{color:#6a7680;font-size:12px}.import-field-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 14px}.import-field-grid label{display:grid;gap:5px;color:#56626d;font-size:12px;font-weight:650}.import-field-grid input{width:100%;min-width:0;height:34px;padding:6px 8px;border:1px solid #cbd5dd;border-radius:4px;background:#fff;color:#1f2933;font-size:13px}.import-field-grid input:focus{outline:2px solid rgba(49,93,130,.2);border-color:#315d82}.inline-editor-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.inline-editor-actions button{min-height:34px}
 .simple-import-success,.simple-import-error{margin:0;padding:13px 14px;border:1px solid;border-radius:5px;font-size:13px}.simple-import-success{border-color:#b9dcc8;background:#f0f8f3;color:#25633f}.simple-import-error{border-color:#edc7c2;background:#fff5f3;color:#97372d}

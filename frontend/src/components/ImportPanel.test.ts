@@ -186,6 +186,24 @@ describe('simple Excel import', () => {
     expect(wrapper.get('[data-test="order-preview-group-EXT-002"]').text()).toContain('草稿')
   })
 
+  it('groups automatic ORDER numbers by customer, date, and type with aligned columns', async () => {
+    const automaticOrders = structuredClone(orderBatch)
+    automaticOrders.rows[0].data.externalOrderNo = ''
+    automaticOrders.rows[1].data.externalOrderNo = ''
+    automaticOrders.rows[2].data.externalOrderNo = ''
+    automaticOrders.rows[2].data.orderDate = '2026-08-19'
+    previewImport.mockResolvedValue(automaticOrders)
+    const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
+    await selectFile(wrapper, 'orders-auto.xlsx')
+
+    expect(wrapper.findAll('[data-test^="order-preview-group-"]')).toHaveLength(2)
+    expect(wrapper.text()).toContain('系统自动编号（DD年月序列号）')
+    expect(wrapper.get('[data-test="order-preview-group-AUTO|C001|2026-08-17|工程订单"]').text()).toContain('客户编码：C001')
+    const firstGroup = wrapper.get('[data-test="order-preview-group-AUTO|C001|2026-08-17|工程订单"]')
+    expect(firstGroup.findAll('.order-preview-table thead th')).toHaveLength(7)
+    expect(firstGroup.findAll('.order-preview-table tbody tr').at(0)?.findAll('td')).toHaveLength(7)
+  })
+
   it('shows the normalized backend ORDER status before the imported status text', async () => {
     const normalizedBatch = structuredClone(orderBatch)
     Object.assign(normalizedBatch.rows[0].data, { orderStatus: '正式订单', _normalizedStatus: 'DRAFT' })

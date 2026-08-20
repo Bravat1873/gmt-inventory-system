@@ -20,7 +20,7 @@ class SalesMinimumOrderQuantityApiTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
 
-    @Test void exposesSalesMinimumOrderQuantityAndRejectsSmallerOrderLines() throws Exception {
+    @Test void acceptsSalesOrderLinesBelowTheLegacySalesMinimumQuantity() throws Exception {
         jdbc.update("UPDATE sku SET sales_minimum_order_quantity=5 WHERE id=1");
 
         mvc.perform(get("/api/orders/skus"))
@@ -29,7 +29,6 @@ class SalesMinimumOrderQuantityApiTest {
 
         String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"status\":\"DRAFT\",\"salesperson\":\"Admin\",\"items\":[{\"skuId\":1,\"quantity\":4,\"salePrice\":12.50}]}";
         mvc.perform(post("/api/orders").contentType("application/json").content(order))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("产品 S1 的订单数量不能小于销售最小起订量 5"));
+                .andExpect(status().isOk());
     }
 }
