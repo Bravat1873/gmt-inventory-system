@@ -120,7 +120,7 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
                 <span v-else-if="isFullIdentifier(field)" class="full-identifier">{{ text(row[field], field) }}</span>
                 <OverflowText v-else :value="text(row[field], field)" />
               </td>
-              <td class="row-actions">
+              <td class="row-actions"><div class="row-actions-content">
                 <button v-if="['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')" data-test="view-details" @click="emit('details', row)">查看</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('receipt', row)">登记收款</button>
                 <button v-if="module.key === 'order' && row.status === 'DRAFT'" data-test="review-order" @click="emit('reviewOrder', row)">复核</button>
@@ -139,7 +139,7 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
                 <button v-if="module.key === 'afterSales' && row.afterSalesType === 'RETURN' && row.status === 'RETURN_RECEIVED'" data-test="after-sales-refund" @click="emit('afterSalesRefund', row)">申请退款</button>
                 <button v-if="module.key === 'afterSales' && row.status === 'WAITING_REPLACEMENT'" @click="emit('afterSalesShipment', row)">换货发出</button>
                 <button v-if="module.key === 'afterSales' && row.status === 'WAITING_RETURN'" @click="emit('afterSalesCancel', row)">取消</button>
-              </td>
+              </div></td>
             </tr>
           </tbody>
         </table>

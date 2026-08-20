@@ -148,7 +148,8 @@ td {
 .empty-state { height: calc(var(--table-row-height) * 10); color: #888; text-align: center; vertical-align: middle; }
 .heading-actions { display:flex; gap:8px; }
 .sortable { cursor:pointer; user-select:none; }
-.row-actions { position:sticky; right:0; z-index:2; display:flex; align-items:center; justify-content:center; gap:6px; min-width:0; white-space:nowrap; background:#fff; box-shadow:-5px 0 8px rgb(0 0 0 / 5%); }
+.row-actions { position:sticky; right:0; z-index:2; min-width:0; max-width:none; background:#fff; box-shadow:-5px 0 8px rgb(0 0 0 / 5%); }
+.row-actions-content { display:flex; align-items:center; justify-content:flex-end; gap:6px; min-width:max-content; white-space:nowrap; }
 thead th:last-child { position:sticky; right:0; z-index:3; background:#fafafa; box-shadow:-5px 0 8px rgb(0 0 0 / 5%); }
 .order-shipment-status { display:inline-flex; align-items:center; gap:7px; }
 .finance-direction { display:inline-flex; align-items:center; gap:8px; color:#222; }
