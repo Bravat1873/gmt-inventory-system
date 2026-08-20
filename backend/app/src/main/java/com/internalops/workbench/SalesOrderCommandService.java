@@ -237,6 +237,7 @@ public class SalesOrderCommandService {
                 blankToNull(request.businessContactName()), blankToNull(request.businessContactPhone()), orderContactName, orderContactPhone, blankToNull(request.financeContactName()), blankToNull(request.financeContactPhone()),
                 blankToNull(request.remark()), blankToNull(request.deliveryAddress()), blankToNull(request.deliveryContact()), blankToNull(request.deliveryPhone()), blankToNull(request.shippingMethod()), id, request.version());
         if (changed == 0) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
+        deleteShortageCoverage(id);
         jdbc.update("DELETE FROM sales_order_item WHERE sales_order_id=?", id);
         insertItems(id, request.items());
         if (!"DRAFT".equals(requestedStatusOrCurrent(request, currentStatus))) {
@@ -275,10 +276,14 @@ public class SalesOrderCommandService {
             throw new IllegalStateException("已生成采购单的订单不可删除");
         }
         if (!"DRAFT".equals(currentStatus)) allocation.releaseAll(id, "ORDER_DELETE_RELEASE");
-        jdbc.update("UPDATE shortage_coverage SET active=FALSE WHERE sales_order_item_id IN (SELECT id FROM sales_order_item WHERE sales_order_id=?)", id);
+        deleteShortageCoverage(id);
         jdbc.update("DELETE FROM sales_order_item WHERE sales_order_id=?", id);
         jdbc.update("DELETE FROM sales_order WHERE id=?", id);
         autoProcurement.requestRecalculation();
+    }
+
+    private void deleteShortageCoverage(long salesOrderId) {
+        jdbc.update("DELETE FROM shortage_coverage WHERE sales_order_item_id IN (SELECT id FROM sales_order_item WHERE sales_order_id=?)", salesOrderId);
     }
 
     private void validate(SalesOrderRequest request) {

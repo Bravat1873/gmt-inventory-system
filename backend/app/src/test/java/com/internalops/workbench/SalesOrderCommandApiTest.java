@@ -45,6 +45,19 @@ class SalesOrderCommandApiTest {
         org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE warehouse_id=1 AND sku_id=1",Integer.class));
     }
 
+    @Test void deletesAnOrderWithShortageCoverageBeforeRemovingItsItems() throws Exception {
+        jdbc.update("INSERT INTO sales_order(id,order_no,customer_id,status,total_amount,order_date) VALUES(92,'DD20260800092',1,'WAITING_STOCK',0,CURRENT_DATE)");
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,shipped_quantity,locked_quantity,uncovered_quantity,sale_price) VALUES(92,92,10000,1,5,0,0,5,1)");
+        jdbc.update("INSERT INTO procurement_suggestion(id,suggestion_no,status) VALUES(92,'PS20260800092','DRAFT')");
+        jdbc.update("INSERT INTO procurement_suggestion_item(id,suggestion_id,sku_id,supplier_id,shortage_quantity,suggested_quantity,purchase_price) VALUES(92,92,1,201,5,10,1)");
+        jdbc.update("INSERT INTO shortage_coverage(id,sales_order_item_id,suggestion_item_id,covered_quantity,active) VALUES(92,92,92,5,TRUE)");
+
+        mvc.perform(delete("/api/orders/92")).andExpect(status().isOk());
+
+        org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM sales_order WHERE id=92",Integer.class));
+        org.junit.jupiter.api.Assertions.assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM shortage_coverage WHERE id=92",Integer.class));
+    }
+
     @Test void refusesToDeleteAnOrderThatAlreadyHasAReceipt() throws Exception {
         jdbc.update("INSERT INTO sales_order(id,order_no,customer_id,status,total_amount,order_date) VALUES(90,'DD20260800090',1,'READY_TO_SHIP',0,CURRENT_DATE)");
         jdbc.update("INSERT INTO customer_receipt(sales_order_id,amount,payment_method,received_at,confirmed_by) VALUES(90,1,'银行转账',CURRENT_TIMESTAMP,1)");
