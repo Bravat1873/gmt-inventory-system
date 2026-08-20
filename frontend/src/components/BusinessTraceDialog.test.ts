@@ -20,15 +20,18 @@ it('renders complete detail values in a product panel', () => {
   expect(wrapper.get('.trace-detail-panel').text()).toContain('一段很长的完整规格型号')
   expect(wrapper.findAll('[data-test="overflow-text"]')).toHaveLength(0)
 })
-it('labels sales order quantities consistently', () => {
+it('labels sales order and inventory quantities consistently', () => {
   const wrapper = mount(BusinessTraceDialog, {
-    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ quantity: 10, shippedQuantity: 4, remainingQuantity: 6, lockedQuantity: 5, uncoveredQuantity: 1, availableQuantity: 7 }], timeline: [] } }
+    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ quantity: 10, shippedQuantity: 4, remainingQuantity: 6, lockedQuantity: 5, uncoveredQuantity: 1, actualQuantity: 12, inTransitQuantity: 3, pendingDeliveryQuantity: 9, availableQuantity: 7 }], timeline: [] } }
   })
   expect(wrapper.text()).toContain('订单数量')
   expect(wrapper.text()).toContain('已发货数量')
   expect(wrapper.text()).toContain('未发货数量')
   expect(wrapper.text()).toContain('本单锁定数量')
   expect(wrapper.text()).toContain('缺货数量')
+  expect(wrapper.text()).toContain('实际库存数量')
+  expect(wrapper.text()).toContain('在途数量')
+  expect(wrapper.text()).toContain('全局未发货数量')
   expect(wrapper.text()).toContain('未锁定库存数量')
   expect(wrapper.text()).not.toContain('可用库存')
 })

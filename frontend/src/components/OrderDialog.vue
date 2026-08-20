@@ -215,9 +215,9 @@ onMounted(async () => {
                 <div><span>未发货数量</span><strong>{{ line.remainingQuantity ?? line.quantity }}</strong></div>
               </div>
               <div :data-test="`order-inventory-${index}`" class="order-line-metrics">
-                <div><span>实际库存</span><strong>{{ skuFor(line)?.actualQuantity ?? 0 }}</strong></div>
+                <div><span>实际库存数量</span><strong>{{ skuFor(line)?.actualQuantity ?? 0 }}</strong></div>
                 <div><span>在途数量</span><strong>{{ skuFor(line)?.inTransitQuantity ?? 0 }}</strong></div>
-                <div><span>全局未发货</span><strong>{{ skuFor(line)?.pendingDeliveryQuantity ?? 0 }}</strong></div>
+                <div><span>全局未发货数量</span><strong>{{ skuFor(line)?.pendingDeliveryQuantity ?? 0 }}</strong></div>
                 <div :class="{ negative: (skuFor(line)?.supplyDemandSurplus ?? 0) < 0 }"><span>供需余量</span><strong>{{ skuFor(line)?.supplyDemandSurplus ?? 0 }}</strong></div>
                 <div :class="{ negative: postOrderSupplyDemandSurplus(line, index) < 0 }"><span>下单后供需余量</span><strong>{{ postOrderSupplyDemandSurplus(line, index) }}</strong><small v-if="postOrderSupplyDemandSurplus(line, index) < 0">下单后采购缺口 {{ Math.abs(postOrderSupplyDemandSurplus(line, index)) }}</small></div>
               </div>

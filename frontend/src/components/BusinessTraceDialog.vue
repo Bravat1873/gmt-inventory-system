@@ -7,10 +7,10 @@ const emit = defineEmits<{ close: [] }>()
 
 const labels: Record<string, string> = {
   productCode: '产品编号', customerPartNumber: '客户料号', productName: '物料名称', model: '型号', configuration: '规格型号', unit: '单位',
-  quantity: '数量', shippedQuantity: '已发货数量', remainingQuantity: '剩余数量', availableQuantity: '可用库存', lockedQuantity: '锁定数量', uncoveredQuantity: '缺货数量',
+  quantity: '数量', shippedQuantity: '已发货数量', remainingQuantity: '剩余数量', actualQuantity: '实际库存数量', inTransitQuantity: '在途数量', pendingDeliveryQuantity: '全局未发货数量', availableQuantity: '未锁定库存数量', lockedQuantity: '锁定数量', uncoveredQuantity: '缺货数量',
   salePrice: '含税单价', receivedQuantity: '已入库数量', purchasePrice: '采购单价'
 }
-const orderLabels: Record<string, string> = { quantity: '订单数量', shippedQuantity: '已发货数量', remainingQuantity: '未发货数量', availableQuantity: '未锁定库存数量', lockedQuantity: '本单锁定数量', uncoveredQuantity: '缺货数量' }
+const orderLabels: Record<string, string> = { quantity: '订单数量', shippedQuantity: '已发货数量', remainingQuantity: '未发货数量', actualQuantity: '实际库存数量', inTransitQuantity: '在途数量', pendingDeliveryQuantity: '全局未发货数量', availableQuantity: '未锁定库存数量', lockedQuantity: '本单锁定数量', uncoveredQuantity: '缺货数量' }
 const detailKeys = () => Object.keys(props.trace.details[0] ?? {}).filter(key => labels[key])
 function detailLabel(key: string) { return props.trace.type === 'order' ? (orderLabels[key] ?? labels[key]) : labels[key] }
 function value(value: unknown) { return value == null || value === '' ? '—' : String(value) }

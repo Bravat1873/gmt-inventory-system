@@ -83,9 +83,24 @@ public class BusinessTraceService {
         for (Map<String, Object> detail : details) {
             int quantity = number(detail.get("quantity")).intValue();
             int shipped = number(detail.get("shippedQuantity")).intValue();
-            Integer available = jdbc.queryForObject("SELECT COALESCE((SELECT actual_quantity-locked_quantity FROM inventory_balance WHERE sku_id=? AND warehouse_id=(SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1)),0)", Integer.class, detail.get("skuId"));
+            List<Map<String, Object>> balances = jdbc.queryForList("""
+                    SELECT actual_quantity,in_transit_quantity,actual_quantity-locked_quantity AS available_quantity
+                    FROM inventory_balance
+                    WHERE sku_id=? AND warehouse_id=(
+                        SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1
+                    )
+                    """, detail.get("skuId"));
+            Map<String, Object> balance = balances.isEmpty() ? Map.of() : balances.get(0);
             detail.put("remainingQuantity", quantity - shipped);
-            detail.put("availableQuantity", available == null ? 0 : available);
+            detail.put("actualQuantity", balance.getOrDefault("actual_quantity", 0));
+            detail.put("inTransitQuantity", balance.getOrDefault("in_transit_quantity", 0));
+            detail.put("pendingDeliveryQuantity", jdbc.queryForObject("""
+                    SELECT COALESCE(SUM(GREATEST(i.quantity-i.shipped_quantity, 0)), 0)
+                    FROM sales_order_item i
+                    JOIN sales_order o ON o.id=i.sales_order_id
+                    WHERE i.sku_id=? AND o.status<>'CANCELLED'
+                    """, Long.class, detail.get("skuId")));
+            detail.put("availableQuantity", balance.getOrDefault("available_quantity", 0));
         }
     }
 
