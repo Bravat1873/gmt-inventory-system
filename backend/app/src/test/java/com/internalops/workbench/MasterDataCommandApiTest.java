@@ -169,6 +169,24 @@ class MasterDataCommandApiTest {
                 .containsEntry("configuration", "STANLEY / D51-GEN2 / 宇宙黑 / 7068 / 中文版")
                 .containsEntry("product_configuration", "可视对讲 + 指纹");
     }
+
+    @Test
+    void entryDoorUsesTheSmartLockCodeRules() throws Exception {
+        jdbc.update("INSERT INTO product_code_rule(id,category,code,display_name,enabled,sort_order,version) VALUES "
+                        + "(105,'SERIES','D51','D51',TRUE,10,0),(106,'CONNECTIVITY','W','WiFi',TRUE,10,0),"
+                        + "(107,'SALES_CHANNEL','P','工程',TRUE,10,0),(108,'OPERATING_ENTITY','S','销售',TRUE,10,0)");
+
+        mvc.perform(post("/api/workbench/product").cookie(session).contentType("application/json")
+                        .content("""
+                                {"productName":"入户门测试","customerPartNumber":"ENTRY-DOOR-001","model":"D51",
+                                 "productType":"ENTRY_DOOR","materialType":"FINISHED_PRODUCT",
+                                 "brandRuleId":101,"seriesRuleId":105,"bodyColorRuleId":102,"lockTypeRuleId":103,
+                                 "connectivityRuleId":106,"salesChannelRuleId":107,"operatingEntityRuleId":108,"languageRuleId":104}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.productType").value("ENTRY_DOOR"))
+                .andExpect(jsonPath("$.data.productCode").value("SXSEL_D51YZH70WPSC"));
+    }
     void financeCanUpdateBothProductPrices() throws Exception {
         Cookie financeSession = loginAs("finance");
 

@@ -55,18 +55,13 @@ const definitions: Record<string, Field[]> = {
     { key: 'productType', label: '产品分类', required: true, optionCategory: 'PRODUCT_TYPE' },
     { key: 'materialType', label: '物料类型', required: true },
     { key: 'brandRuleId', label: '品牌', required: true, optionCategory: 'BRAND' },
-    { key: 'seriesRuleId', label: '系列', optionCategory: 'SERIES' },
-    { key: 'bodyColorRuleId', label: '物料颜色', optionCategory: 'BODY_COLOR' },
-    { key: 'lockTypeRuleId', label: '锁体类型', optionCategory: 'LOCK_TYPE' },
-    { key: 'connectivityRuleId', label: '联网方式', optionCategory: 'CONNECTIVITY' },
-    { key: 'salesChannelRuleId', label: '销售渠道', optionCategory: 'SALES_CHANNEL' },
-    { key: 'operatingEntityRuleId', label: '运营主体', optionCategory: 'OPERATING_ENTITY' },
-    { key: 'languageRuleId', label: '语言', optionCategory: 'LANGUAGE' },
-    { key: 'doorModelRuleId', label: '成品型号', optionCategory: 'DOOR_MODEL' },
-    { key: 'securityGradeRuleId', label: '安全等级', optionCategory: 'SECURITY_GRADE' },
-    { key: 'baseMaterialRuleId', label: '主基材料', optionCategory: 'BASE_MATERIAL' },
-    { key: 'thicknessRuleId', label: '成品厚度', optionCategory: 'THICKNESS' },
-    { key: 'finishColorRuleId', label: '花色', optionCategory: 'FINISH_COLOR' },
+    { key: 'seriesRuleId', label: '系列', required: true, optionCategory: 'SERIES' },
+    { key: 'bodyColorRuleId', label: '物料颜色', required: true, optionCategory: 'BODY_COLOR' },
+    { key: 'lockTypeRuleId', label: '锁体类型', required: true, optionCategory: 'LOCK_TYPE' },
+    { key: 'connectivityRuleId', label: '联网方式', required: true, optionCategory: 'CONNECTIVITY' },
+    { key: 'salesChannelRuleId', label: '销售渠道', required: true, optionCategory: 'SALES_CHANNEL' },
+    { key: 'operatingEntityRuleId', label: '运营主体', required: true, optionCategory: 'OPERATING_ENTITY' },
+    { key: 'languageRuleId', label: '语言', required: true, optionCategory: 'LANGUAGE' },
     { key: 'model', label: '型号', required: true },
     { key: 'configuration', label: '物料规格', multiline: true, readOnly: true },
     { key: 'productConfiguration', label: '产品配置', multiline: true },
@@ -160,6 +155,28 @@ function selectedRuleName(category: string, value: unknown) {
   return productCodeRules.value.find(rule => rule.category === category && rule.id === id)?.displayName?.trim() ?? ''
 }
 
+function selectedRuleCode(category: string, value: unknown) {
+  const id = Number(value)
+  return productCodeRules.value.find(rule => rule.category === category && rule.id === id)?.code?.trim().toUpperCase() ?? ''
+}
+
+const generatedProductCode = computed(() => {
+  if (props.module !== 'product') return ''
+  const parts = [
+    selectedRuleCode('BRAND', form.brandRuleId),
+    selectedRuleCode('SERIES', form.seriesRuleId),
+    selectedRuleCode('BODY_COLOR', form.bodyColorRuleId),
+    selectedRuleCode('LOCK_TYPE', form.lockTypeRuleId),
+    selectedRuleCode('CONNECTIVITY', form.connectivityRuleId),
+    selectedRuleCode('SALES_CHANNEL', form.salesChannelRuleId),
+    selectedRuleCode('OPERATING_ENTITY', form.operatingEntityRuleId),
+    selectedRuleCode('LANGUAGE', form.languageRuleId)
+  ]
+  if (parts.some(part => !part)) return ''
+  const suffix = String(form.codeSuffix ?? '').trim()
+  return `${parts[0]}_${parts.slice(1).join('')}${suffix ? `-${suffix}` : ''}`
+})
+
 const materialSpecification = computed(() => [
   selectedRuleName('BRAND', form.brandRuleId),
   String(form.model ?? '').trim(),
@@ -229,6 +246,7 @@ function selectInventorySku(skuId: number | null) {
 
 function inventoryFieldTestId(key: string) {
   if (props.module === 'product') {
+    if (key === 'productCode') return 'product-code-preview'
     if (key === 'currentCost') return 'product-current-cost'
     if (key === 'factoryPrice') return 'product-factory-price'
     if (key === 'salesMinimumOrderQuantity') return 'sales-minimum-order-quantity'
@@ -256,9 +274,9 @@ function fieldLabel(field: Field) {
 }
 
 function fieldVisible(field: Field) {
-  if (props.module !== 'product' || !field.optionCategory || ['PRODUCT_TYPE', 'BRAND'].includes(field.optionCategory)) return true
-  const smart = ['SERIES','BODY_COLOR','LOCK_TYPE','CONNECTIVITY','SALES_CHANNEL','OPERATING_ENTITY','LANGUAGE']
-  return form.productType === 'ENTRY_DOOR' ? !smart.includes(field.optionCategory) : smart.includes(field.optionCategory)
+  return props.module !== 'product'
+    || !field.optionCategory
+    || ['PRODUCT_TYPE', 'BRAND', 'SERIES', 'BODY_COLOR', 'LOCK_TYPE', 'CONNECTIVITY', 'SALES_CHANNEL', 'OPERATING_ENTITY', 'LANGUAGE'].includes(field.optionCategory)
 }
 function fieldRequired(field: Field) {
   if (props.module === 'user' && field.key === 'password') return !props.row?.id
@@ -296,6 +314,7 @@ function removeInventoryMovement(index: number) {
 }
 
 function readOnlyValue(field: Field) {
+  if (props.module === 'product' && field.key === 'productCode') return generatedProductCode.value || String(form.productCode ?? '')
   if (props.module === 'product' && field.key === 'configuration') return materialSpecification.value
   if (field.key === 'productType') return form.productType === 'SMART_LOCK' ? '智能锁' : form.productType === 'ENTRY_DOOR' ? '入户门' : ''
   if (field.key === 'priceDifference') return priceDifference.value

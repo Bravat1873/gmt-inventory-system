@@ -164,6 +164,37 @@ it('按品牌型号物料颜色锁体类型语言实时生成只读物料规格�
   expect(api.updateEntity).toHaveBeenLastCalledWith('product', 7, expect.objectContaining({ productConfiguration: '可视对讲 + 指纹' }))
   expect(api.updateEntity.mock.calls.at(-1)?.[2]).not.toHaveProperty('configuration')
 })
+
+it('入户门使用智能锁编码规则并实时预览自动产品编号', async () => {
+  api.loadProductCodeRules.mockResolvedValue([
+    { id: 1, category: 'BRAND', code: 'SXSEL', displayName: 'STANLEY', enabled: true },
+    { id: 2, category: 'SERIES', code: 'D51', displayName: 'D51', enabled: true },
+    { id: 3, category: 'BODY_COLOR', code: 'YZH', displayName: '宇宙黑', enabled: true },
+    { id: 4, category: 'LOCK_TYPE', code: '70', displayName: '7068', enabled: true },
+    { id: 5, category: 'CONNECTIVITY', code: 'W', displayName: 'WiFi', enabled: true },
+    { id: 6, category: 'SALES_CHANNEL', code: 'P', displayName: '工程', enabled: true },
+    { id: 7, category: 'OPERATING_ENTITY', code: 'S', displayName: '销售', enabled: true },
+    { id: 8, category: 'LANGUAGE', code: 'C', displayName: '中文', enabled: true }
+  ])
+  const wrapper = mount(EntityDialog, { props: { module: 'product', currentUserRole: 'ADMIN' } })
+  await flushPromises()
+
+  const labels = wrapper.findAll('label')
+  const field = (name: string) => labels.find(label => label.text().startsWith(name))!
+  await field('产品分类').get('select').setValue('ENTRY_DOOR')
+  await field('品牌').get('select').setValue('1')
+  await field('系列').get('select').setValue('2')
+  await field('物料颜色').get('select').setValue('3')
+  await field('锁体类型').get('select').setValue('4')
+  await field('联网方式').get('select').setValue('5')
+  await field('销售渠道').get('select').setValue('6')
+  await field('运营主体').get('select').setValue('7')
+  await field('语言').get('select').setValue('8')
+
+  expect(wrapper.text()).not.toContain('成品型号')
+  expect(wrapper.text()).not.toContain('安全等级')
+  expect((wrapper.get('[data-test="product-code-preview"]').element as HTMLInputElement).value).toBe('SXSEL_D51YZH70WPSC')
+})
 it('hides fixed product prices and shows every supplier quote in the edit dialog', async () => {
   const wrapper = mount(EntityDialog, {
     props: {

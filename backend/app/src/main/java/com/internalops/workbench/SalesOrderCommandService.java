@@ -56,12 +56,12 @@ public class SalesOrderCommandService {
 
     public Map<String, Object> get(long id) {
         Map<String, Object> order = jdbc.queryForMap("SELECT id,order_no,external_order_no,customer_id,status,total_amount,order_date,order_type,salesperson,customer_contact,customer_phone,business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,finance_contact_name,finance_contact_phone,order_remark,delivery_address,delivery_contact,delivery_phone,shipping_method,receipt_confirmed_at,shipped_at,carrier,tracking_no,shipping_remark,created_at,version FROM sales_order WHERE id=?", id);
-        List<Map<String, Object>> items = jdbc.query("SELECT i.id,i.line_no,i.sku_id,s.product_code,s.customer_part_number,s.product_name,s.model,s.configuration,s.unit,i.quantity,i.shipped_quantity,i.locked_quantity,i.uncovered_quantity,i.sale_price,i.cost_snapshot FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no", (rs, n) -> {
+        List<Map<String, Object>> items = jdbc.query("SELECT i.id,i.line_no,i.sku_id,s.product_code,s.customer_part_number,s.product_name,s.model,s.color,s.configuration,s.unit,i.quantity,i.shipped_quantity,i.locked_quantity,i.uncovered_quantity,i.sale_price,i.cost_snapshot FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no", (rs, n) -> {
             Map<String, Object> m = new LinkedHashMap<>();
             int quantity = rs.getInt("quantity");
             int shipped = rs.getInt("shipped_quantity");
             m.put("id", rs.getLong("id")); m.put("lineNo", rs.getInt("line_no")); m.put("skuId", rs.getLong("sku_id"));
-            m.put("productCode", rs.getString("product_code")); m.put("customerPartNumber", rs.getString("customer_part_number")); m.put("productName", rs.getString("product_name")); m.put("model", rs.getString("model")); m.put("configuration", rs.getString("configuration")); m.put("unit", rs.getString("unit"));
+            m.put("productCode", rs.getString("product_code")); m.put("customerPartNumber", rs.getString("customer_part_number")); m.put("productName", rs.getString("product_name")); m.put("model", rs.getString("model")); m.put("color", rs.getString("color")); m.put("configuration", rs.getString("configuration")); m.put("unit", rs.getString("unit"));
             m.put("quantity", quantity); m.put("shippedQuantity", shipped); m.put("remainingQuantity", quantity - shipped);
             m.put("lockedQuantity", rs.getInt("locked_quantity")); m.put("uncoveredQuantity", rs.getInt("uncovered_quantity")); m.put("salePrice", rs.getBigDecimal("sale_price")); m.put("costSnapshot", rs.getBigDecimal("cost_snapshot"));
             return m;
@@ -74,6 +74,9 @@ public class SalesOrderCommandService {
         put(result, order, "id", "id", "order_no", "orderNo", "external_order_no", "externalOrderNo", "customer_id", "customerId", "status", "status", "total_amount", "totalAmount", "order_date", "orderDate", "order_type", "orderType", "salesperson", "salesperson", "customer_contact", "customerContact", "customer_phone", "customerPhone", "business_contact_name", "businessContactName", "business_contact_phone", "businessContactPhone", "order_contact_name", "orderContactName", "order_contact_phone", "orderContactPhone", "finance_contact_name", "financeContactName", "finance_contact_phone", "financeContactPhone", "order_remark", "remark", "delivery_address", "deliveryAddress", "delivery_contact", "deliveryContact", "delivery_phone", "deliveryPhone", "shipping_method", "shippingMethod", "receipt_confirmed_at", "receiptConfirmedAt", "shipped_at", "shippedAt", "carrier", "carrier", "tracking_no", "trackingNo", "shipping_remark", "shippingRemark", "created_at", "createdAt", "version", "version");
         result.put("orderContactName", firstNonBlank(Objects.toString(value(order, "order_contact_name"), null), Objects.toString(value(order, "customer_contact"), null)));
         result.put("orderContactPhone", firstNonBlank(Objects.toString(value(order, "order_contact_phone"), null), Objects.toString(value(order, "customer_phone"), null)));
+        Map<String, Object> customer = jdbc.queryForMap("SELECT customer_code,customer_name FROM customer WHERE id=?", value(order, "customer_id"));
+        result.put("customerCode", customer.get("customer_code"));
+        result.put("customerName", customer.get("customer_name"));
         BigDecimal receivableAmount = items.stream()
                 .map(item -> BigDecimal.valueOf(((Number) item.get("remainingQuantity")).longValue()).multiply((BigDecimal) item.get("salePrice")))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);

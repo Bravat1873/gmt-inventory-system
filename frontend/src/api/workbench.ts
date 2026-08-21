@@ -31,6 +31,26 @@ export function loadModule(module: string, query: URLSearchParams) {
   return request<PageResult>(`/api/workbench/${module}?${query.toString()}`)
 }
 
+export async function downloadExcelExport(module: string, kind: 'summary' | 'document', id?: number) {
+  const query = kind === 'document' ? `?id=${encodeURIComponent(String(id))}` : ''
+  const response = await fetch(`${API_BASE}/api/exports/${encodeURIComponent(module)}/${kind}${query}`, { credentials: 'include' })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(payload?.message || 'Excel 导出失败')
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const filename = decodeURIComponent(disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1] ?? `${module}-${kind}.xlsx`)
+  link.href = url
+  link.download = filename
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 export interface ProductImage {
   id: number
   productId: number

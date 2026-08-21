@@ -40,6 +40,33 @@ it.each(['ADMIN', 'USER'] as const)('shows separate order creation and import ac
   expect(wrapper.emitted('import')).toHaveLength(1)
 })
 
+it.each(['order', 'afterSales', 'purchase'] as const)('shows a row document export and a page summary export for %s', async key => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, recordType: key === 'purchase' ? 'PURCHASE' : undefined }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === key)! } })
+  await flushPromises()
+
+  expect(wrapper.get('[data-test="export-document-row"]').text()).toBe('导出单据')
+  expect(wrapper.get('[data-test="export-summary-action"]').text()).toBe('导出汇总数据')
+})
+
+it('emits the selected record when exporting a document', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 12, orderNo: 'DD20260800012' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')! } })
+  await flushPromises()
+
+  await wrapper.get('[data-test="export-document-row"]').trigger('click')
+  expect(wrapper.emitted('exportDocument')?.[0]?.[0]).toMatchObject({ id: 12, orderNo: 'DD20260800012' })
+})
+
+it.each(['product', 'inventory'] as const)('shows only summary export action for %s', async key => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === key)! } })
+  await flushPromises()
+
+  expect(wrapper.find('[data-test="export-document-row"]').exists()).toBe(false)
+  expect(wrapper.get('[data-test="export-summary-action"]').text()).toBe('导出汇总数据')
+})
+
 it('hides every order creation entry from finance users', async () => {
   loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')!, currentUserRole: 'FINANCE' } })
@@ -121,6 +148,18 @@ it('shows payment and receipt actions independently for an unfinished purchase',
 
   expect(wrapper.find('[data-test="purchase-payment"]').exists()).toBe(true)
   expect(wrapper.find('[data-test="purchase-receipt"]').exists()).toBe(true)
+})
+
+it('reserves enough sticky action-column width for every purchase action', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, recordType: 'PURCHASE', outstandingAmount: 75, remainingQuantity: 6 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
+  await flushPromises()
+
+  const columns = wrapper.findAll('col')
+  expect(columns.at(-1)?.attributes('style')).toContain('width: 420px')
+  expect(wrapper.get('.row-actions-content').text()).toContain('导出单据')
+  expect(wrapper.get('.row-actions-content').text()).toContain('登记付款')
+  expect(wrapper.get('.row-actions-content').text()).toContain('登记收货')
 })
 
 it('hides only the completed purchase action', async () => {

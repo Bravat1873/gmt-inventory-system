@@ -3,7 +3,6 @@ package com.internalops.workbench;
 import com.internalops.auth.CurrentUser;
 import com.internalops.auth.UserRole;
 import com.internalops.productcode.ProductCodeGenerator;
-import com.internalops.productcode.EntryDoorProductCodeSelection;
 import com.internalops.productcode.ProductUniqueId;
 import com.internalops.productcode.ProductCodeSelection;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -164,9 +163,8 @@ public class MasterDataCommandService {
         String productType = requiredProductType(r.productType());
         String materialType = requiredMaterialType(r.materialType());
         ProductCodeSelection smart = selection(r);
-        EntryDoorProductCodeSelection door = doorSelection(r);
         String codeSuffix = normalizeSuffix(r.codeSuffix());
-        String productCode = productCodeGenerator.appendSuffix(generateProductCode(productType, smart, door), codeSuffix);
+        String productCode = productCodeGenerator.appendSuffix(generateProductCode(smart), codeSuffix);
         String customerPartNumber = r.customerPartNumber() == null ? null : r.customerPartNumber().trim();
         String businessUniqueId = ProductUniqueId.from(productCode, customerPartNumber);
         String materialSpecification = materialSpecification(r.brandRuleId(), r.model(), r.bodyColorRuleId(), r.lockTypeRuleId(), r.languageRuleId());
@@ -175,8 +173,7 @@ public class MasterDataCommandService {
                 productCode, businessUniqueId, codeSuffix, eanCode, productType, materialType, customerPartNumber, r.model(), r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), materialSpecification, r.productConfiguration(),
                     textOr(r.unit(), "件"), r.currentCost(), r.factoryPrice(), r.remark(), enabled(r),
                     r.brandRuleId(), r.seriesRuleId(), r.bodyColorRuleId(), r.lockTypeRuleId(), r.connectivityRuleId(),
-                    r.salesChannelRuleId(), r.operatingEntityRuleId(), r.languageRuleId(), r.doorModelRuleId(), r.securityGradeRuleId(),
-                    r.baseMaterialRuleId(), r.thicknessRuleId(), r.finishColorRuleId());
+                    r.salesChannelRuleId(), r.operatingEntityRuleId(), r.languageRuleId(), null, null, null, null, null);
             jdbc.update("UPDATE sku SET sales_minimum_order_quantity=? WHERE id=?", salesMinimumOrderQuantity(r), id);
             saveSupplierConfig(id, r);
             return product(id);
@@ -196,11 +193,7 @@ public class MasterDataCommandService {
                 chosen(r.bodyColorRuleId(), current.get("body_color_rule_id")), chosen(r.lockTypeRuleId(), current.get("lock_type_rule_id")),
                 chosen(r.connectivityRuleId(), current.get("connectivity_rule_id")), chosen(r.salesChannelRuleId(), current.get("sales_channel_rule_id")),
                 chosen(r.operatingEntityRuleId(), current.get("operating_entity_rule_id")), chosen(r.languageRuleId(), current.get("language_rule_id")));
-        EntryDoorProductCodeSelection door = new EntryDoorProductCodeSelection(
-                chosen(r.brandRuleId(), current.get("brand_rule_id")), chosen(r.doorModelRuleId(), current.get("door_model_rule_id")),
-                chosen(r.securityGradeRuleId(), current.get("security_grade_rule_id")), chosen(r.baseMaterialRuleId(), current.get("base_material_rule_id")),
-                chosen(r.thicknessRuleId(), current.get("thickness_rule_id")), chosen(r.finishColorRuleId(), current.get("finish_color_rule_id")));
-        String baseProductCode = "UNCLASSIFIED".equals(productType) ? baseCode(String.valueOf(current.get("product_code")), current.get("code_suffix")) : generateProductCode(productType, smart, door);
+        String baseProductCode = "UNCLASSIFIED".equals(productType) ? baseCode(String.valueOf(current.get("product_code")), current.get("code_suffix")) : generateProductCode(smart);
         String codeSuffix = r.codeSuffix() == null ? normalizeSuffix((String) current.get("code_suffix")) : normalizeSuffix(r.codeSuffix());
         String productCode = productCodeGenerator.appendSuffix(baseProductCode, codeSuffix);
         String eanCode = r.eanCode() == null ? (String) current.get("ean_code") : validateEan(r.eanCode(), id);
@@ -213,8 +206,8 @@ public class MasterDataCommandService {
                 productCode, businessUniqueId, productType, materialType, customerPartNumber, model, r.productName().trim(), r.color(), r.lockBody(), r.productVersion(), materialSpecification, r.productConfiguration(), textOr(r.unit(), "件"),
                     fields.currentCostPresent(), r.currentCost(), fields.factoryPricePresent(), r.factoryPrice(), r.remark(), enabled(r),
                     smart.brandRuleId(), smart.seriesRuleId(), smart.bodyColorRuleId(), smart.lockTypeRuleId(), smart.connectivityRuleId(),
-                    smart.salesChannelRuleId(), smart.operatingEntityRuleId(), smart.languageRuleId(), door.doorModelRuleId(), door.securityGradeRuleId(),
-                    door.baseMaterialRuleId(), door.thicknessRuleId(), door.finishColorRuleId(), codeSuffix, eanCode, id, r.version());
+                    smart.salesChannelRuleId(), smart.operatingEntityRuleId(), smart.languageRuleId(), null, null,
+                    null, null, null, codeSuffix, eanCode, id, r.version());
             conflictIfUnchanged(changed);
             if (r.salesMinimumOrderQuantity() != null) jdbc.update("UPDATE sku SET sales_minimum_order_quantity=? WHERE id=?", r.salesMinimumOrderQuantity(), id);
             saveSupplierConfig(id, r);
@@ -278,8 +271,8 @@ public class MasterDataCommandService {
         if (names.isEmpty()) throw new IllegalArgumentException("产品编号规则无效：" + category);
         return names.get(0);
     }
-    private String generateProductCode(String type, ProductCodeSelection smart, EntryDoorProductCodeSelection door) {
-        return "ENTRY_DOOR".equals(type) ? productCodeGenerator.generateEntryDoor(door) : productCodeGenerator.generate(smart);
+    private String generateProductCode(ProductCodeSelection smart) {
+        return productCodeGenerator.generate(smart);
     }
 
     private ProductCodeSelection selection(EntityCommandRequest r) {
@@ -287,10 +280,6 @@ public class MasterDataCommandService {
                 r.connectivityRuleId(), r.salesChannelRuleId(), r.operatingEntityRuleId(), r.languageRuleId());
     }
 
-    private EntryDoorProductCodeSelection doorSelection(EntityCommandRequest r) {
-        return new EntryDoorProductCodeSelection(r.brandRuleId(), r.doorModelRuleId(), r.securityGradeRuleId(),
-                r.baseMaterialRuleId(), r.thicknessRuleId(), r.finishColorRuleId());
-    }
     private Long chosen(Long requested, Object existing) {
         return requested != null ? requested : existing == null ? null : ((Number) existing).longValue();
     }

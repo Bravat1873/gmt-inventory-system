@@ -7,7 +7,7 @@ import OverflowText from './OverflowText.vue'
 import ProcurementConfigurationAlert from './ProcurementConfigurationAlert.vue'
 
 const props = defineProps<{ module: ModuleDefinition; currentUserRole?: UserRole }>()
-const emit = defineEmits<{ action: []; import: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; funds: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; reviewOrder: [row: Record<string, unknown>]; deleteOrder: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesRefund: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; navigateSupplier: []; message: [text: string, kind?: 'success' | 'error'] }>()
+const emit = defineEmits<{ action: []; import: []; exportDocument: [row: Record<string, unknown>]; exportSummary: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; funds: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; reviewOrder: [row: Record<string, unknown>]; deleteOrder: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesRefund: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; navigateSupplier: []; message: [text: string, kind?: 'success' | 'error'] }>()
 const keyword = ref('')
 const loading = ref(false)
 const data = ref<PageResult>({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
@@ -75,7 +75,7 @@ function columnWidth(field: string) {
 const actionColumnWidth = computed(() => {
   if (props.module.key === 'customer') return 190
   if (props.module.key === 'order') return 470
-  if (props.module.key === 'purchase') return 240
+  if (props.module.key === 'purchase') return 420
   if (props.module.key === 'afterSales') return 300
   if (props.module.key === 'finance') return 210
   return 110
@@ -88,7 +88,7 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
 
 <template>
   <section class="module-page">
-    <header class="module-heading"><h1>{{ module.label }}</h1><div class="heading-actions"><button v-if="canManual && module.importType" class="secondary-action" @click="emit('manual')">手工新增</button><button v-if="canUsePrimary && module.importActionLabel" data-test="import-action" class="secondary-action" @click="importOrders">{{ module.importActionLabel }}</button><button v-if="canUsePrimary" data-test="primary-action" class="primary-action" @click="primary">{{ module.actionLabel }}</button></div></header>
+    <header class="module-heading"><h1>{{ module.label }}</h1><div class="heading-actions"><button v-if="module.exportSummaryActionLabel" data-test="export-summary-action" class="secondary-action" @click="emit('exportSummary')">{{ module.exportSummaryActionLabel }}</button><button v-if="canManual && module.importType" class="secondary-action" @click="emit('manual')">手工新增</button><button v-if="canUsePrimary && module.importActionLabel" data-test="import-action" class="secondary-action" @click="importOrders">{{ module.importActionLabel }}</button><button v-if="canUsePrimary" data-test="primary-action" class="primary-action" @click="primary">{{ module.actionLabel }}</button></div></header>
     <div class="list-panel">
       <div class="list-toolbar"><input v-model="keyword" type="search" :placeholder="`搜索${module.label}`" @keyup.enter="search"><button class="secondary-action" @click="search">查询数据</button></div>
       <ProcurementConfigurationAlert v-if="module.key === 'purchase'" ref="procurementAlert" @navigate-supplier="emit('navigateSupplier')" @message="(text, kind) => emit('message', text, kind)" />
@@ -122,6 +122,7 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
               </td>
               <td class="row-actions"><div class="row-actions-content">
                 <button v-if="['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')" data-test="view-details" @click="emit('details', row)">查看</button>
+                <button v-if="module.exportDocumentActionLabel && (module.key !== 'purchase' || row.recordType === 'PURCHASE')" data-test="export-document-row" @click="emit('exportDocument', row)">{{ module.exportDocumentActionLabel }}</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('receipt', row)">登记收款</button>
                 <button v-if="module.key === 'order' && row.status === 'DRAFT'" data-test="review-order" @click="emit('reviewOrder', row)">复核</button>
                 <button v-if="module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT', 'READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))" data-test="delete-order" class="danger-action" @click="emit('deleteOrder', row)">删除</button>

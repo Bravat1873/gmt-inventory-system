@@ -557,7 +557,8 @@ public class ProcurementWorkflowService {
 
     public Map<String, Object> purchase(long id) {
         List<Map<String, Object>> headers = jdbc.queryForList("""
-                SELECT po.id,po.purchase_no,po.total_amount,sp.supplier_name
+                SELECT po.id,po.purchase_no,po.total_amount,po.status,DATE(po.created_at) AS order_date,
+                       po.expected_arrival_date,po.purchase_remark,sp.supplier_name
                 FROM purchase_order po JOIN supplier sp ON sp.id=po.supplier_id WHERE po.id=?
                 """, id);
         if (headers.isEmpty()) throw new IllegalArgumentException("采购单不存在");
@@ -567,8 +568,12 @@ public class ProcurementWorkflowService {
         result.put("purchaseNo", val(source, "purchase_no"));
         result.put("supplierName", val(source, "supplier_name"));
         result.put("totalAmount", val(source, "total_amount"));
+        result.put("status", val(source, "status"));
+        result.put("orderDate", source.get("order_date"));
+        result.put("expectedArrivalDate", source.get("expected_arrival_date"));
+        result.put("remark", val(source, "purchase_remark"));
         List<Map<String, Object>> itemRows = jdbc.queryForList("""
-                SELECT poi.id,s.product_code,s.customer_part_number,s.model,s.product_name,poi.quantity,poi.received_quantity,
+                SELECT poi.id,s.product_code,s.customer_part_number,s.model,s.product_name,s.color,s.lock_body,s.product_version,s.configuration,s.unit,poi.quantity,poi.received_quantity,poi.purchase_price,
                        poi.quantity-poi.received_quantity AS remaining_quantity
                 FROM purchase_order_item poi JOIN sku s ON s.id=poi.sku_id
                 WHERE poi.purchase_order_id=? ORDER BY poi.line_no
@@ -581,9 +586,15 @@ public class ProcurementWorkflowService {
             item.put("customerPartNumber", val(row, "customer_part_number"));
             item.put("model", val(row, "model"));
             item.put("productName", val(row, "product_name"));
+            item.put("color", val(row, "color"));
+            item.put("lockBody", val(row, "lock_body"));
+            item.put("productVersion", val(row, "product_version"));
+            item.put("configuration", val(row, "configuration"));
+            item.put("unit", val(row, "unit"));
             item.put("quantity", num(row, "quantity"));
             item.put("receivedQuantity", num(row, "received_quantity"));
             item.put("remainingQuantity", num(row, "remaining_quantity"));
+            item.put("purchasePrice", row.get("purchase_price"));
             items.add(item);
         }
         result.put("items", items);
