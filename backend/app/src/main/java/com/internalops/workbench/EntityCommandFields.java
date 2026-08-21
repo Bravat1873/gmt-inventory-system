@@ -15,6 +15,7 @@ public record EntityCommandFields(
         boolean rolePresent,
         boolean passwordPresent,
         boolean lockedAllocationsPresent,
+        boolean supplierQuotesPresent,
         List<InventoryLockedAllocationCommand> lockedAllocations,
         Map<String, String> supplierText) {
     private static final Set<String> SUPPLIER_TEXT_FIELDS = Set.of(
@@ -29,6 +30,7 @@ public record EntityCommandFields(
                 body.has("role"),
                 body.has("password"),
                 body.has("lockedAllocations"),
+                body.has("supplierQuotes"),
                 lockedAllocations(body),
                 supplierText(body));
     }
@@ -40,6 +42,7 @@ public record EntityCommandFields(
                 request.role() != null,
                 request.password() != null,
                 false,
+                request.supplierQuotes() != null,
                 List.of(),
                 Map.of());
     }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { createEntity, loadOrderSkus, loadProductCodeRules, type ProductCodeRule, type OrderSku, updateEntity, uploadProductImages } from '../api/workbench'
+import { createEntity, loadOrderSkus, loadProductCodeRules, loadSupplierOptions, type ProductCodeRule, type OrderSku, type SupplierOption, updateEntity, uploadProductImages } from '../api/workbench'
 import ChineseDatePicker from './ChineseDatePicker.vue'
 import FuzzyPicker, { type FuzzyPickerOption } from './FuzzyPicker.vue'
 import ProductImagePicker from './ProductImagePicker.vue'
@@ -109,10 +109,52 @@ if (props.module === 'user' && !props.row?.id) {
 }
 const form = reactive(initialForm)
 const canEditProductPrice = computed(() => ['ADMIN', 'FINANCE'].includes(props.currentUserRole))
-const productSupplierQuotes = computed(() => Array.isArray(props.row?.supplierQuotes)
-  ? props.row.supplierQuotes as Array<{ supplierId: number; supplierName: string; purchasePrice: number }>
+type ProductSupplierQuoteDraft = {
+  supplierId: number | null
+  supplierName?: string
+  purchasePrice: number | null
+  moq: number | null
+  leadTimeDays: number | null
+}
+const supplierOptions = ref<SupplierOption[]>([])
+const productSupplierQuotes = ref<ProductSupplierQuoteDraft[]>(Array.isArray(props.row?.supplierQuotes)
+  ? (props.row.supplierQuotes as Array<Record<string, unknown>>).map(quote => ({
+      supplierId: Number(quote.supplierId) || null,
+      supplierName: typeof quote.supplierName === 'string' ? quote.supplierName : undefined,
+      purchasePrice: quote.purchasePrice == null ? null : Number(quote.purchasePrice),
+      moq: quote.moq == null ? null : Number(quote.moq),
+      leadTimeDays: quote.leadTimeDays == null ? 0 : Number(quote.leadTimeDays)
+    }))
   : [])
-function supplierQuotePrice(value: number) { return Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 }) }
+const quoteSupplierOptions = computed(() => {
+  const options = new Map<number, SupplierOption>()
+  supplierOptions.value.forEach(option => options.set(option.id, option))
+  productSupplierQuotes.value.forEach(quote => {
+    if (quote.supplierId && !options.has(quote.supplierId)) {
+      options.set(quote.supplierId, { id: quote.supplierId, supplierName: quote.supplierName || `供应商 ${quote.supplierId}` })
+    }
+  })
+  return [...options.values()].sort((left, right) => left.supplierName.localeCompare(right.supplierName, 'zh-CN'))
+})
+function addProductSupplierQuote() {
+  productSupplierQuotes.value.push({ supplierId: null, purchasePrice: null, moq: 1, leadTimeDays: 0 })
+}
+function removeProductSupplierQuote(index: number) {
+  productSupplierQuotes.value.splice(index, 1)
+}
+function validateProductSupplierQuotes() {
+  const supplierIds = new Set<number>()
+  for (const quote of productSupplierQuotes.value) {
+    if (!quote.supplierId) return '请选择供应商'
+    if (supplierIds.has(quote.supplierId)) return '同一供应商不能重复报价'
+    const purchasePrice = Number(quote.purchasePrice)
+    if (quote.purchasePrice == null || !Number.isFinite(purchasePrice) || purchasePrice < 0) return '采购单价不能为空且必须是非负数'
+    if (quote.moq == null || !Number.isInteger(Number(quote.moq)) || Number(quote.moq) <= 0) return '最小起购量必须为正整数'
+    if (quote.leadTimeDays == null || !Number.isInteger(Number(quote.leadTimeDays)) || Number(quote.leadTimeDays) < 0) return '交货天数必须为非负整数'
+    supplierIds.add(quote.supplierId)
+  }
+  return ''
+}
 const canManageUserRoles = computed(() => props.currentUserRole === 'ADMIN')
 const roleOptions: { value: UserRole; label: string }[] = [
   { value: 'ADMIN', label: '管理员' },
@@ -339,6 +381,14 @@ function createPayload() {
   if (props.module === 'product' && !body.productName) {
     body.productName = body.model || body.configuration || body.customerPartNumber
   }
+  if (props.module === 'product') {
+    body.supplierQuotes = productSupplierQuotes.value.map(quote => ({
+      supplierId: quote.supplierId,
+      purchasePrice: Number(quote.purchasePrice),
+      moq: Number(quote.moq),
+      leadTimeDays: Number(quote.leadTimeDays)
+    }))
+  }
   if (props.module === 'inventory') {
     if (inventorySkuId.value != null) body.skuId = inventorySkuId.value
     if (props.row?.id) {
@@ -357,7 +407,14 @@ function createPayload() {
 
 onMounted(async () => {
   if (props.module === 'product') {
-    try { productCodeRules.value = await loadProductCodeRules() } catch { productCodeRules.value = [] }
+    try {
+      const [rules, suppliers] = await Promise.all([loadProductCodeRules(), loadSupplierOptions()])
+      productCodeRules.value = rules ?? []
+      supplierOptions.value = suppliers ?? []
+    } catch {
+      productCodeRules.value = []
+      supplierOptions.value = []
+    }
     if (!form.productType && !props.row?.id) form.productType = 'SMART_LOCK'
     if (!form.materialType && !props.row?.id) form.materialType = 'FINISHED_PRODUCT'
     return
@@ -372,6 +429,10 @@ onMounted(async () => {
 })
 
 async function save() {
+  if (props.module === 'product') {
+    const error = validateProductSupplierQuotes()
+    if (error) { emit('message', error, 'error'); return }
+  }
   if (props.module === 'inventory') {
     const error = validateLockedAllocations()
     if (error) { emit('message', error, 'error'); return }
@@ -494,13 +555,26 @@ async function save() {
           </label>
           </template>
         </div>
-<section v-if="module === 'product' && row?.id" class="product-supplier-quotes-section">
+        <section v-if="module === 'product'" class="product-supplier-quotes-section">
           <h3>供应商报价</h3>
+          <p>报价会同步到供应商管理，采购默认选用当前最低有效报价。</p>
           <div data-test="product-supplier-quotes" class="product-supplier-quotes">
-            <span v-for="quote in productSupplierQuotes" :key="quote.supplierId">{{ quote.supplierName }}：¥{{ supplierQuotePrice(quote.purchasePrice) }}</span>
-            <span v-if="!productSupplierQuotes.length">—</span>
+            <div v-if="productSupplierQuotes.length" class="product-supplier-quote-head" aria-hidden="true">
+              <span>供应商</span><span>采购单价</span><span>最小起购量</span><span>交货天数</span><span></span>
+            </div>
+            <div v-for="(quote, index) in productSupplierQuotes" :key="`${quote.supplierId ?? 'new'}-${index}`" class="product-supplier-quote-row" data-test="product-supplier-quote-row">
+              <select v-model.number="quote.supplierId" data-test="product-quote-supplier" aria-label="供应商">
+                <option :value="null">请选择供应商</option>
+                <option v-for="supplier in quoteSupplierOptions" :key="supplier.id" :value="supplier.id">{{ supplier.supplierName }}</option>
+              </select>
+              <input v-model.number="quote.purchasePrice" data-test="product-quote-price" type="number" min="0" step="0.0001" aria-label="采购单价">
+              <input v-model.number="quote.moq" data-test="product-quote-moq" type="number" min="1" step="1" aria-label="最小起购量">
+              <input v-model.number="quote.leadTimeDays" data-test="product-quote-lead-time" type="number" min="0" step="1" aria-label="交货天数">
+              <button type="button" class="secondary-action" data-test="remove-product-supplier-quote" @click="removeProductSupplierQuote(index)">删除</button>
+            </div>
+            <p v-if="!productSupplierQuotes.length" class="product-supplier-quote-empty">暂未维护供应商报价</p>
           </div>
-          <small>供应商和采购价格请在供应商管理中维护</small>
+          <button type="button" class="secondary-action" data-test="add-product-supplier-quote" @click="addProductSupplierQuote">新增供应商报价</button>
         </section>
         <ProductImagePicker
           v-if="module === 'product'"

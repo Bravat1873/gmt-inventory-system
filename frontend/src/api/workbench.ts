@@ -2,6 +2,8 @@ export interface SupplierQuote {
   supplierId: number
   supplierName: string
   purchasePrice: number
+  moq?: number
+  leadTimeDays?: number
 }
 
 export interface PageResult {

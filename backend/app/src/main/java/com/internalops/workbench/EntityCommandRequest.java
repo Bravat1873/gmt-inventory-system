@@ -21,5 +21,6 @@ public record EntityCommandRequest(
         Integer lockedBeiLang, Integer lockedMalaysia,
         String movementDate, Integer inboundQuantity, Integer outboundQuantity,
         List<InventoryMovementCommand> inventoryMovements,
-        String reason, String sourceSupplierName, String inventoryRemark, Integer version) {
+        String reason, String sourceSupplierName, String inventoryRemark, Integer version,
+        List<ProductSupplierQuoteCommand> supplierQuotes) {
 }

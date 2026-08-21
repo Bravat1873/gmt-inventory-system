@@ -12,6 +12,8 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -175,7 +177,7 @@ public class MasterDataCommandService {
                     r.brandRuleId(), r.seriesRuleId(), r.bodyColorRuleId(), r.lockTypeRuleId(), r.connectivityRuleId(),
                     r.salesChannelRuleId(), r.operatingEntityRuleId(), r.languageRuleId(), null, null, null, null, null);
             jdbc.update("UPDATE sku SET sales_minimum_order_quantity=? WHERE id=?", salesMinimumOrderQuantity(r), id);
-            saveSupplierConfig(id, r);
+            saveProductSupplierQuotes(id, r, fields);
             return product(id);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalStateException("产品编号和客户料号组合已存在：" + productCode + " + " + customerPartNumber);
@@ -210,7 +212,7 @@ public class MasterDataCommandService {
                     null, null, null, codeSuffix, eanCode, id, r.version());
             conflictIfUnchanged(changed);
             if (r.salesMinimumOrderQuantity() != null) jdbc.update("UPDATE sku SET sales_minimum_order_quantity=? WHERE id=?", r.salesMinimumOrderQuantity(), id);
-            saveSupplierConfig(id, r);
+            saveProductSupplierQuotes(id, r, fields);
             return product(id);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalStateException("产品编号和客户料号组合已存在：" + productCode + " + " + customerPartNumber);
@@ -283,14 +285,66 @@ public class MasterDataCommandService {
     private Long chosen(Long requested, Object existing) {
         return requested != null ? requested : existing == null ? null : ((Number) existing).longValue();
     }
-    private void saveSupplierConfig(long skuId, EntityCommandRequest r) {
-        if (r.supplierId() == null) return;
-        if (r.purchasePrice() == null || r.purchasePrice().signum() < 0) throw new IllegalArgumentException("采购单价不能为负数");
-        if (r.moq() == null || r.moq() <= 0) throw new IllegalArgumentException("最小起订量必须为正数");
-        int changed = jdbc.update("UPDATE sku_supplier_config SET supplier_id=?,purchase_price=?,moq=?,lead_time_days=?,enabled=TRUE,version=version+1 WHERE sku_id=?",
-                r.supplierId(), r.purchasePrice(), r.moq(), r.leadTimeDays() == null ? 0 : r.leadTimeDays(), skuId);
-        if (changed == 0) jdbc.update("INSERT INTO sku_supplier_config(sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled) VALUES(?,?,?,?,?,TRUE)",
-                skuId, r.supplierId(), r.purchasePrice(), r.moq(), r.leadTimeDays() == null ? 0 : r.leadTimeDays());
+    private void saveProductSupplierQuotes(long skuId, EntityCommandRequest request, EntityCommandFields fields) {
+        if (fields.supplierQuotesPresent()) {
+            replaceSupplierQuotes(skuId, request.supplierQuotes());
+            return;
+        }
+        if (request.supplierId() != null) {
+            replaceSupplierQuotes(skuId, List.of(new ProductSupplierQuoteCommand(
+                    request.supplierId(), request.purchasePrice(), request.moq(), request.leadTimeDays())));
+        }
+    }
+
+    private void replaceSupplierQuotes(long skuId, List<ProductSupplierQuoteCommand> requestedQuotes) {
+        List<ProductSupplierQuoteCommand> quotes = requestedQuotes == null ? List.of() : requestedQuotes;
+        Set<Long> supplierIds = new HashSet<>();
+        for (ProductSupplierQuoteCommand quote : quotes) {
+            validateSupplierQuote(quote, supplierIds);
+        }
+
+        jdbc.update("UPDATE sku_supplier_purchase_info SET enabled=FALSE WHERE supplier_product_config_id IN (SELECT id FROM sku_supplier_config WHERE sku_id=? AND enabled=TRUE)", skuId);
+        jdbc.update("UPDATE sku_supplier_config SET enabled=FALSE,version=version+1 WHERE sku_id=? AND enabled=TRUE", skuId);
+        for (ProductSupplierQuoteCommand quote : quotes) {
+            BigDecimal purchasePrice = normalizedPurchasePrice(quote.purchasePrice());
+            int leadTimeDays = quote.leadTimeDays() == null ? 0 : quote.leadTimeDays();
+            int changed = jdbc.update("UPDATE sku_supplier_config SET purchase_price=?,moq=?,lead_time_days=?,enabled=TRUE,version=version+1 WHERE sku_id=? AND supplier_id=?",
+                    purchasePrice, quote.moq(), leadTimeDays, skuId, quote.supplierId());
+            if (changed == 0) {
+                jdbc.update("INSERT INTO sku_supplier_config(sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled) VALUES(?,?,?,?,?,TRUE)",
+                        skuId, quote.supplierId(), purchasePrice, quote.moq(), leadTimeDays);
+            }
+            Long relationId = jdbc.queryForObject("SELECT id FROM sku_supplier_config WHERE sku_id=? AND supplier_id=?", Long.class,
+                    skuId, quote.supplierId());
+            jdbc.update("INSERT INTO sku_supplier_purchase_info(supplier_product_config_id,purchase_price,moq,lead_time_days,enabled) VALUES(?,?,?,?,TRUE)",
+                    relationId, purchasePrice, quote.moq(), leadTimeDays);
+        }
+    }
+
+    private void validateSupplierQuote(ProductSupplierQuoteCommand quote, Set<Long> supplierIds) {
+        if (quote == null || quote.supplierId() == null || quote.supplierId() <= 0) {
+            throw new IllegalArgumentException("请选择供应商");
+        }
+        if (!supplierIds.add(quote.supplierId())) {
+            throw new IllegalArgumentException("同一供应商不能重复报价");
+        }
+        Integer supplierCount = jdbc.queryForObject("SELECT COUNT(*) FROM supplier WHERE id=? AND enabled=TRUE", Integer.class, quote.supplierId());
+        if (supplierCount == null || supplierCount == 0) {
+            throw new IllegalArgumentException("供应商不存在或已停用");
+        }
+        if (quote.purchasePrice() == null || quote.purchasePrice().signum() < 0 || quote.purchasePrice().scale() > 4) {
+            throw new IllegalArgumentException("采购单价必须是最多四位小数的非负数");
+        }
+        if (quote.moq() == null || quote.moq() <= 0) {
+            throw new IllegalArgumentException("最小起订量必须大于零");
+        }
+        if (quote.leadTimeDays() != null && quote.leadTimeDays() < 0) {
+            throw new IllegalArgumentException("交货天数不能为负数");
+        }
+    }
+
+    private BigDecimal normalizedPurchasePrice(BigDecimal purchasePrice) {
+        return purchasePrice.setScale(4, RoundingMode.UNNECESSARY);
     }
 
     private Map<String, Object> createInventory(EntityCommandRequest r, EntityCommandFields fields) {

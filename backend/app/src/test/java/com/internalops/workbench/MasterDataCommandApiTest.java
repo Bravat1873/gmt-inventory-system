@@ -171,6 +171,56 @@ class MasterDataCommandApiTest {
     }
 
     @Test
+    void maintainsMultipleSupplierQuotesFromTheProductAndSynchronizesSupplierProducts() throws Exception {
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("""
+                                {"productName":"测试产品","version":0,"supplierQuotes":[
+                                  {"supplierId":1,"purchasePrice":100.5,"moq":10,"leadTimeDays":7},
+                                  {"supplierId":2,"purchasePrice":95,"moq":20,"leadTimeDays":14}
+                                ]}
+                                """))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForList("SELECT supplier_id,purchase_price,moq,lead_time_days FROM sku_supplier_config WHERE sku_id=1 AND enabled=TRUE ORDER BY supplier_id"))
+                .hasSize(2);
+        assertThat(jdbc.queryForList("SELECT purchase_price,moq,lead_time_days FROM sku_supplier_purchase_info WHERE enabled=TRUE ORDER BY purchase_price"))
+                .hasSize(2);
+
+        mvc.perform(get("/api/suppliers/1/products").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].purchasePrice").value(100.5))
+                .andExpect(jsonPath("$.data[0].moq").value(10))
+                .andExpect(jsonPath("$.data[0].leadTimeDays").value(7));
+
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("""
+                                {"productName":"测试产品","version":1,"supplierQuotes":[
+                                  {"supplierId":2,"purchasePrice":90,"moq":30,"leadTimeDays":5}
+                                ]}
+                                """))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForList("SELECT supplier_id FROM sku_supplier_config WHERE sku_id=1 AND enabled=TRUE"))
+                .extracting(row -> ((Number) row.get("supplier_id")).longValue())
+                .containsExactly(2L);
+        assertThat(jdbc.queryForObject("SELECT purchase_price FROM sku_supplier_config WHERE sku_id=1 AND supplier_id=2", java.math.BigDecimal.class))
+                .isEqualByComparingTo("90.0000");
+    }
+
+    @Test
+    void rejectsDuplicateSupplierQuotesFromTheProduct() throws Exception {
+        mvc.perform(put("/api/workbench/product/1").cookie(session).contentType("application/json")
+                        .content("""
+                                {"productName":"测试产品","version":0,"supplierQuotes":[
+                                  {"supplierId":1,"purchasePrice":100,"moq":10,"leadTimeDays":7},
+                                  {"supplierId":1,"purchasePrice":99,"moq":20,"leadTimeDays":14}
+                                ]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("同一供应商不能重复报价"));
+    }
+
+    @Test
     void entryDoorUsesTheSmartLockCodeRules() throws Exception {
         jdbc.update("INSERT INTO product_code_rule(id,category,code,display_name,enabled,sort_order,version) VALUES "
                         + "(105,'SERIES','D51','D51',TRUE,10,0),(106,'CONNECTIVITY','W','WiFi',TRUE,10,0),"

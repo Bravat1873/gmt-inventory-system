@@ -6,6 +6,7 @@ const api = vi.hoisted(() => ({
   createEntity: vi.fn(),
   updateEntity: vi.fn(),
   loadProductCodeRules: vi.fn(),
+  loadSupplierOptions: vi.fn(),
   loadOrderSkus: vi.fn(),
   uploadProductImages: vi.fn(),
   loadProductImages: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('../api/workbench', () => api)
 beforeEach(() => {
   vi.clearAllMocks()
   api.loadProductCodeRules.mockResolvedValue([])
+  api.loadSupplierOptions.mockResolvedValue([])
   api.loadOrderSkus.mockResolvedValue([])
   api.loadProductImages.mockResolvedValue([])
   api.uploadProductImages.mockResolvedValue([])
@@ -195,7 +197,13 @@ it('入户门使用智能锁编码规则并实时预览自动产品编号', asyn
   expect(wrapper.text()).not.toContain('安全等级')
   expect((wrapper.get('[data-test="product-code-preview"]').element as HTMLInputElement).value).toBe('SXSEL_D51YZH70WPSC')
 })
-it('hides fixed product prices and shows every supplier quote in the edit dialog', async () => {
+it('edits every supplier quote in the product dialog and submits the shared quote data', async () => {
+  api.loadSupplierOptions.mockResolvedValue([
+    { id: 1, supplierName: '供应商甲' },
+    { id: 2, supplierName: '供应商乙' },
+    { id: 3, supplierName: '供应商丙' }
+  ])
+  api.updateEntity.mockResolvedValue({ id: 7, version: 4 })
   const wrapper = mount(EntityDialog, {
     props: {
       module: 'product', currentUserRole: 'ADMIN',
@@ -203,19 +211,34 @@ it('hides fixed product prices and shows every supplier quote in the edit dialog
         id: 7, model: 'P90', salesMinimumOrderQuantity: 2, version: 3,
         currentCost: 100, factoryPrice: 135, priceDifference: 35,
         supplierQuotes: [
-          { supplierId: 1, supplierName: '供应商甲', purchasePrice: 100 },
-          { supplierId: 2, supplierName: '供应商乙', purchasePrice: 105.5 }
+          { supplierId: 1, supplierName: '供应商甲', purchasePrice: 100, moq: 10, leadTimeDays: 7 },
+          { supplierId: 2, supplierName: '供应商乙', purchasePrice: 105.5, moq: 20, leadTimeDays: 14 }
         ]
       }
     }
   })
 
+  await flushPromises()
   expect(wrapper.text()).not.toContain('成本单价（含税）')
   expect(wrapper.text()).not.toContain('转厂价格')
   expect(wrapper.text()).not.toContain('差异：转厂价-原成本')
   expect(wrapper.text()).toContain('销售最小起订量')
-  const quotes = wrapper.get('[data-test="product-supplier-quotes"]')
-  expect(quotes.findAll('span').map(item => item.text())).toEqual(['供应商甲：¥100', '供应商乙：¥105.5'])
+  expect(wrapper.findAll('[data-test="product-supplier-quote-row"]')).toHaveLength(2)
+  await wrapper.get('[data-test="add-product-supplier-quote"]').trigger('click')
+  const rows = wrapper.findAll('[data-test="product-supplier-quote-row"]')
+  await rows[2].get('[data-test="product-quote-supplier"]').setValue('3')
+  await rows[2].get('[data-test="product-quote-price"]').setValue('90')
+  await rows[2].get('[data-test="product-quote-moq"]').setValue('30')
+  await rows[2].get('[data-test="product-quote-lead-time"]').setValue('5')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.updateEntity).toHaveBeenLastCalledWith('product', 7, expect.objectContaining({
+    supplierQuotes: [
+      { supplierId: 1, purchasePrice: 100, moq: 10, leadTimeDays: 7 },
+      { supplierId: 2, purchasePrice: 105.5, moq: 20, leadTimeDays: 14 },
+      { supplierId: 3, purchasePrice: 90, moq: 30, leadTimeDays: 5 }
+    ]
+  }))
 })
 
 it('allows administrators to select and submit a user role with Chinese labels', async () => {
