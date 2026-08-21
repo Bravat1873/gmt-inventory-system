@@ -44,3 +44,12 @@ it('uses 客户料号 as the business-trace field label', () => {
   expect(wrapper.text()).not.toContain(legacyMaterialNumber)
 })
 
+it('shows the business order remark in its own section', () => {
+  const wrapper = mount(BusinessTraceDialog, {
+    props: { trace: { type: 'order', title: '订单业务全景', header: { remark: '客户要求分批发货，并提前一天通知。' }, details: [], timeline: [] } }
+  })
+
+  expect(wrapper.text()).toContain('备注信息')
+  expect(wrapper.text()).toContain('客户要求分批发货，并提前一天通知。')
+})
+

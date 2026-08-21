@@ -36,6 +36,10 @@ function header(key: string) { const raw = props.trace.header[key]; return key =
           <div><span>当前状态</span><strong>{{ header('status') }}</strong></div>
           <div><span>金额</span><strong>¥{{ header('totalAmount') }}</strong></div>
         </section>
+        <section v-if="header('remark') !== '—'" class="trace-section trace-remark">
+          <h3>备注信息</h3>
+          <p>{{ header('remark') }}</p>
+        </section>
         <section class="trace-section">
           <h3>业务轨迹</h3>
           <ol v-if="trace.timeline.length" class="trace-timeline">

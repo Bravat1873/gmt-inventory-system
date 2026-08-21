@@ -144,8 +144,8 @@ class ExcelExportServiceTest {
                 "customerName", "示例客户", "orderType", "工程订单", "deliveryContact", "张三",
                 "deliveryPhone", "13800000000", "deliveryAddress", "珠海市斗门区示例地址",
                 "remark", "示例备注", "items", List.of(Map.of("productCode", "SXSEL_D51YZH70WPSE-A",
-                        "productName", "智能门锁", "model", "D51", "color", "宇宙黑", "quantity", 10,
-                        "unit", "件", "salePrice", new BigDecimal("1038.80")))
+                        "customerPartNumber", "D51-001", "productType", "SMART_LOCK", "configuration", "STANLEY / D51 / 宇宙黑 / 6068 / 中文版",
+                        "productConfiguration", "指纹、密码、卡片开锁", "quantity", 10, "unit", "件", "salePrice", new BigDecimal("1038.80")))
         ));
         ExcelExportService service = new ExcelExportService(null, salesOrders, null, null, null);
 
@@ -154,21 +154,25 @@ class ExcelExportServiceTest {
             assertEquals("珠海吉门第销售订单", sheet.getRow(0).getCell(0).getStringCellValue());
             assertEquals("珠海市斗门区珠峰大道南3211号16号厂房3层  TEL：0755-86168089", sheet.getRow(1).getCell(0).getStringCellValue());
             assertEquals("客户编码：C0001", sheet.getRow(4).getCell(0).getStringCellValue());
-            assertEquals("颜色", sheet.getRow(10).getCell(4).getStringCellValue());
-            assertEquals("宇宙黑", sheet.getRow(11).getCell(4).getStringCellValue());
-            assertEquals("订单备注：示例备注", sheet.getRow(12).getCell(0).getStringCellValue());
-            assertEquals("销售/商务确认", sheet.getRow(16).getCell(0).getStringCellValue());
-            assertEquals("签字/盖章：", sheet.getRow(16).getCell(7).getStringCellValue());
-            assertEquals("付款方式", sheet.getRow(14).getCell(0).getStringCellValue());
-            assertEquals("公司名称：珠海吉门第科技有限公司", sheet.getRow(14).getCell(3).getStringCellValue().split("\\n")[2]);
+            assertEquals("产品分类", sheet.getRow(10).getCell(2).getStringCellValue());
+            assertEquals("客户料号", sheet.getRow(10).getCell(3).getStringCellValue());
+            assertEquals("物料规格", sheet.getRow(10).getCell(4).getStringCellValue());
+            assertEquals("智能锁", sheet.getRow(11).getCell(2).getStringCellValue());
+            assertEquals("STANLEY / D51 / 宇宙黑 / 6068 / 中文版", sheet.getRow(11).getCell(4).getStringCellValue());
+            assertEquals("产品配置：指纹、密码、卡片开锁", sheet.getRow(12).getCell(0).getStringCellValue());
+            assertEquals("订单备注：示例备注", sheet.getRow(13).getCell(0).getStringCellValue());
+            assertEquals("销售/商务确认", sheet.getRow(17).getCell(0).getStringCellValue());
+            assertEquals("签字/盖章：", sheet.getRow(17).getCell(7).getStringCellValue());
+            assertEquals("付款方式", sheet.getRow(15).getCell(0).getStringCellValue());
+            assertEquals("公司名称：珠海吉门第科技有限公司", sheet.getRow(15).getCell(3).getStringCellValue().split("\\n")[2]);
         }
     }
 
     @Test
     void purchaseDocumentUsesPurchaseTemplateAndUsesActualDetailRowCount() throws Exception {
         ProcurementWorkflowService procurement = mock(ProcurementWorkflowService.class);
-        Map<String, Object> item = Map.of("productCode", "SKU-001", "customerPartNumber", "CP-001", "productName", "示例产品", "model", "D51",
-                "color", "宇宙黑", "lockBody", "6068", "productVersion", "中文版", "quantity", 5, "unit", "件", "purchasePrice", new BigDecimal("390.00"));
+        Map<String, Object> item = Map.of("productCode", "SKU-001", "customerPartNumber", "CP-001", "productType", "SMART_LOCK",
+                "configuration", "BRAVAT / D51 / 宇宙黑 / 6068 / 西班牙语", "productConfiguration", "半自动锁体", "quantity", 5, "unit", "件", "purchasePrice", new BigDecimal("390.00"));
         when(procurement.purchase(7L)).thenReturn(Map.of("purchaseNo", "CG20260800001", "orderDate", "2026-08-20", "supplierName", "示例供应商",
                 "status", "EXECUTING", "expectedArrivalDate", "2026-09-10", "remark", "采购备注", "items", List.of(item)));
         ExcelExportService service = new ExcelExportService(null, null, procurement, null, null);
@@ -178,9 +182,11 @@ class ExcelExportServiceTest {
             assertEquals("珠海吉门第采购订单", sheet.getRow(0).getCell(0).getStringCellValue());
             assertEquals("珠海市斗门区珠峰大道南3211号16号厂房3层  TEL：0755-86168089", sheet.getRow(1).getCell(0).getStringCellValue());
             assertEquals("下单日期：2026-08-20", sheet.getRow(3).getCell(0).getStringCellValue());
-            assertEquals("颜色", sheet.getRow(9).getCell(5).getStringCellValue());
+            assertEquals("产品分类", sheet.getRow(9).getCell(2).getStringCellValue());
+            assertEquals("物料规格", sheet.getRow(9).getCell(4).getStringCellValue());
             assertEquals("SKU-001", sheet.getRow(10).getCell(1).getStringCellValue());
-            assertEquals("采购备注：采购备注", sheet.getRow(11).getCell(0).getStringCellValue());
+            assertEquals("产品配置：半自动锁体", sheet.getRow(11).getCell(0).getStringCellValue());
+            assertEquals("采购备注：采购备注", sheet.getRow(12).getCell(0).getStringCellValue());
         }
     }
 
@@ -192,17 +198,19 @@ class ExcelExportServiceTest {
                 Map.entry("orderNo", "DD20260700001"), Map.entry("customerName", "示例客户"), Map.entry("afterSalesType", "换货"),
                 Map.entry("status", "待收货"), Map.entry("issueDescription", "门锁异常"), Map.entry("contactName", "张三"),
                 Map.entry("contactPhone", "13800000000"), Map.entry("remark", "处理备注"),
-                Map.entry("returnLines", List.of(Map.of("productCode", "SKU-001", "customerPartNumber", "CP-001", "productName", "示例产品",
-                        "model", "D51", "requestedQuantity", 2, "receivedQuantity", 0)))));
+                Map.entry("returnLines", List.of(Map.of("productCode", "SKU-001", "customerPartNumber", "CP-001", "productType", "SMART_LOCK",
+                        "configuration", "BRAVAT / D51 / 宇宙黑 / 6068 / 西班牙语", "productConfiguration", "半自动锁体", "requestedQuantity", 2, "receivedQuantity", 0)))));
         ExcelExportService service = new ExcelExportService(null, null, null, afterSales, null);
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.document("afterSales", 3L)))) {
             var sheet = workbook.getSheet("售后订单单据");
             assertEquals("珠海吉门第售后服务单", sheet.getRow(0).getCell(0).getStringCellValue());
             assertEquals("珠海市斗门区珠峰大道南3211号16号厂房3层  TEL：0755-86168089", sheet.getRow(1).getCell(0).getStringCellValue());
-            assertEquals("申请数量", sheet.getRow(10).getCell(5).getStringCellValue());
+            assertEquals("产品分类", sheet.getRow(10).getCell(2).getStringCellValue());
+            assertEquals("物料规格", sheet.getRow(10).getCell(4).getStringCellValue());
             assertEquals("SKU-001", sheet.getRow(11).getCell(1).getStringCellValue());
-            assertEquals("处理备注：处理备注", sheet.getRow(12).getCell(0).getStringCellValue());
+            assertEquals("产品配置：半自动锁体", sheet.getRow(12).getCell(0).getStringCellValue());
+            assertEquals("处理备注：处理备注", sheet.getRow(13).getCell(0).getStringCellValue());
         }
     }
 }

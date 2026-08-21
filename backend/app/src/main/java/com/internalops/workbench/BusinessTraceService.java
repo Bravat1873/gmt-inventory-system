@@ -29,7 +29,7 @@ public class BusinessTraceService {
                 + "o.total_amount AS totalAmount, o.order_date AS orderDate, o.salesperson, o.customer_contact AS customerContact, "
                 + "o.customer_phone AS customerPhone, o.delivery_address AS deliveryAddress, o.delivery_contact AS deliveryContact, "
                 + "o.delivery_phone AS deliveryPhone, o.shipping_method AS shippingMethod, o.carrier, o.tracking_no AS trackingNo, "
-                + "o.created_at AS createdAt, o.updated_at AS updatedAt FROM sales_order o JOIN customer c ON c.id=o.customer_id WHERE o.id=?", id);
+                + "o.order_remark AS remark, o.created_at AS createdAt, o.updated_at AS updatedAt FROM sales_order o JOIN customer c ON c.id=o.customer_id WHERE o.id=?", id);
         List<Map<String, Object>> details = jdbc.queryForList("SELECT i.line_no AS lineNo, i.sku_id AS skuId, s.product_code AS productCode, s.customer_part_number AS customerPartNumber, s.product_name AS productName, s.model, s.configuration, s.unit, "
                 + "i.quantity, i.shipped_quantity AS shippedQuantity, i.locked_quantity AS lockedQuantity, i.uncovered_quantity AS uncoveredQuantity, i.sale_price AS salePrice "
                 + "FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no", id);
@@ -52,7 +52,7 @@ public class BusinessTraceService {
 
     private Map<String, Object> purchaseTrace(long id) {
         Map<String, Object> header = one("SELECT po.id, po.purchase_no AS purchaseNo, sp.supplier_name AS counterparty, po.status, po.total_amount AS totalAmount, "
-                + "po.expected_arrival_date AS expectedArrivalDate, po.created_at AS createdAt, po.updated_at AS updatedAt "
+                + "po.expected_arrival_date AS expectedArrivalDate, po.purchase_remark AS remark, po.created_at AS createdAt, po.updated_at AS updatedAt "
                 + "FROM purchase_order po JOIN supplier sp ON sp.id=po.supplier_id WHERE po.id=?", id);
         List<Map<String, Object>> details = jdbc.queryForList("SELECT poi.line_no AS lineNo, s.product_code AS productCode, s.customer_part_number AS customerPartNumber, s.product_name AS productName, s.model, s.configuration, s.unit, "
                 + "poi.quantity, poi.received_quantity AS receivedQuantity, poi.purchase_price AS purchasePrice "

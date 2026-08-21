@@ -573,7 +573,7 @@ public class ProcurementWorkflowService {
         result.put("expectedArrivalDate", source.get("expected_arrival_date"));
         result.put("remark", val(source, "purchase_remark"));
         List<Map<String, Object>> itemRows = jdbc.queryForList("""
-                SELECT poi.id,s.product_code,s.customer_part_number,s.model,s.product_name,s.color,s.lock_body,s.product_version,s.configuration,s.unit,poi.quantity,poi.received_quantity,poi.purchase_price,
+                SELECT poi.id,s.product_code,s.customer_part_number,s.model,s.product_name,s.product_type,s.product_configuration,s.color,s.lock_body,s.product_version,s.configuration,s.unit,poi.quantity,poi.received_quantity,poi.purchase_price,
                        poi.quantity-poi.received_quantity AS remaining_quantity
                 FROM purchase_order_item poi JOIN sku s ON s.id=poi.sku_id
                 WHERE poi.purchase_order_id=? ORDER BY poi.line_no
@@ -586,6 +586,8 @@ public class ProcurementWorkflowService {
             item.put("customerPartNumber", val(row, "customer_part_number"));
             item.put("model", val(row, "model"));
             item.put("productName", val(row, "product_name"));
+            item.put("productType", val(row, "product_type"));
+            item.put("productConfiguration", val(row, "product_configuration"));
             item.put("color", val(row, "color"));
             item.put("lockBody", val(row, "lock_body"));
             item.put("productVersion", val(row, "product_version"));

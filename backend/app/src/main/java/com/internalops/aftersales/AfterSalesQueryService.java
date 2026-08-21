@@ -9,8 +9,8 @@ import java.util.*;
  private final JdbcTemplate jdbc; public AfterSalesQueryService(JdbcTemplate jdbc){this.jdbc=jdbc;}
  public Map<String,Object> get(long id){
   Map<String,Object> result=new LinkedHashMap<>(camel(one("SELECT a.*,o.order_no,o.order_type,c.customer_name FROM after_sales_order a JOIN sales_order o ON o.id=a.sales_order_id JOIN customer c ON c.id=a.customer_id WHERE a.id=?",id)));
-  result.put("returnLines",jdbc.queryForList("SELECT r.*,s.product_code,s.customer_part_number,s.model FROM after_sales_return_line r JOIN sku s ON s.id=r.sku_id WHERE r.after_sales_order_id=? ORDER BY r.id",id).stream().map(this::camel).toList());
-  result.put("replacementLines",jdbc.queryForList("SELECT r.*,s.product_code,s.customer_part_number,s.model,COALESCE((SELECT SUM(b.actual_quantity-b.locked_quantity) FROM inventory_balance b WHERE b.sku_id=r.sku_id),0) available_quantity FROM after_sales_replacement_line r JOIN sku s ON s.id=r.sku_id WHERE r.after_sales_order_id=? ORDER BY r.id",id).stream().map(this::camel).toList());
+  result.put("returnLines",jdbc.queryForList("SELECT r.*,s.product_code,s.customer_part_number,s.model,s.product_type,s.product_configuration,s.configuration FROM after_sales_return_line r JOIN sku s ON s.id=r.sku_id WHERE r.after_sales_order_id=? ORDER BY r.id",id).stream().map(this::camel).toList());
+  result.put("replacementLines",jdbc.queryForList("SELECT r.*,s.product_code,s.customer_part_number,s.model,s.product_type,s.product_configuration,s.configuration,COALESCE((SELECT SUM(b.actual_quantity-b.locked_quantity) FROM inventory_balance b WHERE b.sku_id=r.sku_id),0) available_quantity FROM after_sales_replacement_line r JOIN sku s ON s.id=r.sku_id WHERE r.after_sales_order_id=? ORDER BY r.id",id).stream().map(this::camel).toList());
   result.put("events",jdbc.queryForList("SELECT event_type,description,operated_at FROM after_sales_event WHERE after_sales_order_id=? ORDER BY operated_at,id",id).stream().map(this::camel).toList());
   return result;
  }
