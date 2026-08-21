@@ -28,6 +28,12 @@ import java.util.Map;
 @Service
 public class ExcelExportService {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String COMPANY_ADDRESS_AND_PHONE = "珠海市斗门区珠峰大道南3211号16号厂房3层  TEL：0755-86168089";
+    private static final String SALES_PAYMENT_INSTRUCTIONS = "1、付款时间：订单确认无误后 3 个工作日内通过银行转账一次付清；\n"
+            + "2、收款账户：\n"
+            + "公司名称：珠海吉门第科技有限公司\n"
+            + "开户银行：中国银行股份有限公司珠海斗门支行\n"
+            + "账号：705570264475";
     private final WorkbenchQueryService workbench;
     private final SalesOrderCommandService salesOrders;
     private final ProcurementWorkflowService procurement;
@@ -204,8 +210,8 @@ public class ExcelExportService {
 
             int[] widths = {6, 18, 25, 15, 13, 11, 12, 14, 14, 18};
             for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
-            mergedRow(sheet, 0, 0, 9, documentTitle(record.get("customerName"), "销售订单", "珠海吉门第销售订单"), titleStyle, 34);
-            sheet.createRow(1).setHeightInPoints(10);
+            mergedRow(sheet, 0, 0, 9, "珠海吉门第销售订单", titleStyle, 34);
+            mergedRow(sheet, 1, 0, 9, COMPANY_ADDRESS_AND_PHONE, center, 20);
 
             String contact = firstNonBlank(string(record.get("deliveryContact")), string(record.get("orderContactName")));
             String phone = firstNonBlank(string(record.get("deliveryPhone")), string(record.get("orderContactPhone")));
@@ -253,7 +259,8 @@ public class ExcelExportService {
             set(sheet, totalRow, 9, "合计金额", header);
             sheet.createRow(totalRow + 1).setHeightInPoints(8);
             int paymentRow = totalRow + 2;
-            mergedRow(sheet, paymentRow, 0, 9, "付款方式 / 其他说明：", cell, 42);
+            mergedRow(sheet, paymentRow, 0, 2, "付款方式", header, 82);
+            mergedRow(sheet, paymentRow, 3, 9, SALES_PAYMENT_INSTRUCTIONS, cell, 82);
 
             int approvalRow = paymentRow + 2;
             for (String label : List.of("销售/商务确认", "客户确认", "营销总监审批", "财务审核")) {
@@ -367,7 +374,8 @@ public class ExcelExportService {
             Font titleFont = workbook.createFont(); titleFont.setFontName("宋体"); titleFont.setFontHeightInPoints((short) 18); titleFont.setBold(true); titleStyle.setFont(titleFont);
             int[] widths = {6,18,16,14,13,12,12,12,11,11,11,14,14,20};
             for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
-            mergedRow(sheet, 0, 0, 13, documentTitle(record.get("supplierName"), "采购订单", "珠海吉门第采购订单"), titleStyle, 34); sheet.createRow(1).setHeightInPoints(10);
+            mergedRow(sheet, 0, 0, 13, "珠海吉门第采购订单", titleStyle, 34);
+            mergedRow(sheet, 1, 0, 13, COMPANY_ADDRESS_AND_PHONE, center, 20);
             String[] meta = {"采购单号：" + string(record.get("purchaseNo")), "下单日期：" + string(record.get("orderDate")),
                     "供应商：" + string(record.get("supplierName")), "联系人及电话：", "要求交期：" + string(record.get("expectedArrivalDate")), "交货地址："};
             for (int index = 0; index < meta.length; index++) mergedRow(sheet, index + 2, 0, 13, meta[index], cell, index == 5 ? 30 : 23);
@@ -400,7 +408,8 @@ public class ExcelExportService {
             CellStyle cell = style(workbook, false, HorizontalAlignment.LEFT); CellStyle center = style(workbook, false, HorizontalAlignment.CENTER); CellStyle header = style(workbook, true, HorizontalAlignment.CENTER);
             CellStyle titleStyle = style(workbook, true, HorizontalAlignment.CENTER); Font titleFont = workbook.createFont(); titleFont.setFontName("宋体"); titleFont.setFontHeightInPoints((short) 18); titleFont.setBold(true); titleStyle.setFont(titleFont);
             int[] widths = {6,18,18,15,14,11,11,12,14,14,20}; for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
-            mergedRow(sheet,0,0,10,documentTitle(record.get("customerName"), "售后服务单", "珠海吉门第售后服务单"),titleStyle,34); sheet.createRow(1).setHeightInPoints(10);
+            mergedRow(sheet,0,0,10,"珠海吉门第售后服务单",titleStyle,34);
+            mergedRow(sheet,1,0,10,COMPANY_ADDRESS_AND_PHONE,center,20);
             String contact = string(record.get("contactName")); String phone = string(record.get("contactPhone"));
             String[] meta = {"售后单号：" + string(record.get("afterSalesNo")), "申请日期：" + string(record.get("applicationDate")), "关联订单：" + string(record.get("orderNo")),
                     "客户：" + string(record.get("customerName")), "售后类型：" + displayAfterSalesType(record.get("afterSalesType")), "收货联系人及电话：" + (contact.isBlank() && phone.isBlank() ? "" : contact + " / " + phone),

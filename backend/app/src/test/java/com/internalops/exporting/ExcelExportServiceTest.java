@@ -123,13 +123,16 @@ class ExcelExportServiceTest {
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.document("order", 9L)))) {
             var sheet = workbook.getSheet("销售订单单据");
-            assertEquals("示例客户销售订单", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("珠海吉门第销售订单", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("珠海市斗门区珠峰大道南3211号16号厂房3层  TEL：0755-86168089", sheet.getRow(1).getCell(0).getStringCellValue());
             assertEquals("客户编码：C0001", sheet.getRow(4).getCell(0).getStringCellValue());
             assertEquals("颜色", sheet.getRow(10).getCell(4).getStringCellValue());
             assertEquals("宇宙黑", sheet.getRow(11).getCell(4).getStringCellValue());
             assertEquals("订单备注：示例备注", sheet.getRow(12).getCell(0).getStringCellValue());
             assertEquals("销售/商务确认", sheet.getRow(16).getCell(0).getStringCellValue());
             assertEquals("签字/盖章：", sheet.getRow(16).getCell(7).getStringCellValue());
+            assertEquals("付款方式", sheet.getRow(14).getCell(0).getStringCellValue());
+            assertEquals("公司名称：珠海吉门第科技有限公司", sheet.getRow(14).getCell(3).getStringCellValue().split("\\n")[2]);
         }
     }
 
@@ -144,7 +147,8 @@ class ExcelExportServiceTest {
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.document("purchase", 7L)))) {
             var sheet = workbook.getSheet("采购订单单据");
-            assertEquals("示例供应商采购订单", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("珠海吉门第采购订单", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("珠海市斗门区珠峰大道南3211号16号厂房3层  TEL：0755-86168089", sheet.getRow(1).getCell(0).getStringCellValue());
             assertEquals("下单日期：2026-08-20", sheet.getRow(3).getCell(0).getStringCellValue());
             assertEquals("颜色", sheet.getRow(9).getCell(5).getStringCellValue());
             assertEquals("SKU-001", sheet.getRow(10).getCell(1).getStringCellValue());
@@ -166,7 +170,8 @@ class ExcelExportServiceTest {
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.document("afterSales", 3L)))) {
             var sheet = workbook.getSheet("售后订单单据");
-            assertEquals("示例客户售后服务单", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("珠海吉门第售后服务单", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("珠海市斗门区珠峰大道南3211号16号厂房3层  TEL：0755-86168089", sheet.getRow(1).getCell(0).getStringCellValue());
             assertEquals("申请数量", sheet.getRow(10).getCell(5).getStringCellValue());
             assertEquals("SKU-001", sheet.getRow(11).getCell(1).getStringCellValue());
             assertEquals("处理备注：处理备注", sheet.getRow(12).getCell(0).getStringCellValue());
