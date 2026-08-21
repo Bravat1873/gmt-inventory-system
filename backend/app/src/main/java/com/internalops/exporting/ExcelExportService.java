@@ -204,7 +204,7 @@ public class ExcelExportService {
 
             int[] widths = {6, 18, 25, 15, 13, 11, 12, 14, 14, 18};
             for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
-            mergedRow(sheet, 0, 0, 9, "珠海吉门第销售订单", titleStyle, 34);
+            mergedRow(sheet, 0, 0, 9, documentTitle(record.get("customerName"), "销售订单", "珠海吉门第销售订单"), titleStyle, 34);
             sheet.createRow(1).setHeightInPoints(10);
 
             String contact = firstNonBlank(string(record.get("deliveryContact")), string(record.get("orderContactName")));
@@ -305,6 +305,11 @@ public class ExcelExportService {
         return primary == null || primary.isBlank() ? (fallback == null ? "" : fallback) : primary;
     }
 
+    private String documentTitle(Object party, String suffix, String fallback) {
+        String name = string(party).trim();
+        return name.isBlank() ? fallback : name + suffix;
+    }
+
     private String displayStatus(Object value) {
         return switch (string(value)) {
             case "DRAFT" -> "草稿";
@@ -362,7 +367,7 @@ public class ExcelExportService {
             Font titleFont = workbook.createFont(); titleFont.setFontName("宋体"); titleFont.setFontHeightInPoints((short) 18); titleFont.setBold(true); titleStyle.setFont(titleFont);
             int[] widths = {6,18,16,14,13,12,12,12,11,11,11,14,14,20};
             for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
-            mergedRow(sheet, 0, 0, 13, "珠海吉门第采购订单", titleStyle, 34); sheet.createRow(1).setHeightInPoints(10);
+            mergedRow(sheet, 0, 0, 13, documentTitle(record.get("supplierName"), "采购订单", "珠海吉门第采购订单"), titleStyle, 34); sheet.createRow(1).setHeightInPoints(10);
             String[] meta = {"采购单号：" + string(record.get("purchaseNo")), "下单日期：" + string(record.get("orderDate")),
                     "供应商：" + string(record.get("supplierName")), "联系人及电话：", "要求交期：" + string(record.get("expectedArrivalDate")), "交货地址："};
             for (int index = 0; index < meta.length; index++) mergedRow(sheet, index + 2, 0, 13, meta[index], cell, index == 5 ? 30 : 23);
@@ -395,7 +400,7 @@ public class ExcelExportService {
             CellStyle cell = style(workbook, false, HorizontalAlignment.LEFT); CellStyle center = style(workbook, false, HorizontalAlignment.CENTER); CellStyle header = style(workbook, true, HorizontalAlignment.CENTER);
             CellStyle titleStyle = style(workbook, true, HorizontalAlignment.CENTER); Font titleFont = workbook.createFont(); titleFont.setFontName("宋体"); titleFont.setFontHeightInPoints((short) 18); titleFont.setBold(true); titleStyle.setFont(titleFont);
             int[] widths = {6,18,18,15,14,11,11,12,14,14,20}; for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
-            mergedRow(sheet,0,0,10,"珠海吉门第售后服务单",titleStyle,34); sheet.createRow(1).setHeightInPoints(10);
+            mergedRow(sheet,0,0,10,documentTitle(record.get("customerName"), "售后服务单", "珠海吉门第售后服务单"),titleStyle,34); sheet.createRow(1).setHeightInPoints(10);
             String contact = string(record.get("contactName")); String phone = string(record.get("contactPhone"));
             String[] meta = {"售后单号：" + string(record.get("afterSalesNo")), "申请日期：" + string(record.get("applicationDate")), "关联订单：" + string(record.get("orderNo")),
                     "客户：" + string(record.get("customerName")), "售后类型：" + displayAfterSalesType(record.get("afterSalesType")), "收货联系人及电话：" + (contact.isBlank() && phone.isBlank() ? "" : contact + " / " + phone),
@@ -421,9 +426,9 @@ public class ExcelExportService {
     private byte[] formalDocument(String module, Map<String, Object> record) {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             String title = switch (module) {
-                case "order" -> "珠海吉门第销售订单";
-                case "purchase" -> "珠海吉门第采购订单";
-                default -> "珠海吉门第售后服务单";
+                case "order" -> documentTitle(record.get("customerName"), "销售订单", "珠海吉门第销售订单");
+                case "purchase" -> documentTitle(record.get("supplierName"), "采购订单", "珠海吉门第采购订单");
+                default -> documentTitle(record.get("customerName"), "售后服务单", "珠海吉门第售后服务单");
             };
             Sheet sheet = workbook.createSheet(title);
             CellStyle cell = style(workbook, false, HorizontalAlignment.LEFT);
