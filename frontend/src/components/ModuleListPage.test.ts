@@ -67,6 +67,16 @@ it.each(['product', 'inventory'] as const)('shows only summary export action for
   expect(wrapper.get('[data-test="export-summary-action"]').text()).toBe('导出汇总数据')
 })
 
+it('shows a finance summary export action', async () => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')! } })
+  await flushPromises()
+
+  expect(wrapper.get('[data-test="export-summary-action"]').text()).toBe('导出财务汇总数据')
+  await wrapper.get('[data-test="export-summary-action"]').trigger('click')
+  expect(wrapper.emitted('exportSummary')).toHaveLength(1)
+})
+
 it('hides every order creation entry from finance users', async () => {
   loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')!, currentUserRole: 'FINANCE' } })

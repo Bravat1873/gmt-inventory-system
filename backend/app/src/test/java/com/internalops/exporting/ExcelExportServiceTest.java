@@ -22,6 +22,34 @@ import static org.mockito.ArgumentMatchers.argThat;
 
 class ExcelExportServiceTest {
     @Test
+    void financeSummaryUsesBusinessNumbersAndChineseFinanceColumns() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        Map<String, Object> sales = new LinkedHashMap<>();
+        sales.put("business_no", "DD20260800009"); sales.put("business_type", "销售订单");
+        sales.put("cash_direction", "RECEIVABLE"); sales.put("counterparty", "示例客户");
+        sales.put("amount", new BigDecimal("30144.80")); sales.put("settled_amount", BigDecimal.ZERO);
+        sales.put("status", "待收款"); sales.put("created_at", "2026-08-20 16:07:26"); sales.put("updated_at", "2026-08-20 16:07:26");
+        Map<String, Object> purchase = new LinkedHashMap<>();
+        purchase.put("business_no", "CG20260800001"); purchase.put("business_type", "采购订单");
+        purchase.put("cash_direction", "PAYABLE"); purchase.put("counterparty", "示例供应商");
+        purchase.put("amount", new BigDecimal("1950.00")); purchase.put("settled_amount", new BigDecimal("1950.00"));
+        purchase.put("status", "已付清"); purchase.put("created_at", "2026-08-21 15:29:29"); purchase.put("updated_at", "2026-08-21 15:29:29");
+        when(jdbc.queryForList(anyString())).thenReturn(List.of(sales, purchase));
+        ExcelExportService service = new ExcelExportService(null, null, null, null, jdbc);
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.summary("finance")))) {
+            var sheet = workbook.getSheet("财务汇总数据");
+            assertEquals("业务单号", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("应收/应付", sheet.getRow(0).getCell(4).getStringCellValue());
+            assertEquals("DD20260800009", sheet.getRow(1).getCell(0).getStringCellValue());
+            assertEquals("应收", sheet.getRow(1).getCell(2).getStringCellValue());
+            assertEquals("待收款", sheet.getRow(1).getCell(7).getStringCellValue());
+            assertEquals("CG20260800001", sheet.getRow(2).getCell(0).getStringCellValue());
+            assertEquals("已付清", sheet.getRow(2).getCell(7).getStringCellValue());
+        }
+    }
+
+    @Test
     void purchaseSummaryUsesTheChineseTemplateColumnsAndChineseStatuses() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(anyString())).thenReturn(List.of(Map.ofEntries(

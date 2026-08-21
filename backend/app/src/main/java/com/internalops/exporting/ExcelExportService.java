@@ -56,8 +56,45 @@ public class ExcelExportService {
             case "afterSales" -> afterSalesSummaryWorkbook();
             case "purchase" -> purchaseSummaryWorkbook();
             case "product", "inventory" -> productInventorySummaryWorkbook();
+            case "finance" -> financeSummaryWorkbook();
             default -> throw new IllegalArgumentException("该模块不支持 Excel 导出");
         };
+    }
+
+    private byte[] financeSummaryWorkbook() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT f.business_no,f.business_type,f.cash_direction,f.counterparty,f.amount,f.settled_amount,
+                       GREATEST(f.amount-f.settled_amount,0) AS outstanding_amount,
+                       CASE WHEN f.settled_amount>=f.amount THEN CASE WHEN f.cash_direction='RECEIVABLE' THEN '已收清' ELSE '已付清' END
+                            WHEN f.cash_direction='RECEIVABLE' THEN '待收款' ELSE '待付款' END AS status,
+                       f.created_at,f.updated_at
+                FROM (
+                    SELECT o.order_no AS business_no,'销售订单' AS business_type,'RECEIVABLE' AS cash_direction,c.customer_name AS counterparty,
+                           COALESCE((SELECT SUM((i.quantity-i.shipped_quantity)*i.sale_price) FROM sales_order_item i WHERE i.sales_order_id=o.id),0) AS amount,
+                           COALESCE((SELECT SUM(cr.amount) FROM customer_receipt cr WHERE cr.sales_order_id=o.id),0) AS settled_amount,
+                           o.created_at,o.updated_at
+                    FROM sales_order o
+                    JOIN customer c ON c.id=o.customer_id
+                    WHERE o.status<>'DRAFT'
+                    UNION ALL
+                    SELECT p.purchase_no,'采购订单','PAYABLE',sp.supplier_name,p.total_amount,
+                           COALESCE((SELECT SUM(pay.amount) FROM supplier_payment pay WHERE pay.purchase_order_id=p.id),0),
+                           p.created_at,p.updated_at
+                    FROM purchase_order p
+                    JOIN supplier sp ON sp.id=p.supplier_id
+                ) f
+                ORDER BY f.updated_at DESC,f.business_no
+                """);
+        List<Map<String, Object>> localized = rows.stream().map(row -> {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("业务单号", row.get("business_no")); out.put("业务类型", row.get("business_type"));
+            out.put("收支方向", "RECEIVABLE".equals(row.get("cash_direction")) ? "应收" : "应付");
+            out.put("往来单位", row.get("counterparty")); out.put("应收/应付", row.get("amount"));
+            out.put("已收/已付", row.get("settled_amount")); out.put("未收/未付", row.get("outstanding_amount"));
+            out.put("状态", row.get("status")); out.put("创建时间", row.get("created_at")); out.put("修改时间", row.get("updated_at"));
+            return out;
+        }).toList();
+        return workbook("财务汇总数据", localized);
     }
 
     private byte[] orderSummaryWorkbook() {
@@ -599,13 +636,13 @@ public class ExcelExportService {
     }
 
     private void validateModule(String module) {
-        if (!List.of("order", "purchase", "afterSales", "product", "inventory").contains(module)) {
+        if (!List.of("order", "purchase", "afterSales", "product", "inventory", "finance").contains(module)) {
             throw new IllegalArgumentException("该模块不支持 Excel 导出");
         }
     }
 
     private String moduleLabel(String module) {
-        return Map.of("order", "销售订单", "purchase", "采购", "afterSales", "售后订单", "product", "产品", "inventory", "产品库存").get(module);
+        return Map.of("order", "销售订单", "purchase", "采购", "afterSales", "售后订单", "product", "产品", "inventory", "产品库存", "finance", "财务").get(module);
     }
 
     private String label(String key) {
