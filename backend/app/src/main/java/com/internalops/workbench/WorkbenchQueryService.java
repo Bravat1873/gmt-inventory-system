@@ -538,7 +538,7 @@ public class WorkbenchQueryService {
                 "p.updated_at", "p.record_type, p.id DESC"));
         String financeView = "FROM ("
                 + "SELECT o.id, 'RECEIVABLE' AS cash_direction, '销售订单' AS business_type, o.order_no AS business_no, c.customer_name AS counterparty, "
-                + "COALESCE((SELECT SUM((i.quantity-i.shipped_quantity)*i.sale_price) FROM sales_order_item i WHERE i.sales_order_id=o.id),0) AS amount, "
+                + "o.total_amount AS amount, "
                 + "COALESCE((SELECT SUM(cr.amount) FROM customer_receipt cr WHERE cr.sales_order_id=o.id),0) AS settled_amount, "
                 + "o.created_at, o.updated_at FROM sales_order o JOIN customer c ON c.id=o.customer_id WHERE o.status<>'DRAFT' "
                 + "UNION ALL "

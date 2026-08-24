@@ -41,4 +41,18 @@ class FinanceWorkflowServiceTest {
         assertEquals("READY_TO_SHIP", result.get("status"));
         verify(jdbc, never()).update(contains("status='PENDING_SALES_INVOICE'"), any(), anyLong());
     }
+
+    @Test
+    void receiptUsesTheFullOrderAmountAfterTheOrderHasShipped() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(Map.of("status", "SHIPPED", "total_amount", new BigDecimal("100")));
+        when(jdbc.queryForObject(contains("FROM sales_order_item"), eq(BigDecimal.class), eq(7L))).thenReturn(new BigDecimal("100"));
+        when(jdbc.queryForObject(contains("FROM customer_receipt"), eq(BigDecimal.class), eq(7L))).thenReturn(BigDecimal.ZERO);
+        FinanceWorkflowService service = new FinanceWorkflowService(jdbc, mock(InventoryAllocationService.class), mock(CustomerFundService.class));
+
+        Map<String, Object> result = service.receipt(7L, new FinanceActionRequest(new BigDecimal("100"), "银行转账", null, null, null, null));
+
+        assertEquals(new BigDecimal("100"), result.get("receivableAmount"));
+        verify(jdbc).queryForObject(argThat(sql -> sql.contains("SUM(i.quantity * i.sale_price)") && !sql.contains("SHIPPED")), eq(BigDecimal.class), eq(7L));
+    }
 }

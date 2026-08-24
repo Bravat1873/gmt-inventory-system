@@ -8,7 +8,7 @@ vi.mock('../api/workbench', () => ({ postAction }))
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-08-11T08:00:00+08:00')); postAction.mockReset().mockResolvedValue({}) })
 afterEach(() => vi.useRealTimers())
 
-it('shows receivable, received and editable receipt amount from order lines', () => {
+it('uses the full order amount instead of the unshipped amount', () => {
   const wrapper = mount(ReceiptDialog, {
     props: {
       order: {
@@ -20,7 +20,7 @@ it('shows receivable, received and editable receipt amount from order lines', ()
     }
   })
 
-  expect(wrapper.get('[data-test="receivable-amount"]').text()).toContain('100.00')
+  expect(wrapper.get('[data-test="receivable-amount"]').text()).toContain('150.00')
   expect(wrapper.get('[data-test="received-amount"]').text()).toContain('20.00')
   expect((wrapper.get('[data-test="receipt-amount"]').element as HTMLInputElement).disabled).toBe(false)
 })

@@ -43,7 +43,7 @@ public class FinanceWorkflowService {
     private Map<String, Object> order(long id) { return jdbc.queryForMap("SELECT status,total_amount,customer_id,order_no FROM sales_order WHERE id=? FOR UPDATE", id); }
 
     private BigDecimal receivableAmount(long id) {
-        BigDecimal result = jdbc.queryForObject("SELECT COALESCE(SUM((i.quantity - CASE WHEN o.status='SHIPPED' THEN i.quantity ELSE 0 END) * i.sale_price), 0) FROM sales_order_item i JOIN sales_order o ON o.id=i.sales_order_id WHERE i.sales_order_id=?", BigDecimal.class, id);
+        BigDecimal result = jdbc.queryForObject("SELECT COALESCE(SUM(i.quantity * i.sale_price), 0) FROM sales_order_item i WHERE i.sales_order_id=?", BigDecimal.class, id);
         return result == null ? BigDecimal.ZERO : result;
     }
 

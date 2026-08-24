@@ -78,7 +78,7 @@ public class SalesOrderCommandService {
         result.put("customerCode", customer.get("customer_code"));
         result.put("customerName", customer.get("customer_name"));
         BigDecimal receivableAmount = items.stream()
-                .map(item -> BigDecimal.valueOf(((Number) item.get("remainingQuantity")).longValue()).multiply((BigDecimal) item.get("salePrice")))
+                .map(item -> BigDecimal.valueOf(((Number) item.get("quantity")).longValue()).multiply((BigDecimal) item.get("salePrice")))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal receivedAmount = jdbc.queryForObject("SELECT COALESCE(SUM(amount), 0) FROM customer_receipt WHERE sales_order_id=?", BigDecimal.class, id);
         String defaultShipmentAddress = blankToNull(Objects.toString(value(order, "delivery_address"), null));

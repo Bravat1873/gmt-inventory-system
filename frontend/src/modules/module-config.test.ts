@@ -38,6 +38,7 @@ it('places finance direction inside the business type cell instead of a standalo
   const finance = moduleDefinitions.find(item => item.key === 'finance')!
   expect(finance.fields).not.toContain('cashDirection')
   expect(finance.fields).toContain('businessType')
+  expect(finance.columns[finance.fields.indexOf('amount')]).toBe('总金额')
 })
 
 it('places oldest stock date and inventory age after the available inventory quantities', () => {

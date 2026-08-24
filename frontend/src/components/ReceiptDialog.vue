@@ -4,7 +4,7 @@ import { postAction } from '../api/workbench'
 import { loadCustomerFundOverview } from '../api/customer-funds'
 import ChineseDatePicker from './ChineseDatePicker.vue'
 
-interface OrderLine { quantity?: number; shippedQuantity?: number; remainingQuantity?: number; salePrice?: number }
+interface OrderLine { quantity?: number; salePrice?: number }
 const props = defineProps<{ order: Record<string, unknown> }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
 const form = reactive({ amount: 0, paymentMethod: '银行转账', receivedAt: new Date().toISOString().slice(0, 10) })
@@ -17,8 +17,7 @@ function amount(value: unknown) { const result = Number(value ?? 0); return Numb
 function money(value: number) { return value.toFixed(2) }
 const lines = computed(() => Array.isArray(props.order.items) ? props.order.items as OrderLine[] : [])
 const calculatedReceivable = computed(() => lines.value.reduce((total, line) => {
-  const remaining = line.remainingQuantity ?? Math.max(0, amount(line.quantity) - amount(line.shippedQuantity))
-  return total + remaining * amount(line.salePrice)
+  return total + amount(line.quantity) * amount(line.salePrice)
 }, 0))
 const receivableAmount = computed(() => props.order.receivableAmount == null ? calculatedReceivable.value : amount(props.order.receivableAmount))
 const receivedAmount = computed(() => amount(props.order.receivedAmount))
@@ -49,11 +48,10 @@ async function save() {
       <header><h2 id="receipt-title">使用客户余额登记收款</h2><button type="button" :disabled="saving" @click="close">关闭</button></header>
       <form novalidate @submit.prevent="save">
         <div class="receipt-summary"><div><span>客户可用余额</span><strong data-test="customer-balance">¥ {{ money(customerBalance) }}</strong><small>登记后从余额扣减</small></div>
-          <div><span>客户应付金额</span><strong data-test="receivable-amount">¥ {{ money(receivableAmount) }}</strong><small>未发货数量 × 含税单价</small></div>
+          <div><span>订单总金额</span><strong data-test="receivable-amount">¥ {{ money(receivableAmount) }}</strong><small>订单数量 × 含税单价</small></div>
           <div><span>已收金额</span><strong data-test="received-amount">¥ {{ money(receivedAmount) }}</strong><small>历史登记收款合计</small></div>
           <div><span>未收金额</span><strong>¥ {{ money(outstandingAmount) }}</strong><small>本次登记前</small></div>
         </div>
-        <p class="receipt-line-note">订单明细中的“未发货数量”＝订单数量 − 已发货数量，不是库存数量。</p>
         <div class="form-grid">
           <label><span>订单编号</span><input :value="String(order.orderNo ?? '')" disabled></label>
           <label><span>本次收款金额</span><input data-test="receipt-amount" v-model.number="form.amount" type="number" min="0.01" :max="outstandingAmount" step="0.01" :disabled="saving || outstandingAmount <= 0"></label>
