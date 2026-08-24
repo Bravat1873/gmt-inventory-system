@@ -54,6 +54,7 @@ public class ShipmentQuantityService {
             int lineNo = (int) InventoryAllocationService.num(line, "line_no");
             int ordered = (int) InventoryAllocationService.num(line, "quantity");
             int current = (int) InventoryAllocationService.num(line, "shipped_quantity");
+            if (ordered <= 0) continue;
             int target = requested.getOrDefault(lineNo, current);
             if (target > ordered) throw new IllegalArgumentException("第 " + lineNo + " 行的已发货数量不能超过订单数量");
             int delta = target - current;
@@ -70,6 +71,7 @@ public class ShipmentQuantityService {
             int lineNo = (int) InventoryAllocationService.num(line, "line_no");
             int ordered = (int) InventoryAllocationService.num(line, "quantity");
             int current = (int) InventoryAllocationService.num(line, "shipped_quantity");
+            if (ordered <= 0) continue;
             int target = requested.getOrDefault(lineNo, current);
             int delta = target - current;
             int locked = (int) InventoryAllocationService.num(line, "locked_quantity");
@@ -107,7 +109,7 @@ public class ShipmentQuantityService {
                         shipmentId, delta.salesOrderItemId(), delta.quantity());
             }
         }
-        Integer remaining = jdbc.queryForObject("SELECT COALESCE(SUM(quantity-shipped_quantity),0) FROM sales_order_item WHERE sales_order_id=?", Integer.class, orderId);
+        Integer remaining = jdbc.queryForObject("SELECT COALESCE(SUM(GREATEST(quantity-shipped_quantity,0)),0) FROM sales_order_item WHERE sales_order_id=?", Integer.class, orderId);
         Integer uncovered = jdbc.queryForObject("SELECT COALESCE(SUM(uncovered_quantity),0) FROM sales_order_item WHERE sales_order_id=?", Integer.class, orderId);
         String nextStatus = remaining != null && remaining == 0 ? "SHIPPED" : (uncovered != null && uncovered > 0 ? "WAITING_STOCK" : "READY_TO_SHIP");
         jdbc.update("UPDATE sales_order SET status=?, shipped_at=?, version=version+1 WHERE id=?", nextStatus, "SHIPPED".equals(nextStatus) ? LocalDateTime.now() : null, orderId);

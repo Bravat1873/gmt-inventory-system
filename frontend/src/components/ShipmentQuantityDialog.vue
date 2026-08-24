@@ -25,8 +25,9 @@ const historyExpanded = ref(false)
 const saving = ref(false)
 
 function defaultAddress() { return props.order.defaultShipmentAddress || props.order.deliveryAddress || '' }
+const shippableItems = computed(() => props.order.items.filter(item => Number(item.quantity) > 0))
 function reset() {
-  shipmentValues.value = Object.fromEntries(props.order.items.map(item => [item.lineNo, 0]))
+  shipmentValues.value = Object.fromEntries(shippableItems.value.map(item => [item.lineNo, 0]))
   deliveryAddress.value = defaultAddress()
   shipmentRemark.value = ''
   historyExpanded.value = false
@@ -47,12 +48,12 @@ function historyDate(batch: ShipmentBatch) {
 function historyQuantity(batch: ShipmentBatch) { return Number(batch.totalQuantity ?? batch.quantity ?? 0) }
 function historyAddress(batch: ShipmentBatch) { return batch.deliveryAddress || batch.address || '—' }
 
-const totalOrder = computed(() => props.order.items.reduce((sum, item) => sum + Number(item.quantity), 0))
-const totalShipped = computed(() => props.order.items.reduce((sum, item) => sum + Number(item.shippedQuantity ?? 0), 0))
-const totalCurrent = computed(() => props.order.items.reduce((sum, item) => sum + current(item), 0))
+const totalOrder = computed(() => shippableItems.value.reduce((sum, item) => sum + Number(item.quantity), 0))
+const totalShipped = computed(() => shippableItems.value.reduce((sum, item) => sum + Number(item.shippedQuantity ?? 0), 0))
+const totalCurrent = computed(() => shippableItems.value.reduce((sum, item) => sum + current(item), 0))
 
 async function save() {
-  for (const item of props.order.items) {
+  for (const item of shippableItems.value) {
     if (!Number.isInteger(current(item)) || current(item) > maximumCurrent(item)) {
       emit('message', `${item.productName || item.customerPartNumber || '订单明细'}本次发货不能超过 ${maximumCurrent(item)}`, 'error')
       return
@@ -65,7 +66,7 @@ async function save() {
   }
   saving.value = true
   try {
-    await updateShipmentQuantities(props.order.id, deliveryAddress.value.trim(), props.order.items.map(item => ({
+    await updateShipmentQuantities(props.order.id, deliveryAddress.value.trim(), shippableItems.value.map(item => ({
       lineNo: item.lineNo,
       shippedQuantity: Number(item.shippedQuantity ?? 0) + current(item)
     })), shipmentRemark.value.trim() || undefined)
@@ -118,7 +119,7 @@ async function save() {
         </section>
 
         <div class="shipment-lines">
-          <article v-for="item in order.items" :key="item.lineNo" class="shipment-line-card" data-test="shipment-line">
+          <article v-for="item in shippableItems" :key="item.lineNo" class="shipment-line-card" data-test="shipment-line">
             <div class="shipment-line-heading">
               <ProductIdentityDisplay compact :product-code="item.productCode" :customer-part-number="item.customerPartNumber" :model="item.model" />
               <div class="shipment-line-state">

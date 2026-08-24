@@ -69,13 +69,13 @@ function productImageUrl(row: Record<string, unknown>) {
 function columnWidth(field: string) {
   if (field === 'productImage') return 84
   if (field === 'supplierQuotes') return 260
-  const widths: Record<string, number> = { productCode: 240, afterSalesNo: 240, customerPartNumber: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 240, purchaseNo: 240, businessNo: 240, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, oldestStockDate: 170, inventoryAgeDays: 90, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 140, lockedQuantity: 130, inTransitQuantity: 130, pendingDeliveryQuantity: 130, supplyDemandSurplus: 170, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
+  const widths: Record<string, number> = { productCode: 240, afterSalesNo: 240, customerPartNumber: 164, model: 108, configuration: 360, remark: 280, inventoryRemark: 280, deliveryAddress: 320, customerName: 200, sourceSupplierName: 160, supplierName: 180, contactName: 130, bankAccount: 180, productCount: 110, supplierId: 104, productIds: 126, productSummary: 260, orderNo: 240, purchaseNo: 240, businessNo: 240, businessType: 110, cashDirection: 84, status: 150, createdAt: 170, updatedAt: 170, oldestStockDate: 170, inventoryAgeDays: 90, expectedArrivalDate: 150, totalAmount: 130, amount: 130, settledAmount: 130, outstandingAmount: 130, actualQuantity: 130, movementSummary: 260, availableQuantity: 140, lockedQuantity: 130, inTransitQuantity: 130, pendingDeliveryQuantity: 130, supplyDemandSurplus: 170, productVersion: 100, color: 120, lockBody: 120, unit: 80 }
   return widths[field] ?? 150
 }
 const actionColumnWidth = computed(() => {
   if (props.module.key === 'customer') return 190
   if (props.module.key === 'order') return 470
-  if (props.module.key === 'purchase') return 420
+  if (props.module.key === 'purchase') return 500
   if (props.module.key === 'afterSales') return 300
   if (props.module.key === 'finance') return 210
   return 110
@@ -128,7 +128,7 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
                 <button v-if="module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT', 'READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))" data-test="delete-order" class="danger-action" @click="emit('deleteOrder', row)">删除</button>
                 <button v-if="module.key === 'order' && ['READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))" data-test="order-allocation" @click="emit('allocation', row)">分配库存</button>
                 <button v-if="module.key === 'customer'" data-test="customer-funds" @click="emit('funds', row)">资金管理</button>
-                <button v-if="canEditRow() && (['customer', 'user', 'product', 'supplier', 'inventory'].includes(module.key) || (module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT', 'READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))))" @click="emit('edit', row)">修改</button>
+                <button v-if="canEditRow() && (['customer', 'user', 'product', 'supplier', 'inventory'].includes(module.key) || (module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT', 'READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))) || (module.key === 'purchase' && row.recordType === 'PURCHASE' && Number(row.receivedQuantity ?? 0) === 0 && Number(row.paidAmount ?? 0) === 0))" @click="emit('edit', row)">修改</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('shipment', row)">发货</button>
                 <button v-if="module.key === 'finance' && isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-receipt" @click="emit('receipt', row)">登记收款</button>
                 <button v-if="module.key === 'finance' && !isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-payment" @click="emit('payment', row)">登记付款</button>

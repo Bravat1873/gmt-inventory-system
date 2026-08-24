@@ -4,13 +4,17 @@ import {
   createManualPurchase,
   loadOrderSkus,
   loadProductSuppliers,
+  updateManualPurchase,
+  updatePurchaseHeader,
   type OrderSku,
+  type PurchaseDetail,
   type ProductSupplierOption,
   type SupplierPurchaseInfoOption
 } from '../api/workbench'
 
+const props = defineProps<{ purchase?: PurchaseDetail }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
-const form = reactive({ quantity: 1, expectedArrivalDate: '', remark: '' })
+const form = reactive({ quantity: 1, expectedArrivalDate: '', deliveryAddress: '', remark: '' })
 const products = ref<OrderSku[]>([])
 const suppliers = ref<ProductSupplierOption[]>([])
 const selectedProduct = ref<OrderSku | null>(null)
@@ -26,6 +30,7 @@ const loadingSuppliers = ref(false)
 const supplierRequest = ref(0)
 const errors = reactive<Record<string, string>>({})
 const dateInput = ref<HTMLInputElement>()
+const systemPurchase = computed(() => props.purchase?.manualEntry === false)
 
 const visibleProducts = computed(() => {
   const keyword = productQuery.value.trim().toLowerCase()
@@ -133,11 +138,12 @@ function selectPurchaseInfo() {
 
 function validate() {
   Object.keys(errors).forEach(key => delete errors[key])
+  if (systemPurchase.value) return true
   if (!selectedProduct.value) errors.product = '请选择产品'
   if (!selectedSupplier.value) errors.supplier = selectedProduct.value ? '请选择该产品的供应商' : '请先选择产品'
   const quantity = Number(form.quantity)
-  if (!Number.isInteger(quantity) || quantity <= 0) errors.quantity = '采购数量必须是大于 0 的整数'
-  if (selectedPurchaseInfo.value && quantity < selectedPurchaseInfo.value.moq) errors.quantity = `采购数量不能低于最小起订量 ${selectedPurchaseInfo.value.moq}`
+  if (!Number.isInteger(quantity) || quantity === 0) errors.quantity = '采购数量不能为 0；退货请填写负数'
+  if (selectedPurchaseInfo.value && quantity > 0 && quantity < selectedPurchaseInfo.value.moq) errors.quantity = `采购数量不能低于最小起订量 ${selectedPurchaseInfo.value.moq}`
   if (!selectedPurchaseInfo.value) errors.purchaseInfo = '请选择供应商采购信息'
   return Object.keys(errors).length === 0
 }
@@ -145,18 +151,31 @@ function validate() {
 function requestClose() { if (!saving.value) emit('close') }
 
 async function save() {
-  if (saving.value || !validate() || !selectedSupplier.value || !selectedProduct.value || !selectedPurchaseInfo.value) return
+  if (saving.value || !validate()) return
   saving.value = true
   try {
-    const result = await createManualPurchase({
-      supplierId: selectedSupplier.value.supplierId,
-      skuId: selectedProduct.value.id,
-      supplierPurchaseInfoId: selectedPurchaseInfo.value.id,
-      quantity: Number(form.quantity),
+    const headerData = {
       expectedArrivalDate: form.expectedArrivalDate || undefined,
+      deliveryAddress: form.deliveryAddress.trim() || undefined,
       remark: form.remark.trim() || undefined
-    })
-    emit('message', `采购单 ${String(result.purchaseNo ?? '')} 已创建`)
+    }
+    let result: Record<string, unknown>
+    if (systemPurchase.value && props.purchase) {
+      result = await updatePurchaseHeader(props.purchase.id, headerData)
+    } else {
+      if (!selectedSupplier.value || !selectedProduct.value || !selectedPurchaseInfo.value) return
+      const data = {
+        supplierId: selectedSupplier.value.supplierId,
+        skuId: selectedProduct.value.id,
+        supplierPurchaseInfoId: selectedPurchaseInfo.value.id,
+        quantity: Number(form.quantity),
+        ...headerData
+      }
+      result = props.purchase
+        ? await updateManualPurchase(props.purchase.id, data)
+        : await createManualPurchase(data)
+    }
+    emit('message', `采购单 ${String(result.purchaseNo ?? '')}${props.purchase ? ' 已修改' : ' 已创建'}`)
     emit('saved')
   } catch (cause) {
     errors.submit = cause instanceof Error ? cause.message : '创建采购单失败'
@@ -165,15 +184,45 @@ async function save() {
   }
 }
 
-onMounted(loadProducts)
+async function populatePurchase() {
+  const purchase = props.purchase
+  const item = purchase?.items?.[0]
+  if (!purchase || !item) return
+  const product = products.value.find(candidate => candidate.id === item.skuId)
+  if (!product) { errors.submit = '采购单产品不存在或已停用，无法修改'; return }
+  await selectProduct(product)
+  const supplier = suppliers.value.find(candidate => candidate.supplierId === purchase.supplierId)
+  const purchaseInfo = supplier?.purchaseInfos.find(candidate => candidate.id === item.supplierPurchaseInfoId)
+  if (!supplier || !purchaseInfo) { errors.submit = '原供应商采购信息已停用，无法修改'; return }
+  selectedSupplier.value = supplier
+  selectedPurchaseInfo.value = purchaseInfo
+  supplierQuery.value = supplier.supplierName
+  form.quantity = item.quantity
+  form.expectedArrivalDate = purchase.expectedArrivalDate ?? ''
+  form.deliveryAddress = purchase.deliveryAddress ?? ''
+  form.remark = purchase.remark ?? ''
+}
+
+onMounted(async () => {
+  if (systemPurchase.value && props.purchase) {
+    form.expectedArrivalDate = props.purchase.expectedArrivalDate ?? ''
+    form.deliveryAddress = props.purchase.deliveryAddress ?? ''
+    form.remark = props.purchase.remark ?? ''
+    return
+  }
+  await loadProducts()
+  await populatePurchase()
+})
 </script>
 
 <template>
   <div class="dialog-mask">
     <section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="manual-purchase-title">
-      <header><h2 id="manual-purchase-title">手工采购</h2><button type="button" :disabled="saving" @click="requestClose">关闭</button></header>
+      <header><h2 id="manual-purchase-title">{{ systemPurchase ? '修改系统采购' : (purchase ? '修改采购' : '手工采购') }}</h2><button type="button" :disabled="saving" @click="requestClose">关闭</button></header>
       <form novalidate @submit.prevent="save">
+        <p v-if="systemPurchase" class="field-hint system-purchase-hint">系统采购的产品、数量和供应商由采购建议锁定；可修改预计到货日期、交货地址和备注。</p>
         <div class="form-grid">
+          <template v-if="!systemPurchase">
           <label class="choice-field">
             <span>产品</span>
             <input data-test="product-search" v-model="productQuery" type="search" autocomplete="off" placeholder="输入产品编号、客户料号或型号搜索" :disabled="saving" @focus="productOpen=true" @blur="hideLater('product')">
@@ -206,13 +255,15 @@ onMounted(loadProducts)
             <small v-if="selectedPurchaseInfo" class="field-hint">最小起订量：{{ selectedPurchaseInfo.moq }}，交货天数：{{ selectedPurchaseInfo.leadTimeDays }}</small>
             <small v-if="errors.supplier" class="field-error">{{ errors.supplier }}</small>
           </label>
-          <label><span>采购数量</span><input v-model.number="form.quantity" type="number" min="1" step="1" :aria-invalid="Boolean(errors.quantity)" :disabled="saving"><small v-if="errors.quantity" class="field-error">{{ errors.quantity }}</small></label>
+          <label><span>采购数量</span><input v-model.number="form.quantity" type="number" step="1" :aria-invalid="Boolean(errors.quantity)" :disabled="saving"><small v-if="errors.quantity" class="field-error">{{ errors.quantity }}</small></label>
           <label><span>采购单价</span><select data-test="purchase-price" v-model="selectedPurchaseInfo" :disabled="saving || !selectedSupplier" @change="selectPurchaseInfo"><option :value="null">请选择采购信息</option><option v-for="info in selectedSupplier?.purchaseInfos ?? []" :key="info.id" :value="info">¥{{ info.purchasePrice }}｜起订 {{ info.moq }}｜交货 {{ info.leadTimeDays }} 天｜{{ String(info.updatedAt).replace('T',' ').slice(0,16) }}</option></select><small v-if="errors.purchaseInfo" class="field-error">{{ errors.purchaseInfo }}</small></label>
+          </template>
           <label class="date-field"><span>预计到货日期</span><div class="date-picker"><button type="button" class="date-display" :class="{ empty: !form.expectedArrivalDate }" data-test="expected-arrival-display" :disabled="saving" @click="openDatePicker"><span>{{ formattedArrivalDate() }}</span><span class="date-display-icon" aria-hidden="true"></span></button><input ref="dateInput" v-model="form.expectedArrivalDate" class="native-date-input" type="date" :disabled="saving"></div></label>
+          <label class="wide-field"><span>交货地址</span><textarea v-model="form.deliveryAddress" maxlength="1000" placeholder="填写供应商送货地址" :disabled="saving"></textarea></label>
           <label><span>备注</span><textarea v-model="form.remark" maxlength="500" :disabled="saving"></textarea></label>
         </div>
         <p v-if="errors.submit" class="form-error" role="alert">{{ errors.submit }}</p>
-        <footer><button type="button" class="secondary-action" :disabled="saving" @click="requestClose">取消操作</button><button class="primary-action" :disabled="saving">{{ saving ? '正在保存…' : '确认保存' }}</button></footer>
+        <footer><button type="button" class="secondary-action" :disabled="saving" @click="requestClose">取消操作</button><button class="primary-action" :disabled="saving">{{ saving ? '正在保存…' : (purchase ? '确认修改' : '确认保存') }}</button></footer>
       </form>
     </section>
   </div>

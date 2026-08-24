@@ -16,6 +16,7 @@ import PurchaseReceiptDialog from './components/PurchaseReceiptDialog.vue'
 import ProcurementReviewDialog from './components/ProcurementReviewDialog.vue'
 import ReceiptDialog from './components/ReceiptDialog.vue'
 import ShipmentQuantityDialog from './components/ShipmentQuantityDialog.vue'
+import OrderDocumentExportDialog from './components/OrderDocumentExportDialog.vue'
 import OrderAllocationDialog from './components/OrderAllocationDialog.vue'
 import BusinessTraceDialog from './components/BusinessTraceDialog.vue'
 import ProductGalleryDialog from './components/ProductGalleryDialog.vue'
@@ -40,6 +41,7 @@ const customerFundsRow = ref<Record<string, unknown>>()
 const supplierOpen = ref(false)
 const orderOpen = ref(false)
 const manualPurchaseOpen = ref(false)
+const editingPurchase = ref<PurchaseDetail>()
 const paymentOpen = ref(false)
 const paymentRow = ref<Record<string, unknown>>()
 const purchaseReceiptOpen = ref(false)
@@ -56,6 +58,8 @@ const editRow = ref<Record<string, unknown>>()
 const list = ref<InstanceType<typeof ModuleListPage>>()
 const actionInput = ref<{ title: string; label: string; placeholder: string; submit: (value: string) => Promise<void> } | null>(null)
 const shipmentOpen = ref(false)
+const documentExportOrder = ref<Record<string, unknown>>()
+const documentExportShipments = computed(() => Array.isArray(documentExportOrder.value?.shipments) ? documentExportOrder.value.shipments : [])
 const shipmentOrder = ref<any>()
 const allocationOpen = ref(false)
 const orderAllocation = ref<OrderAllocation>()
@@ -95,6 +99,7 @@ function selectModule(key: ModuleKey) {
   supplierOpen.value = false
   orderOpen.value = false
   manualPurchaseOpen.value = false
+  editingPurchase.value = undefined
   paymentOpen.value = false
   paymentRow.value = undefined
   purchaseReceiptOpen.value = false
@@ -142,7 +147,10 @@ function primary() {
   if (activeModule.value === 'supplier') { editRow.value = undefined; supplierOpen.value = true; return }
   if (activeModule.value === 'order') { editRow.value = undefined; orderOpen.value = true; return }
   if (activeModule.value === 'afterSales') { afterSalesDetail.value = undefined; afterSalesOpen.value = true; return }
-  if (activeModule.value === 'purchase') manualPurchaseOpen.value = true
+  if (activeModule.value === 'purchase') {
+    editingPurchase.value = undefined
+    manualPurchaseOpen.value = true
+  }
 }
 
 function openImport() {
@@ -165,6 +173,13 @@ function openProductGallery(row: Record<string, unknown>) {
 
 async function edit(row: Record<string, unknown>) {
   if (activeModule.value === 'afterSales') { try { afterSalesDetail.value=await loadAfterSales(Number(row.id)); afterSalesOpen.value=true } catch(cause){ showMessage(cause instanceof Error?cause.message:'读取售后单失败','error') }; return }
+  if (activeModule.value === 'purchase') {
+      try {
+        editingPurchase.value = await loadPurchase(Number(row.id))
+        manualPurchaseOpen.value = true
+    } catch (cause) { showMessage(cause instanceof Error ? cause.message : '读取采购单失败', 'error') }
+    return
+  }
   if (activeModule.value === 'user' && user.value?.role !== 'ADMIN') return
   if (activeModule.value === 'order') {
     try { editRow.value = await getOrder(Number(row.id)); orderOpen.value = true }
@@ -224,8 +239,23 @@ async function shipment(row: Record<string, unknown>) {
 }
 
 async function exportDocument(row: Record<string, unknown>) {
+  if (activeModule.value === 'order') {
+    try { documentExportOrder.value = await getOrder(Number(row.id)) }
+    catch (cause) { showMessage(cause instanceof Error ? cause.message : '读取订单导出信息失败', 'error') }
+    return
+  }
   try { await downloadExcelExport(activeModule.value, 'document', Number(row.id)); showMessage('Excel 单据已开始下载') }
   catch (cause) { showMessage(cause instanceof Error ? cause.message : 'Excel 单据导出失败', 'error') }
+}
+
+async function exportOrderDocument(type: 'sales' | 'shipment', shipmentId?: number) {
+  const order = documentExportOrder.value
+  if (!order) return
+  try {
+    await downloadExcelExport('order', 'document', Number(order.id), type === 'shipment' ? { type: 'shipment', shipmentId } : {})
+    documentExportOrder.value = undefined
+    showMessage('Excel 单据已开始下载')
+  } catch (cause) { showMessage(cause instanceof Error ? cause.message : 'Excel 单据导出失败', 'error') }
 }
 
 async function exportSummary() {
@@ -277,6 +307,7 @@ async function saved(closeDialog = true) {
   supplierOpen.value = false
   orderOpen.value = false
   manualPurchaseOpen.value = false
+  editingPurchase.value = undefined
   paymentOpen.value = false
   paymentRow.value = undefined
   await nextTick()
@@ -307,13 +338,14 @@ async function saved(closeDialog = true) {
     <CustomerFundsDialog v-if="customerFundsRow" :customer="customerFundsRow" :current-user-role="user.role" @close="customerFundsRow=undefined" @changed="list?.reload()" @message="showMessage" />
     <SupplierDialog v-if="supplierOpen" :row="editRow" @close="supplierOpen=false" @saved="saved" @message="showMessage" />
     <OrderDialog v-if="orderOpen" :row="editRow" :default-salesperson="user?.displayName" @close="orderOpen=false" @saved="saved" @message="showMessage" />
-    <ManualPurchaseDialog v-if="manualPurchaseOpen" @close="manualPurchaseOpen=false" @saved="saved" @message="showMessage" />
+    <ManualPurchaseDialog v-if="manualPurchaseOpen" :purchase="editingPurchase" @close="manualPurchaseOpen=false; editingPurchase=undefined" @saved="saved" @message="showMessage" />
     <PaymentDialog v-if="paymentOpen && paymentRow" :purchase="paymentRow" @close="paymentOpen=false; paymentRow=undefined" @saved="saved" @message="showMessage" />
     <PurchaseReceiptDialog v-if="purchaseReceiptOpen && purchaseReceiptOrder" :purchase="purchaseReceiptOrder" @close="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined" @saved="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined; saved()" @message="showMessage" />
     <ProcurementReviewDialog v-if="procurementReviewId" :suggestion-id="procurementReviewId" @close="procurementReviewId=undefined" @saved="procurementReviewId=undefined; list?.reload()" @message="showMessage" />
     <ReceiptDialog v-if="receiptOpen && receiptRow" :order="receiptRow" @close="receiptOpen=false" @saved="receiptOpen=false; saved()" @message="showMessage" />
     <OrderAllocationDialog v-if="allocationOpen && orderAllocation" :allocation="orderAllocation" @close="allocationOpen=false; orderAllocation=undefined" @saved="allocationOpen=false; orderAllocation=undefined; list?.reload()" @message="showMessage" />
     <ShipmentQuantityDialog v-if="shipmentOpen && shipmentOrder" :order="shipmentOrder" @close="shipmentOpen=false" @saved="shipmentOpen=false; list?.reload()" @message="showMessage" />
+    <OrderDocumentExportDialog v-if="documentExportOrder" :order-no="String(documentExportOrder.orderNo ?? '')" :shipments="documentExportShipments" @close="documentExportOrder=undefined" @export="exportOrderDocument" />
     <BusinessTraceDialog v-if="traceOpen && businessTrace" :trace="businessTrace" @close="traceOpen=false" />
 
     <ProductGalleryDialog v-if="productGalleryRow" :product-id="Number(productGalleryRow.id)" :initial-image-id="productGalleryRow.primaryImageId ? Number(productGalleryRow.primaryImageId) : undefined" @close="productGalleryRow=undefined" />

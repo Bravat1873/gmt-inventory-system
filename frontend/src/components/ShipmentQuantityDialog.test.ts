@@ -118,3 +118,14 @@ it('renders shipment items as product line cards with compact summary metrics', 
   expect(wrapper.get('[data-test="available-quantity"]').text()).not.toContain('可用库存')
   expect(wrapper.get('[data-test="available-quantity"]').text()).toContain('7')
 })
+
+it('does not include negative return lines in a shipment batch', async () => {
+  const wrapper = mountDialog({ items: [item, { ...item, lineNo: 2, quantity: -3, shippedQuantity: 0, customerPartNumber: 'RETURN-1' }] })
+
+  expect(wrapper.findAll('[data-test="shipment-line"]')).toHaveLength(1)
+  await wrapper.get('[aria-label="本次发货数量"]').setValue('1')
+  await wrapper.get('footer .primary-action').trigger('click')
+  await flushPromises()
+
+  expect(updateShipmentQuantities).toHaveBeenCalledWith(1, '默认收货地址', [{ lineNo: 10000, shippedQuantity: 4 }], undefined)
+})

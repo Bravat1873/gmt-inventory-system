@@ -26,8 +26,10 @@ public class ExcelExportController {
     }
 
     @GetMapping("/{module}/document")
-    public ResponseEntity<byte[]> document(@PathVariable String module, @RequestParam long id) {
-        return file(exports.document(module, id), module + "-单据-" + id + ".xlsx");
+    public ResponseEntity<byte[]> document(@PathVariable String module, @RequestParam long id,
+                                           @RequestParam(required = false) String type,
+                                           @RequestParam(required = false) Long shipmentId) {
+        return file(exports.document(module, id, type, shipmentId), exports.documentFilename(module, id, type, shipmentId));
     }
 
     private ResponseEntity<byte[]> file(byte[] data, String filename) {

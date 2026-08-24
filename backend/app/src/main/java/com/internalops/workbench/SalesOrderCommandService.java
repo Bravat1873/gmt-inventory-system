@@ -298,7 +298,7 @@ public class SalesOrderCommandService {
         if (request.items() == null || request.items().isEmpty()) throw new IllegalArgumentException("订单至少需要一条产品明细");
         for (SalesOrderRequest.Item item : request.items()) {
             if (item.skuId() == null || jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE id=? AND enabled=TRUE", Integer.class, item.skuId()) == 0) throw new IllegalArgumentException("订单中存在无效产品");
-            if (item.quantity() == null || item.quantity() <= 0) throw new IllegalArgumentException("产品数量必须为正数");
+            if (item.quantity() == null || item.quantity() == 0) throw new IllegalArgumentException("产品数量不能为零；退货请填写负数");
             if (item.salePrice() == null || item.salePrice().signum() < 0) throw new IllegalArgumentException("销售单价不能为负数");
         }
     }

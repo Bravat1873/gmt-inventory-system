@@ -4,6 +4,8 @@ import ManualPurchaseDialog from './ManualPurchaseDialog.vue'
 
 const api = vi.hoisted(() => ({
   createManualPurchase: vi.fn().mockResolvedValue({ purchaseNo: 'PO-001' }),
+  updateManualPurchase: vi.fn().mockResolvedValue({ purchaseNo: 'CG-001' }),
+  updatePurchaseHeader: vi.fn().mockResolvedValue({ purchaseNo: 'CG-001' }),
   loadOrderSkus: vi.fn().mockResolvedValue([
     { id: 101, currentCost: 100, factoryPrice: 120, customerPartNumber: 'P90-001', productName: 'P90 智能锁', model: 'P90', unit: '件', actualQuantity: 2, availableQuantity: 2, inTransitQuantity: 3, pendingDeliveryQuantity: 10, supplyDemandSurplus: -5, purchaseShortageQuantity: 5 },
     { id: 102, currentCost: 80, factoryPrice: 95, customerPartNumber: 'P50-001', productName: 'P50 智能锁', model: 'P50', unit: '件', actualQuantity: 12, availableQuantity: 10, inTransitQuantity: 3, pendingDeliveryQuantity: 5, supplyDemandSurplus: 10, purchaseShortageQuantity: 0 }
@@ -80,5 +82,88 @@ it('does not show purchase guidance for a nonnegative balance', async () => {
   await flushPromises()
   expect(wrapper.text()).toContain('供需余量 10')
   expect(wrapper.text()).not.toContain('建议采购')
+})
+
+it('submits the optional delivery address with a manual purchase', async () => {
+  const wrapper = mount(ManualPurchaseDialog)
+  await flushPromises()
+  await wrapper.get('[data-test="product-search"]').trigger('focus')
+  await wrapper.get('[data-test="product-option-101"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('[data-test="supplier-search"]').trigger('focus')
+  await wrapper.get('[data-test="supplier-option-201"]').trigger('click')
+  await wrapper.get('textarea[placeholder="填写供应商送货地址"]').setValue('珠海市香洲区示例交货地址')
+  await wrapper.get('input[type="number"]').setValue('5')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.createManualPurchase).toHaveBeenCalledWith(expect.objectContaining({
+    deliveryAddress: '珠海市香洲区示例交货地址'
+  }))
+})
+
+it('updates an existing manual purchase instead of creating another purchase', async () => {
+  vi.clearAllMocks()
+  const wrapper = mount(ManualPurchaseDialog, {
+    props: {
+      purchase: {
+        id: 91,
+        purchaseNo: 'CG20260800001',
+        supplierId: 201,
+        supplierName: '贝朗供应商',
+        totalAmount: 1100,
+        expectedArrivalDate: '2026-08-25',
+        deliveryAddress: '珠海市香洲区交货地址',
+        remark: '原备注',
+        items: [{ id: 1, skuId: 101, supplierPurchaseInfoId: 12, quantity: 5, receivedQuantity: 0, remainingQuantity: 5 }]
+      }
+    }
+  })
+  await flushPromises()
+
+  expect((wrapper.get('[data-test="product-search"]').element as HTMLInputElement).value).toBe('未设置产品编号')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.updateManualPurchase).toHaveBeenCalledWith(91, expect.objectContaining({
+    quantity: 5,
+    deliveryAddress: '珠海市香洲区交货地址',
+    remark: '原备注'
+  }))
+  expect(api.createManualPurchase).not.toHaveBeenCalled()
+})
+
+it('only updates delivery fields for a system purchase', async () => {
+  vi.clearAllMocks()
+  const wrapper = mount(ManualPurchaseDialog, {
+    props: {
+      purchase: {
+        id: 92,
+        purchaseNo: 'CG20260800001',
+        supplierName: '贝朗供应商',
+        totalAmount: 1100,
+        manualEntry: false,
+        expectedArrivalDate: '2026-08-25',
+        deliveryAddress: '原交货地址',
+        remark: '原备注',
+        items: [{ id: 1, skuId: 101, quantity: 10, receivedQuantity: 0, remainingQuantity: 10 }]
+      }
+    }
+  })
+  await flushPromises()
+
+  expect(wrapper.text()).toContain('产品、数量和供应商由采购建议锁定')
+  expect(wrapper.find('[data-test="product-search"]').exists()).toBe(false)
+  await wrapper.get('textarea[placeholder="填写供应商送货地址"]').setValue('新交货地址')
+  await wrapper.findAll('textarea')[1].setValue('新备注')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(api.updatePurchaseHeader).toHaveBeenCalledWith(92, {
+    expectedArrivalDate: '2026-08-25',
+    deliveryAddress: '新交货地址',
+    remark: '新备注'
+  })
+  expect(api.updateManualPurchase).not.toHaveBeenCalled()
 })
 

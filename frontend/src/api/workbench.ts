@@ -33,8 +33,11 @@ export function loadModule(module: string, query: URLSearchParams) {
   return request<PageResult>(`/api/workbench/${module}?${query.toString()}`)
 }
 
-export async function downloadExcelExport(module: string, kind: 'summary' | 'document', id?: number) {
-  const query = kind === 'document' ? `?id=${encodeURIComponent(String(id))}` : ''
+export async function downloadExcelExport(module: string, kind: 'summary' | 'document', id?: number, params: Record<string, string | number | undefined> = {}) {
+  const search = new URLSearchParams()
+  if (kind === 'document') search.set('id', String(id))
+  Object.entries(params).forEach(([key, value]) => { if (value !== undefined) search.set(key, String(value)) })
+  const query = search.size ? `?${search.toString()}` : ''
   const response = await fetch(`${API_BASE}/api/exports/${encodeURIComponent(module)}/${kind}${query}`, { credentials: 'include' })
   if (!response.ok) {
     const payload = await response.json().catch(() => null)
@@ -209,6 +212,7 @@ export interface ManualPurchaseData {
   supplierPurchaseInfoId: number
   quantity: number
   expectedArrivalDate?: string
+  deliveryAddress?: string
   remark?: string
 }
 
@@ -317,6 +321,26 @@ export function createManualPurchase(data: ManualPurchaseData) {
   })
 }
 
+export function updateManualPurchase(id: number, data: ManualPurchaseData) {
+  return request<Record<string, unknown>>(`/api/procurement/purchases/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  })
+}
+
+export interface PurchaseHeaderUpdateData {
+  expectedArrivalDate?: string
+  deliveryAddress?: string
+  remark?: string
+}
+
+export function updatePurchaseHeader(id: number, data: PurchaseHeaderUpdateData) {
+  return request<Record<string, unknown>>(`/api/procurement/purchases/${id}/header`, {
+    method: 'PATCH',
+    body: JSON.stringify(data)
+  })
+}
+
 export function payPurchaseByNumber(purchaseNo: string, data: PurchasePaymentData) {
   return request<Record<string, unknown>>(
     `/api/procurement/purchases/by-number/${encodeURIComponent(purchaseNo)}/payment`,
@@ -328,6 +352,8 @@ export interface PurchaseReceiptItem {
   productCode?: string
   model?: string
   id: number
+  skuId?: number
+  supplierPurchaseInfoId?: number
   customerPartNumber?: string
   productName?: string
   quantity: number
@@ -338,8 +364,13 @@ export interface PurchaseReceiptItem {
 export interface PurchaseDetail {
   id: number
   purchaseNo: string
+  supplierId?: number
   supplierName: string
   totalAmount: number
+  expectedArrivalDate?: string
+  deliveryAddress?: string
+  remark?: string
+  manualEntry?: boolean
   items: PurchaseReceiptItem[]
 }
 

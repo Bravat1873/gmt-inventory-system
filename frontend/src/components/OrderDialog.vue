@@ -122,8 +122,8 @@ function validationMessage() {
   if (!form.salesperson.trim()) return '请填写销售员'
   const invalidSku = form.items.findIndex(line => !line.skuId)
   if (invalidSku >= 0) return `请选择第 ${invalidSku + 1} 条明细的客户料号`
-  const invalidQuantity = form.items.findIndex(line => !Number.isFinite(line.quantity) || line.quantity <= 0)
-  if (invalidQuantity >= 0) return `第 ${invalidQuantity + 1} 条明细的订单数量必须大于 0`
+  const invalidQuantity = form.items.findIndex(line => !Number.isFinite(line.quantity) || line.quantity === 0)
+  if (invalidQuantity >= 0) return `第 ${invalidQuantity + 1} 条明细的订单数量不能为 0；退货请填写负数`
   const invalidPrice = form.items.findIndex(line => !Number.isFinite(line.salePrice) || line.salePrice < 0)
   if (invalidPrice >= 0) return `第 ${invalidPrice + 1} 条明细的含税单价不能小于 0`
   return ''
@@ -132,11 +132,11 @@ function hasError(message: string) { return error.value === message }
 function lineError(index: number, field: 'sku' | 'quantity' | 'price') {
   const number = index + 1
   if (field === 'sku') return hasError(`请选择第 ${number} 条明细的客户料号`)
-  if (field === 'quantity') return hasError(`第 ${number} 条明细的订单数量必须大于 0`)
+  if (field === 'quantity') return hasError(`第 ${number} 条明细的订单数量不能为 0；退货请填写负数`)
   return hasError(`第 ${number} 条明细的含税单价不能小于 0`)
 }
 function quantityErrorMessage(index: number) {
-  return hasError(`第 ${index + 1} 条明细的订单数量必须大于 0`) ? '数量须大于 0' : ''
+  return hasError(`第 ${index + 1} 条明细的订单数量不能为 0；退货请填写负数`) ? '数量不能为 0' : ''
 }
 async function save() {
   error.value = validationMessage()
@@ -209,7 +209,7 @@ onMounted(async () => {
                 <div><span>单位</span><strong>{{ skuFor(line)?.unit || '—' }}</strong></div>
               </div>
               <div class="order-line-fields">
-                <label :class="{ 'field-invalid': lineError(index, 'quantity') }"><span>订单数量 <small v-if="lineError(index, 'quantity')" :data-test="`quantity-error-${index}`" class="field-error">{{ quantityErrorMessage(index) }}</small></span><input v-model.number="line.quantity" type="number" min="1"></label>
+                <label :class="{ 'field-invalid': lineError(index, 'quantity') }"><span>订单数量 <small v-if="lineError(index, 'quantity')" :data-test="`quantity-error-${index}`" class="field-error">{{ quantityErrorMessage(index) }}</small></span><input v-model.number="line.quantity" type="number"></label>
                 <label :class="{ 'field-invalid': lineError(index, 'price') }"><span>含税单价 <small v-if="lineError(index, 'price')" :data-test="`price-error-${index}`" class="field-error">单价不可为负</small></span><input v-model.number="line.salePrice" type="number" min="0" step="0.01"></label>
                 <div><span>已发货数量</span><strong>{{ line.shippedQuantity ?? 0 }}</strong></div>
                 <div><span>未发货数量</span><strong>{{ line.remainingQuantity ?? line.quantity }}</strong></div>

@@ -16,6 +16,7 @@ import jakarta.servlet.http.Cookie;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -58,6 +59,23 @@ class ProcurementWorkflowApiTest {
         assertThat(jdbc.queryForObject("SELECT quantity FROM purchase_order_item", Integer.class)).isEqualTo(10);
         assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance WHERE sku_id=101", Integer.class))
                 .isEqualTo(10);
+    }
+
+    @Test
+    void confirmedPurchaseCarriesTheLinkedSalesOrderDeliveryAddress() throws Exception {
+        Cookie session = login();
+        jdbc.update("UPDATE sales_order SET delivery_address=? WHERE id=1", "深圳市龙华区示例收货地址");
+        String generated = mvc.perform(post("/api/procurement/generate").cookie(session)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long suggestionId = mapper.readTree(generated).path("data").path("suggestionIds").get(0).asLong();
+
+        mvc.perform(post("/api/procurement/suggestions/{id}/confirm", suggestionId).cookie(session)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("SELECT delivery_address FROM purchase_order", String.class))
+                .isEqualTo("DD20260800001：深圳市龙华区示例收货地址");
     }
 
     @Test
@@ -444,6 +462,61 @@ class ProcurementWorkflowApiTest {
         assertThat(jdbc.queryForObject("SELECT purchase_no FROM purchase_order ORDER BY id DESC LIMIT 1", String.class))
                 .matches("CG\\d{6}00001");
     }
+
+    @Test
+    void updatesAnUnreceivedManualPurchaseAndSynchronizesInTransitQuantity() throws Exception {
+        Cookie session = login();
+        long purchaseId = createManualPurchase(session, 10);
+
+        mvc.perform(put("/api/procurement/purchases/{id}", purchaseId).cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"supplierId":201,"skuId":101,"supplierPurchaseInfoId":1,"quantity":15,
+                                 "expectedArrivalDate":"2026-08-25","deliveryAddress":"珠海市香洲区交货地址","remark":"修改后的采购备注"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.purchaseId").value(purchaseId));
+
+        assertThat(jdbc.queryForObject("SELECT quantity FROM purchase_order_item WHERE purchase_order_id=?", Integer.class, purchaseId))
+                .isEqualTo(15);
+        assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance WHERE sku_id=101", Integer.class))
+                .isEqualTo(15);
+        assertThat(jdbc.queryForMap("SELECT delivery_address,purchase_remark FROM purchase_order WHERE id=?", purchaseId))
+                .containsEntry("delivery_address", "珠海市香洲区交货地址")
+                .containsEntry("purchase_remark", "修改后的采购备注");
+    }
+
+    @Test
+    void updatesSystemPurchaseHeaderWithoutChangingProcurementCoverage() throws Exception {
+        Cookie session = login();
+        String generated = mvc.perform(post("/api/procurement/generate").cookie(session)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long suggestionId = mapper.readTree(generated).path("data").path("suggestionIds").get(0).asLong();
+        String confirmed = mvc.perform(post("/api/procurement/suggestions/{id}/confirm", suggestionId).cookie(session)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long purchaseId = mapper.readTree(confirmed).path("data").path("purchaseId").asLong();
+
+        mvc.perform(patch("/api/procurement/purchases/{id}/header", purchaseId).cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"expectedArrivalDate":"2026-09-01","deliveryAddress":"供应商送货地址","remark":"系统采购交期已确认"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.purchaseId").value(purchaseId));
+
+        assertThat(jdbc.queryForMap("SELECT expected_arrival_date,delivery_address,purchase_remark FROM purchase_order WHERE id=?", purchaseId))
+                .containsEntry("delivery_address", "供应商送货地址")
+                .containsEntry("purchase_remark", "系统采购交期已确认");
+        assertThat(jdbc.queryForObject("SELECT quantity FROM purchase_order_item WHERE purchase_order_id=?", Integer.class, purchaseId))
+                .isEqualTo(10);
+        assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance WHERE sku_id=101", Integer.class))
+                .isEqualTo(10);
+    }
+
     private long createManualPurchase(Cookie session, int quantity) throws Exception {
         String body = mvc.perform(post("/api/procurement/manual").cookie(session)
                         .contentType("application/json")

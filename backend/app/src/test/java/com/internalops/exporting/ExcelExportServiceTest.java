@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 
 class ExcelExportServiceTest {
     @Test
@@ -157,14 +158,41 @@ class ExcelExportServiceTest {
             assertEquals("产品分类", sheet.getRow(10).getCell(2).getStringCellValue());
             assertEquals("客户料号", sheet.getRow(10).getCell(3).getStringCellValue());
             assertEquals("物料规格", sheet.getRow(10).getCell(4).getStringCellValue());
+            assertEquals("产品配置", sheet.getRow(10).getCell(5).getStringCellValue());
             assertEquals("智能锁", sheet.getRow(11).getCell(2).getStringCellValue());
             assertEquals("STANLEY / D51 / 宇宙黑 / 6068 / 中文版", sheet.getRow(11).getCell(4).getStringCellValue());
-            assertEquals("产品配置：指纹、密码、卡片开锁", sheet.getRow(12).getCell(0).getStringCellValue());
-            assertEquals("订单备注：示例备注", sheet.getRow(13).getCell(0).getStringCellValue());
-            assertEquals("销售/商务确认", sheet.getRow(17).getCell(0).getStringCellValue());
-            assertEquals("签字/盖章：", sheet.getRow(17).getCell(7).getStringCellValue());
-            assertEquals("付款方式", sheet.getRow(15).getCell(0).getStringCellValue());
-            assertEquals("公司名称：珠海吉门第科技有限公司", sheet.getRow(15).getCell(3).getStringCellValue().split("\\n")[2]);
+            assertEquals("指纹、密码、卡片开锁", sheet.getRow(11).getCell(5).getStringCellValue());
+            assertEquals("订单备注：示例备注", sheet.getRow(12).getCell(0).getStringCellValue());
+            assertEquals("销售/商务确认", sheet.getRow(16).getCell(0).getStringCellValue());
+            assertEquals("签字/盖章：", sheet.getRow(16).getCell(8).getStringCellValue());
+            assertEquals("付款方式", sheet.getRow(14).getCell(0).getStringCellValue());
+            assertEquals("公司名称：珠海吉门第科技有限公司", sheet.getRow(14).getCell(3).getStringCellValue().split("\\n")[2]);
+        }
+    }
+
+    @Test
+    void shipmentDocumentUsesTheSelectedShipmentBatchAndOutboundTemplate() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(argThat(sql -> sql.contains("FROM sales_shipment shipment")), eq(22L), eq(9L))).thenReturn(List.of(Map.of(
+                "shipment_no", "SH20260821001", "delivery_address", "珠海市香洲区收货地址", "operator_name", "田莎",
+                "shipped_at", "2026-08-21 10:30:00", "remark", "分批送货", "order_no", "DD20260800009",
+                "delivery_contact", "张三", "delivery_phone", "13800000000", "customer_name", "示例客户"
+        )));
+        when(jdbc.queryForList(argThat(sql -> sql.contains("FROM sales_shipment_item")), eq(22L))).thenReturn(List.of(Map.of(
+                "product_code", "SKU-001", "product_type", "SMART_LOCK", "customer_part_number", "CP-001",
+                "model", "D51", "unit", "件", "configuration", "STANLEY / D51", "quantity", 2
+        )));
+        ExcelExportService service = new ExcelExportService(null, null, null, null, jdbc);
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.document("order", 9L, "shipment", 22L)))) {
+            var sheet = workbook.getSheet("销售出库单");
+            assertEquals("销售出库单", sheet.getRow(1).getCell(0).getStringCellValue());
+            assertEquals("订单编号：DD20260800009", sheet.getRow(2).getCell(0).getStringCellValue());
+            assertEquals("出库单号：SH20260821001", sheet.getRow(3).getCell(4).getStringCellValue());
+            assertEquals("收货地址：珠海市香洲区收货地址", sheet.getRow(4).getCell(4).getStringCellValue());
+            assertEquals("产品分类", sheet.getRow(5).getCell(2).getStringCellValue());
+            assertEquals("SKU-001", sheet.getRow(6).getCell(1).getStringCellValue());
+            assertEquals(2d, sheet.getRow(6).getCell(6).getNumericCellValue());
         }
     }
 
@@ -184,9 +212,10 @@ class ExcelExportServiceTest {
             assertEquals("下单日期：2026-08-20", sheet.getRow(3).getCell(0).getStringCellValue());
             assertEquals("产品分类", sheet.getRow(9).getCell(2).getStringCellValue());
             assertEquals("物料规格", sheet.getRow(9).getCell(4).getStringCellValue());
+            assertEquals("产品配置", sheet.getRow(9).getCell(5).getStringCellValue());
             assertEquals("SKU-001", sheet.getRow(10).getCell(1).getStringCellValue());
-            assertEquals("产品配置：半自动锁体", sheet.getRow(11).getCell(0).getStringCellValue());
-            assertEquals("采购备注：采购备注", sheet.getRow(12).getCell(0).getStringCellValue());
+            assertEquals("半自动锁体", sheet.getRow(10).getCell(5).getStringCellValue());
+            assertEquals("采购备注：采购备注", sheet.getRow(11).getCell(0).getStringCellValue());
         }
     }
 
@@ -208,9 +237,10 @@ class ExcelExportServiceTest {
             assertEquals("珠海市斗门区珠峰大道南3211号16号厂房3层  TEL：0755-86168089", sheet.getRow(1).getCell(0).getStringCellValue());
             assertEquals("产品分类", sheet.getRow(10).getCell(2).getStringCellValue());
             assertEquals("物料规格", sheet.getRow(10).getCell(4).getStringCellValue());
+            assertEquals("产品配置", sheet.getRow(10).getCell(5).getStringCellValue());
             assertEquals("SKU-001", sheet.getRow(11).getCell(1).getStringCellValue());
-            assertEquals("产品配置：半自动锁体", sheet.getRow(12).getCell(0).getStringCellValue());
-            assertEquals("处理备注：处理备注", sheet.getRow(13).getCell(0).getStringCellValue());
+            assertEquals("半自动锁体", sheet.getRow(11).getCell(5).getStringCellValue());
+            assertEquals("处理备注：处理备注", sheet.getRow(12).getCell(0).getStringCellValue());
         }
     }
 }

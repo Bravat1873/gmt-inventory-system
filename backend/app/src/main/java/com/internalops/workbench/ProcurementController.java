@@ -41,6 +41,16 @@ public class ProcurementController {
     @PostMapping("/manual")
     public ApiResponse<Map<String, Object>> manual(@RequestBody ManualPurchaseRequest request) { return ApiResponse.ok(service.manual(request)); }
 
+    @PutMapping("/purchases/{id}")
+    public ApiResponse<Map<String, Object>> updateManual(@PathVariable long id, @RequestBody ManualPurchaseRequest request) {
+        return ApiResponse.ok(service.updateManual(id, request));
+    }
+
+    @PatchMapping("/purchases/{id}/header")
+    public ApiResponse<Map<String, Object>> updatePurchaseHeader(@PathVariable long id, @RequestBody PurchaseHeaderUpdateRequest request) {
+        return ApiResponse.ok(service.updatePurchaseHeader(id, request));
+    }
+
     @PostMapping("/purchases/{id}/payment")
     public ApiResponse<Map<String, Object>> pay(@PathVariable long id, @RequestBody FinanceActionRequest request) { return ApiResponse.ok(service.payment(id, request)); }
 
