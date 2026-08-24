@@ -19,7 +19,8 @@ watch(outstandingAmount, value => { form.amount = value > 0 ? String(value) : ''
 
 function validate() {
   if (!Number.isInteger(Number(props.purchase.id)) || Number(props.purchase.id) <= 0) return '未找到可登记付款的采购单'
-  if (!Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0) return '付款金额必须为大于 0 的有效数字'
+  if (!Number.isFinite(Number(form.amount)) || Number(form.amount) < 0) return '付款金额必须为不小于 0 的有效数字'
+  if (Number(form.amount) === 0 && !form.invoiceNo.trim()) return '请填写付款金额或发票号码'
   if (Number(form.amount) > outstandingAmount.value) return '本次付款金额不能超过未付金额'
   if (!form.paymentMethod.trim()) return '请填写付款方式'
   return ''
@@ -62,15 +63,15 @@ async function save() {
         </div>
         <div class="form-grid">
           <label><span>采购单号</span><input data-test="payment-purchase-no" :value="purchaseNo" disabled></label>
-          <label><span>本次付款金额</span><input data-test="payment-amount" v-model="form.amount" type="number" min="0.01" :max="outstandingAmount" step="0.01" :aria-invalid="Boolean(error)" :disabled="saving || outstandingAmount <= 0"></label>
+          <label><span>本次付款金额</span><input data-test="payment-amount" v-model="form.amount" type="number" min="0" :max="outstandingAmount" step="0.01" :aria-invalid="Boolean(error)" :disabled="saving"></label>
           <label><span>付款方式</span><input v-model="form.paymentMethod" :aria-invalid="Boolean(error)" :disabled="saving"></label>
-          <label><span>发票号码</span><input v-model="form.invoiceNo" :disabled="saving"></label>
+          <label><span>发票号码</span><input data-test="payment-invoice-no" v-model="form.invoiceNo" :disabled="saving"></label>
           <label><span>发票日期</span><ChineseDatePicker v-model="form.invoiceDate" :disabled="saving" placeholder="请选择发票日期" /></label>
           <label><span>付款备注</span><textarea v-model="form.paymentRemark" maxlength="500" :disabled="saving"></textarea></label>
         </div>
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-        <p v-if="outstandingAmount <= 0" class="receipt-complete">该采购单已结清，无需重复登记付款。</p>
-        <footer><button type="button" class="secondary-action" :disabled="saving" @click="requestClose">取消操作</button><button class="primary-action" :disabled="saving || outstandingAmount <= 0">{{ saving ? '正在保存…' : '确认保存' }}</button></footer>
+        <p v-if="outstandingAmount <= 0" class="receipt-complete">该采购单已结清；可补录发票号码。</p>
+        <footer><button type="button" class="secondary-action" :disabled="saving" @click="requestClose">取消操作</button><button class="primary-action" :disabled="saving">{{ saving ? '正在保存…' : '确认保存' }}</button></footer>
       </form>
     </section>
   </div>

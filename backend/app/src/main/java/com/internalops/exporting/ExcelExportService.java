@@ -82,15 +82,16 @@ public class ExcelExportService {
 
     private byte[] financeSummaryWorkbook() {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT f.business_no,f.business_type,f.cash_direction,f.counterparty,f.amount,f.settled_amount,
+                SELECT f.business_no,f.business_type,f.cash_direction,f.counterparty,f.invoice_nos,f.amount,f.settled_amount,
                        GREATEST(f.amount-f.settled_amount,0) AS outstanding_amount,
                        CASE WHEN f.settled_amount>=f.amount THEN CASE WHEN f.cash_direction='RECEIVABLE' THEN '已收清' ELSE '已付清' END
                             WHEN f.cash_direction='RECEIVABLE' THEN '待收款' ELSE '待付款' END AS status,
                        f.created_at,f.updated_at
                 FROM (
                     SELECT o.order_no AS business_no,'销售订单' AS business_type,'RECEIVABLE' AS cash_direction,c.customer_name AS counterparty,
-                           COALESCE((SELECT SUM((i.quantity-i.shipped_quantity)*i.sale_price) FROM sales_order_item i WHERE i.sales_order_id=o.id),0) AS amount,
+                           COALESCE((SELECT SUM(i.quantity*i.sale_price) FROM sales_order_item i WHERE i.sales_order_id=o.id),0) AS amount,
                            COALESCE((SELECT SUM(cr.amount) FROM customer_receipt cr WHERE cr.sales_order_id=o.id),0) AS settled_amount,
+                           (SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(cr.invoice_no), '')) FROM customer_receipt cr WHERE cr.sales_order_id=o.id) AS invoice_nos,
                            o.created_at,o.updated_at
                     FROM sales_order o
                     JOIN customer c ON c.id=o.customer_id
@@ -98,6 +99,7 @@ public class ExcelExportService {
                     UNION ALL
                     SELECT p.purchase_no,'采购订单','PAYABLE',sp.supplier_name,p.total_amount,
                            COALESCE((SELECT SUM(pay.amount) FROM supplier_payment pay WHERE pay.purchase_order_id=p.id),0),
+                           (SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(pay.invoice_no), '')) FROM supplier_payment pay WHERE pay.purchase_order_id=p.id),
                            p.created_at,p.updated_at
                     FROM purchase_order p
                     JOIN supplier sp ON sp.id=p.supplier_id
@@ -108,7 +110,7 @@ public class ExcelExportService {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("业务单号", row.get("business_no")); out.put("业务类型", row.get("business_type"));
             out.put("收支方向", "RECEIVABLE".equals(row.get("cash_direction")) ? "应收" : "应付");
-            out.put("往来单位", row.get("counterparty")); out.put("应收/应付", row.get("amount"));
+            out.put("往来单位", row.get("counterparty")); out.put("发票号码", row.get("invoice_nos")); out.put("总金额", row.get("amount"));
             out.put("已收/已付", row.get("settled_amount")); out.put("未收/未付", row.get("outstanding_amount"));
             out.put("状态", row.get("status")); out.put("创建时间", row.get("created_at")); out.put("修改时间", row.get("updated_at"));
             return out;

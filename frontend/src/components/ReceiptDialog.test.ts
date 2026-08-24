@@ -32,5 +32,18 @@ it('defaults the receipt date to today and allows submitting a future date', asy
   await dateInput.setValue('2026-09-20')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
-  expect(postAction).toHaveBeenCalledWith('/api/finance/orders/1/receipt', expect.objectContaining({ receivedAt: '2026-09-20' }))
+  await wrapper.get('[data-test="receipt-invoice-no"]').setValue('XS-202609-01')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(postAction).toHaveBeenLastCalledWith('/api/finance/orders/1/receipt', expect.objectContaining({ receivedAt: '2026-09-20', invoiceNo: 'XS-202609-01' }))
+})
+
+it('allows an invoice-only supplement after the order has been settled', async () => {
+  const wrapper = mount(ReceiptDialog, { props: { order: { id: 1, orderNo: 'SO001', receivedAmount: 100, items: [{ quantity: 2, shippedQuantity: 0, salePrice: 50 }] } } })
+
+  await wrapper.get('[data-test="receipt-invoice-no"]').setValue('XS-补录-01')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+
+  expect(postAction).toHaveBeenCalledWith('/api/finance/orders/1/receipt', expect.objectContaining({ amount: 0, invoiceNo: 'XS-补录-01' }))
 })

@@ -522,7 +522,10 @@ public class ProcurementWorkflowService {
                 "SELECT COALESCE(SUM(amount),0) FROM supplier_payment WHERE purchase_order_id=?",
                 BigDecimal.class, id);
         BigDecimal amount = request.amount();
-        if (amount == null || amount.signum() <= 0) throw new IllegalArgumentException("本次付款金额必须大于 0");
+        if (amount == null || amount.signum() < 0
+                || (amount.signum() == 0 && (request.invoiceNo() == null || request.invoiceNo().isBlank()))) {
+            throw new IllegalArgumentException("请填写付款金额或发票号码");
+        }
         BigDecimal outstanding = total.subtract(paid);
         if (amount.compareTo(outstanding) > 0) throw new IllegalArgumentException("本次付款金额不能超过未付金额");
         jdbc.update("""
@@ -530,8 +533,8 @@ public class ProcurementWorkflowService {
                             purchase_order_id,amount,payment_method,payment_remark,invoice_no,invoice_date,paid_at,confirmed_by)
                         VALUES(?,?,?,?,?,?,?,1)
                         """,
-                id, amount, request.paymentMethod() == null ? "银行转账" : request.paymentMethod(),
-                request.paymentRemark(), request.invoiceNo(), request.invoiceDate(), LocalDateTime.now());
+                id, amount, request.paymentMethod() == null || request.paymentMethod().isBlank() ? "银行转账" : request.paymentMethod().trim(),
+                optionalText(request.paymentRemark()), optionalText(request.invoiceNo()), request.invoiceDate(), LocalDateTime.now());
         BigDecimal paidAfter = paid.add(amount);
         BigDecimal outstandingAfter = total.subtract(paidAfter);
         updatePurchaseProgressStatus(id);
@@ -802,6 +805,10 @@ public class ProcurementWorkflowService {
 
     private String str(Map<String, Object> values, String key) {
         return String.valueOf(val(values, key));
+    }
+
+    private String optionalText(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private LocalDate localDate(Object value) {

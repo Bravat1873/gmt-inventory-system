@@ -39,6 +39,7 @@ it('places finance direction inside the business type cell instead of a standalo
   expect(finance.fields).not.toContain('cashDirection')
   expect(finance.fields).toContain('businessType')
   expect(finance.columns[finance.fields.indexOf('amount')]).toBe('总金额')
+  expect(finance.columns[finance.fields.indexOf('invoiceNos')]).toBe('发票号码')
 })
 
 it('places oldest stock date and inventory age after the available inventory quantities', () => {
@@ -122,7 +123,7 @@ it('enables sorting for short management fields and excludes long display fields
     const module = moduleDefinitions.find(item => item.key === key)!
     for (const field of fields) expect(module.sortable[module.fields.indexOf(field)], `${key}.${field}`).toBe(field)
   }
-  const excluded = ['productImage', 'remark', 'address', 'configuration', 'productConfiguration', 'supplierQuotes', 'productSummary']
+  const excluded = ['productImage', 'remark', 'address', 'configuration', 'productConfiguration', 'supplierQuotes', 'productSummary', 'invoiceNos']
   for (const module of moduleDefinitions) for (const field of excluded) {
     const index = module.fields.indexOf(field)
     if (index >= 0) expect(module.sortable[index], `${module.key}.${field}`).toBe('')

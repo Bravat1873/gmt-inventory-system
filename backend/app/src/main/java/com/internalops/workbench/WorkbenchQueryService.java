@@ -48,6 +48,7 @@ public class WorkbenchQueryService {
             Map.entry("relationid", "relationId"), Map.entry("purchaseprice", "purchasePrice"), Map.entry("leadtimedays", "leadTimeDays"),
             Map.entry("orderno", "orderNo"), Map.entry("externalorderno", "externalOrderNo"),
             Map.entry("totalamount", "totalAmount"), Map.entry("receiptconfirmedat", "receiptConfirmedAt"),
+            Map.entry("invoicenos", "invoiceNos"),
             Map.entry("shippedat", "shippedAt"), Map.entry("trackingno", "trackingNo"),
             Map.entry("createdat", "createdAt"), Map.entry("skuid", "skuId"),
             Map.entry("actualquantity", "actualQuantity"), Map.entry("lockedquantity", "lockedQuantity"),
@@ -538,15 +539,17 @@ public class WorkbenchQueryService {
                 "p.updated_at", "p.record_type, p.id DESC"));
         String financeView = "FROM ("
                 + "SELECT o.id, 'RECEIVABLE' AS cash_direction, '销售订单' AS business_type, o.order_no AS business_no, c.customer_name AS counterparty, "
-                + "o.total_amount AS amount, "
+                + "COALESCE((SELECT SUM(i.quantity*i.sale_price) FROM sales_order_item i WHERE i.sales_order_id=o.id),0) AS amount, "
                 + "COALESCE((SELECT SUM(cr.amount) FROM customer_receipt cr WHERE cr.sales_order_id=o.id),0) AS settled_amount, "
+                + "(SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(cr.invoice_no), '')) FROM customer_receipt cr WHERE cr.sales_order_id=o.id) AS invoice_nos, "
                 + "o.created_at, o.updated_at FROM sales_order o JOIN customer c ON c.id=o.customer_id WHERE o.status<>'DRAFT' "
                 + "UNION ALL "
                 + "SELECT p.id, 'PAYABLE', '采购订单', p.purchase_no, sp.supplier_name, p.total_amount, "
                 + "COALESCE((SELECT SUM(spay.amount) FROM supplier_payment spay WHERE spay.purchase_order_id=p.id),0), "
+                + "(SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(spay.invoice_no), '')) FROM supplier_payment spay WHERE spay.purchase_order_id=p.id), "
                 + "p.created_at, p.updated_at FROM purchase_order p JOIN supplier sp ON sp.id=p.supplier_id) f";
         modules.put("finance", new ModuleSpec(
-                "SELECT f.id, f.cash_direction AS `cashDirection`, f.business_type AS `businessType`, f.business_no AS `businessNo`, f.counterparty, f.amount, f.settled_amount AS `settledAmount`, "
+                "SELECT f.id, f.cash_direction AS `cashDirection`, f.business_type AS `businessType`, f.business_no AS `businessNo`, f.counterparty, f.invoice_nos AS `invoiceNos`, f.amount, f.settled_amount AS `settledAmount`, "
                         + "GREATEST(f.amount-f.settled_amount,0) AS `outstandingAmount`, "
                         + "CASE WHEN f.settled_amount>=f.amount THEN CASE WHEN f.cash_direction='RECEIVABLE' THEN '已收清' ELSE '已付清' END "
                         + "WHEN f.cash_direction='RECEIVABLE' THEN '待收款' ELSE '待付款' END AS status, "

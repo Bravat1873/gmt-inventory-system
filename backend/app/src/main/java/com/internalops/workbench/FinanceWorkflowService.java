@@ -27,12 +27,23 @@ public class FinanceWorkflowService {
         BigDecimal received = receivedAmount(id);
         BigDecimal outstanding = receivable.subtract(received).max(BigDecimal.ZERO);
         BigDecimal receiptAmount = request.amount();
-        if (receiptAmount == null || receiptAmount.signum() <= 0) throw new IllegalArgumentException("本次收款金额必须大于 0");
+        if (receiptAmount == null || receiptAmount.signum() < 0
+                || (receiptAmount.signum() == 0 && !hasText(request.invoiceNo()))) {
+            throw new IllegalArgumentException("请填写收款金额或发票号码");
+        }
         if (receiptAmount.compareTo(outstanding) > 0) throw new IllegalArgumentException("本次收款金额不能超过未收金额");
 
         LocalDateTime receiptTime = request.receivedAt() == null ? LocalDateTime.now() : request.receivedAt().atStartOfDay();
-        customerFunds.debitForOrder(id, receiptAmount, "使用客户余额登记收款（" + text(request.paymentMethod(), "客户余额") + "）");
-        jdbc.update("INSERT INTO customer_receipt(sales_order_id,amount,payment_method,received_at,confirmed_by) VALUES(?,?,?,?,1)", id, receiptAmount, text(request.paymentMethod(), "银行转账"), receiptTime);
+        if (receiptAmount.signum() > 0) {
+            customerFunds.debitForOrder(id, receiptAmount, "使用客户余额登记收款（" + text(request.paymentMethod(), "客户余额") + "）");
+        }
+        jdbc.update("""
+                        INSERT INTO customer_receipt(
+                            sales_order_id,amount,payment_method,invoice_no,invoice_date,payment_remark,received_at,confirmed_by)
+                        VALUES(?,?,?,?,?,?,?,1)
+                        """,
+                id, receiptAmount, text(request.paymentMethod(), "银行转账"), nullableText(request.invoiceNo()),
+                request.invoiceDate(), nullableText(request.paymentRemark()), receiptTime);
         jdbc.update("UPDATE sales_order SET receipt_confirmed_at=?,version=version+1 WHERE id=?", receiptTime, id);
         BigDecimal totalReceived = received.add(receiptAmount);
         BigDecimal customerBalance = order.get("customer_id") == null ? BigDecimal.ZERO : customerFunds.balance(((Number) order.get("customer_id")).longValue());
@@ -53,4 +64,6 @@ public class FinanceWorkflowService {
     }
 
     private String text(String value, String fallback) { return value == null || value.isBlank() ? fallback : value.trim(); }
+    private boolean hasText(String value) { return value != null && !value.isBlank(); }
+    private String nullableText(String value) { return hasText(value) ? value.trim() : null; }
 }

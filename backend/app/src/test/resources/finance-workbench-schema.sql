@@ -48,7 +48,8 @@ CREATE TABLE sales_order_item(
 CREATE TABLE customer_receipt(
     id BIGINT PRIMARY KEY,
     sales_order_id BIGINT NOT NULL,
-    amount DECIMAL(18,2) NOT NULL
+    amount DECIMAL(18,2) NOT NULL,
+    invoice_no VARCHAR(100)
 );
 CREATE TABLE purchase_order(
     id BIGINT PRIMARY KEY,
@@ -62,7 +63,8 @@ CREATE TABLE purchase_order(
 CREATE TABLE supplier_payment(
     id BIGINT PRIMARY KEY,
     purchase_order_id BIGINT NOT NULL,
-    amount DECIMAL(18,2) NOT NULL
+    amount DECIMAL(18,2) NOT NULL,
+    invoice_no VARCHAR(100)
 );
 
 INSERT INTO customer(id,customer_name) VALUES(1,'客户甲');
@@ -74,7 +76,7 @@ INSERT INTO sales_order(id,order_no,customer_id,status,created_at,updated_at)
 VALUES(10,'SO-F-001',1,'WAITING_STOCK',TIMESTAMP '2026-08-06 10:00:00',TIMESTAMP '2026-08-06 10:00:00');
 INSERT INTO sales_order_item(id,sales_order_id,quantity,shipped_quantity,sale_price)
 VALUES(11,10,5,1,20.00);
-INSERT INTO customer_receipt(id,sales_order_id,amount) VALUES(12,10,30.00);
+INSERT INTO customer_receipt(id,sales_order_id,amount,invoice_no) VALUES(12,10,30.00,'XS-F-001');
 INSERT INTO purchase_order(id,purchase_no,supplier_id,status,total_amount,created_at,updated_at)
 VALUES(20,'PO-F-002',2,'PENDING_SUPPLIER_PAYMENT',100.00,TIMESTAMP '2026-08-06 12:00:00',TIMESTAMP '2026-08-06 12:00:00');
-INSERT INTO supplier_payment(id,purchase_order_id,amount) VALUES(21,20,40.00);
+INSERT INTO supplier_payment(id,purchase_order_id,amount,invoice_no) VALUES(21,20,40.00,'CG-F-001');

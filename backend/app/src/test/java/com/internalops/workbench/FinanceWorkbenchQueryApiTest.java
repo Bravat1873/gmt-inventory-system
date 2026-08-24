@@ -31,12 +31,14 @@ class FinanceWorkbenchQueryApiTest {
                 .andExpect(jsonPath("$.data.items[0].amount").value(100))
                 .andExpect(jsonPath("$.data.items[0].settledAmount").value(40))
                 .andExpect(jsonPath("$.data.items[0].outstandingAmount").value(60))
+                .andExpect(jsonPath("$.data.items[0].invoiceNos").value("CG-F-001"))
                 .andExpect(jsonPath("$.data.items[0].status").value("待付款"))
                 .andExpect(jsonPath("$.data.items[1].cashDirection").value("RECEIVABLE"))
                 .andExpect(jsonPath("$.data.items[1].businessNo").value("SO-F-001"))
-                .andExpect(jsonPath("$.data.items[1].amount").value(80))
+                .andExpect(jsonPath("$.data.items[1].amount").value(100))
                 .andExpect(jsonPath("$.data.items[1].settledAmount").value(30))
-                .andExpect(jsonPath("$.data.items[1].outstandingAmount").value(50))
+                .andExpect(jsonPath("$.data.items[1].outstandingAmount").value(70))
+                .andExpect(jsonPath("$.data.items[1].invoiceNos").value("XS-F-001"))
                 .andExpect(jsonPath("$.data.items[1].status").value("待收款"));
     }
 }
