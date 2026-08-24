@@ -164,7 +164,7 @@ it('shows finance direction dot in the business type cell and the matching autom
     loadModule.mockResolvedValue({ items: [{
       id: 1,
       recordType: 'PURCHASE',
-      manualEntry: false,
+      manualEntry: 0,
       paidAmount: 30,
       receivedQuantity: 0
     }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
