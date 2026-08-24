@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
@@ -216,6 +217,10 @@ class ExcelExportServiceTest {
             assertEquals("SKU-001", sheet.getRow(10).getCell(1).getStringCellValue());
             assertEquals("半自动锁体", sheet.getRow(10).getCell(5).getStringCellValue());
             assertEquals("采购备注：采购备注", sheet.getRow(11).getCell(0).getStringCellValue());
+            assertEquals("注意事项", sheet.getRow(13).getCell(0).getStringCellValue());
+            String notices = sheet.getRow(13).getCell(3).getStringCellValue();
+            assertTrue(notices.contains("1. 卖方接到订单后，请在24小时内确认，并回传至sha.tian@seagullgroup.cn；"));
+            assertTrue(notices.contains("8. 此采购订单作为采购合同的附件。"));
         }
     }
 
@@ -242,5 +247,25 @@ class ExcelExportServiceTest {
             assertEquals("半自动锁体", sheet.getRow(11).getCell(5).getStringCellValue());
             assertEquals("处理备注：处理备注", sheet.getRow(12).getCell(0).getStringCellValue());
         }
+    }
+
+    @Test
+    void exportFilenamesUseChineseBusinessNamesAndTraceableDocumentNumbers() {
+        SalesOrderCommandService salesOrders = mock(SalesOrderCommandService.class);
+        ProcurementWorkflowService procurement = mock(ProcurementWorkflowService.class);
+        AfterSalesQueryService afterSales = mock(AfterSalesQueryService.class);
+        when(salesOrders.get(9L)).thenReturn(Map.of("orderNo", "DD20260800009", "customerName", "示例客户"));
+        when(procurement.purchase(7L)).thenReturn(Map.of("purchaseNo", "CG20260800001", "supplierName", "示例供应商"));
+        when(afterSales.get(3L)).thenReturn(Map.of("afterSalesNo", "SH20260820001", "customerName", "示例客户"));
+        ExcelExportService service = new ExcelExportService(null, salesOrders, procurement, afterSales, null);
+
+        assertEquals("销售订单汇总数据.xlsx", service.summaryFilename("order"));
+        assertEquals("售后服务汇总数据.xlsx", service.summaryFilename("afterSales"));
+        assertEquals("采购订单汇总数据.xlsx", service.summaryFilename("purchase"));
+        assertEquals("产品库存汇总数据.xlsx", service.summaryFilename("inventory"));
+        assertEquals("财务汇总数据.xlsx", service.summaryFilename("finance"));
+        assertEquals("销售订单-订单号DD20260800009-示例客户.xlsx", service.documentFilename("order", 9L, null, null));
+        assertEquals("采购订单-采购单号CG20260800001-示例供应商.xlsx", service.documentFilename("purchase", 7L, null, null));
+        assertEquals("售后服务单-售后单号SH20260820001-示例客户.xlsx", service.documentFilename("afterSales", 3L, null, null));
     }
 }

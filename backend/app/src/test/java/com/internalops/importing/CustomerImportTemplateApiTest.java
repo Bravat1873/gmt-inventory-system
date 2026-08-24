@@ -34,13 +34,13 @@ class CustomerImportTemplateApiTest {
 
         assertThat(response.getHeader(HttpHeaders.CONTENT_DISPOSITION))
                 .contains("attachment")
-                .contains("CUSTOMER.xlsx");
+                .contains("%E5%AE%A2%E6%88%B7%E6%89%B9%E9%87%8F%E5%AF%BC%E5%85%A5%E6%A8%A1%E6%9D%BF.xlsx");
         assertThat(response.getContentAsByteArray()).isNotEmpty();
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(response.getContentAsByteArray()))) {
             assertThat(workbook.getNumberOfSheets()).isEqualTo(1);
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getSheetName()).isEqualTo("Sheet1");
+            assertThat(sheet.getSheetName()).isEqualTo("客户导入模板");
 
             var expectedHeaders = List.of(
                     "客户类型", "客户编码", "客户名称", "地址", "业务联系人", "业务联系电话", "订单联系人",

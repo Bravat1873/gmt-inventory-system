@@ -13,7 +13,7 @@ final class ImportTemplateWorkbookService {
             if (type == ImportType.PRODUCT) {
                 createProductTemplate(workbook);
             } else {
-                var sheet = workbook.createSheet("Sheet1");
+                var sheet = workbook.createSheet(templateSheetName(type));
                 writeHeaders(sheet, headers(type));
             }
             workbook.write(output);
@@ -30,6 +30,17 @@ final class ImportTemplateWorkbookService {
             case PRODUCT -> List.of("产品分类", "物料类型", "客户料号", "产品编号（不用写）", "品牌", "系列", "物料颜色", "锁体类型", "联网方式", "销售渠道", "运营主体", "语言", "编码后缀", "型号（系列号+第几代）", "物料规格（不用写，会自动生成）", "产品配置", "销售最小起订量", "供应商名称", "供应商含税价", "实际库存数量", "已锁定数量", "在途数量", "库存备注");
             case ORDER -> List.of("客户编码", "外部订单号", "订单日期", "订单类型", "产品编号", "客户料号", "型号", "数量", "含税单价", "收货地址", "收货联系人", "收货联系电话", "发货方式", "订单备注");
             case COST, INVENTORY -> throw new IllegalArgumentException("该导入类型已合并到产品与库存模板");
+        };
+    }
+
+    private String templateSheetName(ImportType type) {
+        return switch (type) {
+            case CUSTOMER -> "客户导入模板";
+            case COST -> "成本导入模板";
+            case INVENTORY -> "库存导入模板";
+            case SUPPLIER -> "供应商导入模板";
+            case PRODUCT -> "产品导入模板";
+            case ORDER -> "销售订单导入模板";
         };
     }
 

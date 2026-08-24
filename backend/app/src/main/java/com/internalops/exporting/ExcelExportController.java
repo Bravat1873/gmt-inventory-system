@@ -22,7 +22,7 @@ public class ExcelExportController {
 
     @GetMapping("/{module}/summary")
     public ResponseEntity<byte[]> summary(@PathVariable String module) {
-        return file(exports.summary(module), module + "-汇总数据.xlsx");
+        return file(exports.summary(module), exports.summaryFilename(module));
     }
 
     @GetMapping("/{module}/document")

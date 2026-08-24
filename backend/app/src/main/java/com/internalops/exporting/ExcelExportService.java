@@ -34,6 +34,14 @@ public class ExcelExportService {
             + "公司名称：珠海吉门第科技有限公司\n"
             + "开户银行：中国银行股份有限公司珠海斗门支行\n"
             + "账号：705570264475";
+    private static final String PURCHASE_NOTICES = "1. 卖方接到订单后，请在24小时内确认，并回传至sha.tian@seagullgroup.cn；\n"
+            + "2. 交期：确认交期，必须严格遵守，否则买方有权取消订单，其蒙受损失由卖方负责赔偿；\n"
+            + "3. 发货提前说明，送货单需随货一起到仓库并发起平台给货；\n"
+            + "4. 交货时内外包装均需贴物料标签，物料标签和送货单上面一定要注明我司订单号、SKU、物料名称、产品规格、送货数量、送货时间等信息，未注明的话仓库无法接收入库。\n"
+            + "5. 货物需整齐码放在仓库指定栈板上。\n"
+            + "6. 珠海厂区17:00之后不能进入，送货时请规划好时间，\n"
+            + "7. 货款结算方式：整勾全执行；\n"
+            + "8. 此采购订单作为采购合同的附件。";
     private final WorkbenchQueryService workbench;
     private final SalesOrderCommandService salesOrders;
     private final ProcurementWorkflowService procurement;
@@ -57,6 +65,17 @@ public class ExcelExportService {
             case "purchase" -> purchaseSummaryWorkbook();
             case "product", "inventory" -> productInventorySummaryWorkbook();
             case "finance" -> financeSummaryWorkbook();
+            default -> throw new IllegalArgumentException("该模块不支持 Excel 导出");
+        };
+    }
+
+    public String summaryFilename(String module) {
+        return switch (module) {
+            case "order" -> "销售订单汇总数据.xlsx";
+            case "afterSales" -> "售后服务汇总数据.xlsx";
+            case "purchase" -> "采购订单汇总数据.xlsx";
+            case "product", "inventory" -> "产品库存汇总数据.xlsx";
+            case "finance" -> "财务汇总数据.xlsx";
             default -> throw new IllegalArgumentException("该模块不支持 Excel 导出");
         };
     }
@@ -245,9 +264,34 @@ public class ExcelExportService {
                     """, shipmentId, id);
             return "销售出库单-订单号" + string(row.get("order_no"))
                     + "-出库单号" + string(row.get("shipment_no"))
-                    + "-" + string(row.get("customer_name")) + ".xlsx";
+                    + "-" + filenamePart(string(row.get("customer_name"))) + ".xlsx";
         }
-        return module + "-单据-" + id + ".xlsx";
+        return switch (module) {
+            case "order" -> salesDocumentFilename(salesOrders.get(id));
+            case "purchase" -> purchaseDocumentFilename(procurement.purchase(id));
+            case "afterSales" -> afterSalesDocumentFilename(afterSales.get(id));
+            default -> throw new IllegalArgumentException("该模块不支持单据导出");
+        };
+    }
+
+    private String salesDocumentFilename(Map<String, Object> record) {
+        return "销售订单-订单号" + string(record.get("orderNo"))
+                + "-" + filenamePart(string(record.get("customerName"))) + ".xlsx";
+    }
+
+    private String purchaseDocumentFilename(Map<String, Object> record) {
+        return "采购订单-采购单号" + string(record.get("purchaseNo"))
+                + "-" + filenamePart(string(record.get("supplierName"))) + ".xlsx";
+    }
+
+    private String afterSalesDocumentFilename(Map<String, Object> record) {
+        return "售后服务单-售后单号" + string(record.get("afterSalesNo"))
+                + "-" + filenamePart(string(record.get("customerName"))) + ".xlsx";
+    }
+
+    private String filenamePart(String value) {
+        String normalized = value.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+        return normalized.isEmpty() ? "未命名" : normalized;
     }
 
     private byte[] shipmentDocument(long orderId, long shipmentId) {
@@ -522,7 +566,8 @@ public class ExcelExportService {
             int totalRow = row; mergedRow(sheet,totalRow,0,8,"采购备注：" + string(record.get("remark")),cell,26);
             setFormula(sheet,totalRow,9,"SUM(J11:J" + totalRow + ")",amount); set(sheet,totalRow,10,"合计金额",header); set(sheet,totalRow,11,"",cell);
             sheet.createRow(totalRow + 1).setHeightInPoints(8); int noteRow = totalRow + 2;
-            mergedRow(sheet,noteRow,0,11,"注意事项：供应商确认交期、随货文件与到货要求。",cell,38);
+            mergedRow(sheet,noteRow,0,2,"注意事项",header,150);
+            mergedRow(sheet,noteRow,3,11,PURCHASE_NOTICES,cell,150);
             int approvalRow = noteRow + 2; for (String label : List.of("采购确认", "供应商确认")) { approvalBlock(sheet, approvalRow, label, 11, 8, 9, cell, header); approvalRow += 2; }
             sheet.setFitToPage(true); sheet.getPrintSetup().setLandscape(true); workbook.setForceFormulaRecalculation(true); workbook.write(output); return output.toByteArray();
         } catch (IOException exception) { throw new IllegalStateException("采购订单单据模板生成失败", exception); }

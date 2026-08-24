@@ -3,6 +3,8 @@ package com.internalops.importing;
 import com.internalops.api.ApiResponse;
 import com.internalops.auth.CurrentUser;
 import com.internalops.auth.UserRole;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
@@ -76,9 +78,14 @@ public class ImportController {
     public ResponseEntity<byte[]> errors(@PathVariable long batchId) {
         authorizedBatch(batchId);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=import-errors-" + batchId + ".xlsx")
+                .header(HttpHeaders.CONTENT_DISPOSITION, attachmentFilename("导入错误明细-批次" + batchId + ".xlsx"))
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(errorWorkbookService.create(batchId));
+    }
+
+    private String attachmentFilename(String filename) {
+        return "attachment; filename*=UTF-8''"
+                + URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
