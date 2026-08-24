@@ -151,14 +151,28 @@ it('shows finance direction dot in the business type cell and the matching autom
   expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(true)
 })
 
-it('shows payment and receipt actions independently for an unfinished purchase', async () => {
+  it('shows payment and receipt actions independently for an unfinished purchase', async () => {
   loadModule.mockResolvedValue({ items: [{ id: 1, recordType: 'PURCHASE', status: 'EXECUTING', outstandingAmount: 75, remainingQuantity: 6 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
   await flushPromises()
 
   expect(wrapper.find('[data-test="purchase-payment"]').exists()).toBe(true)
-  expect(wrapper.find('[data-test="purchase-receipt"]').exists()).toBe(true)
-})
+    expect(wrapper.find('[data-test="purchase-receipt"]').exists()).toBe(true)
+  })
+
+  it('keeps the header edit action available for a partially paid system purchase', async () => {
+    loadModule.mockResolvedValue({ items: [{
+      id: 1,
+      recordType: 'PURCHASE',
+      manualEntry: false,
+      paidAmount: 30,
+      receivedQuantity: 0
+    }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+    const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
+    await flushPromises()
+
+    expect(wrapper.get('.row-actions-content').text()).toContain('修改')
+  })
 
 it('reserves enough sticky action-column width for every purchase action', async () => {
   loadModule.mockResolvedValue({ items: [{ id: 1, recordType: 'PURCHASE', outstandingAmount: 75, remainingQuantity: 6 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
@@ -166,7 +180,7 @@ it('reserves enough sticky action-column width for every purchase action', async
   await flushPromises()
 
   const columns = wrapper.findAll('col')
-  expect(columns.at(-1)?.attributes('style')).toContain('width: 420px')
+    expect(columns.at(-1)?.attributes('style')).toContain('width: 500px')
   expect(wrapper.get('.row-actions-content').text()).toContain('导出单据')
   expect(wrapper.get('.row-actions-content').text()).toContain('登记付款')
   expect(wrapper.get('.row-actions-content').text()).toContain('登记收货')

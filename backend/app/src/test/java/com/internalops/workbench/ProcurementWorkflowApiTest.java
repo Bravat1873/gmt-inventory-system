@@ -168,6 +168,24 @@ class ProcurementWorkflowApiTest {
     }
 
     @Test
+    void allowsPurchaseHeaderDetailsToBeUpdatedAfterPartialPayment() throws Exception {
+        Cookie session = login();
+        long purchaseId = createManualPurchase(session, 10);
+        mvc.perform(post("/api/procurement/purchases/{id}/payment", purchaseId).cookie(session)
+                        .contentType("application/json").content("{\"amount\":30.00}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(patch("/api/procurement/purchases/{id}/header", purchaseId).cookie(session)
+                        .contentType("application/json")
+                        .content("{\"expectedArrivalDate\":\"2026-09-30\",\"deliveryAddress\":\"珠海市香洲区示例交货地址\",\"remark\":\"交期已确认\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForMap("SELECT expected_arrival_date,delivery_address,purchase_remark FROM purchase_order WHERE id=?", purchaseId))
+                .containsEntry("delivery_address", "珠海市香洲区示例交货地址")
+                .containsEntry("purchase_remark", "交期已确认");
+    }
+
+    @Test
     void rejectsPaymentThatExceedsOutstandingAmount() throws Exception {
         Cookie session = login();
         long purchaseId = createManualPurchase(session, 10);

@@ -505,7 +505,7 @@ public class WorkbenchQueryService {
                 sorts("id", "b.id", "productCode", "s.product_code", "customerPartNumber", "s.customer_part_number", "model", "s.model", "productType", "s.product_type", "unit", "s.unit", "actualQuantity", "b.actual_quantity", "availableQuantity", "(b.actual_quantity-b.locked_quantity)", "oldestStockDate", "(SELECT MIN(tx.operated_at) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.actual_delta>0)", "inventoryAgeDays", "DATEDIFF(CURRENT_DATE,(SELECT MIN(tx.operated_at) FROM inventory_transaction tx WHERE tx.warehouse_id=b.warehouse_id AND tx.sku_id=b.sku_id AND tx.actual_delta>0))", "lockedQuantity", "b.locked_quantity", "inTransitQuantity", "b.in_transit_quantity", "pendingDeliveryQuantity", "(SELECT COALESCE(SUM(GREATEST(i.quantity-i.shipped_quantity,0)),0) FROM sales_order_item i JOIN sales_order o2 ON o2.id=i.sales_order_id WHERE o2.status<>'CANCELLED' AND i.sku_id=b.sku_id)", "supplyDemandSurplus", "b.actual_quantity+b.in_transit_quantity-(SELECT COALESCE(SUM(GREATEST(i.quantity-i.shipped_quantity,0)),0) FROM sales_order_item i JOIN sales_order o2 ON o2.id=i.sales_order_id WHERE o2.status<>'CANCELLED' AND i.sku_id=b.sku_id)", "sourceSupplierName", "b.source_supplier_name", "updatedAt", "b.updated_at"),
                 "b.updated_at", "b.id DESC"));
         String purchaseView = "FROM ("
-                + "SELECT po.id, 'PURCHASE' AS record_type, po.purchase_no, po.supplier_id, sp.supplier_name, "
+                + "SELECT po.id, 'PURCHASE' AS record_type, po.purchase_no, po.supplier_id, po.manual_entry, sp.supplier_name, "
                 + "GROUP_CONCAT(poi.sku_id ORDER BY poi.line_no SEPARATOR ', ') AS product_ids, "
                 + "GROUP_CONCAT(COALESCE(NULLIF(s.product_name,''), '未命名产品') ORDER BY poi.line_no SEPARATOR '；') AS product_summary, "
                 + "po.status, po.total_amount, "
@@ -514,9 +514,9 @@ public class WorkbenchQueryService {
                 + "po.expected_arrival_date, po.delivery_address, po.created_at, po.updated_at, po.version "
                 + "FROM purchase_order po JOIN supplier sp ON sp.id=po.supplier_id "
                 + "LEFT JOIN purchase_order_item poi ON poi.purchase_order_id=po.id LEFT JOIN sku s ON s.id=poi.sku_id "
-                + "GROUP BY po.id,po.purchase_no,po.supplier_id,sp.supplier_name,po.status,po.total_amount,po.expected_arrival_date,po.delivery_address,po.created_at,po.updated_at,po.version "
+                + "GROUP BY po.id,po.purchase_no,po.supplier_id,po.manual_entry,sp.supplier_name,po.status,po.total_amount,po.expected_arrival_date,po.delivery_address,po.created_at,po.updated_at,po.version "
                 + "UNION ALL "
-                + "SELECT ps.id, 'SUGGESTION', ps.suggestion_no, psi.supplier_id, sp.supplier_name, "
+                + "SELECT ps.id, 'SUGGESTION', ps.suggestion_no, psi.supplier_id, NULL, sp.supplier_name, "
                 + "GROUP_CONCAT(psi.sku_id ORDER BY psi.id SEPARATOR ', '), "
                 + "GROUP_CONCAT(COALESCE(NULLIF(s.product_name,''), '未命名产品') ORDER BY psi.id SEPARATOR '；'), "
                 + "ps.status, SUM(psi.suggested_quantity*psi.purchase_price), 0, SUM(psi.suggested_quantity), 0, MAX(psi.expected_arrival_date), NULL, ps.created_at, ps.updated_at, ps.version "
@@ -525,7 +525,7 @@ public class WorkbenchQueryService {
                 + "WHERE ps.status='DRAFT' "
                 + "GROUP BY ps.id,ps.suggestion_no,psi.supplier_id,sp.supplier_name,ps.status,ps.created_at,ps.updated_at,ps.version) p";
         modules.put("purchase", new ModuleSpec(
-                "SELECT p.id, p.record_type AS `recordType`, p.purchase_no AS `purchaseNo`, "
+                  "SELECT p.id, p.record_type AS `recordType`, p.purchase_no AS `purchaseNo`, p.manual_entry AS `manualEntry`, "
                         + "p.supplier_name AS `supplierName`, p.product_summary AS `productSummary`, p.status, p.total_amount AS `totalAmount`, "
                         + "p.paid_amount AS `paidAmount`, GREATEST(p.total_amount-p.paid_amount,0) AS `outstandingAmount`, "
                         + "CASE WHEN p.paid_amount<=0 THEN 'UNPAID' WHEN p.paid_amount>=p.total_amount THEN 'PAID' ELSE 'PARTIALLY_PAID' END AS `paymentStatus`, "

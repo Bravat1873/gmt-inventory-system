@@ -506,11 +506,6 @@ public class ProcurementWorkflowService {
     @Transactional
     public Map<String, Object> updatePurchaseHeader(long purchaseId, PurchaseHeaderUpdateRequest request) {
         Map<String, Object> purchase = jdbc.queryForMap("SELECT purchase_no,status FROM purchase_order WHERE id=? FOR UPDATE", purchaseId);
-        if (jdbc.queryForObject("SELECT COUNT(*) FROM supplier_payment WHERE purchase_order_id=?", Integer.class, purchaseId) > 0)
-            throw new IllegalStateException("已登记付款的采购单不能修改");
-        if (jdbc.queryForObject("SELECT COUNT(*) FROM goods_receipt WHERE purchase_order_id=?", Integer.class, purchaseId) > 0)
-            throw new IllegalStateException("已登记收货的采购单不能修改");
-
         jdbc.update("""
                 UPDATE purchase_order
                 SET expected_arrival_date=?,delivery_address=?,purchase_remark=?,version=version+1
