@@ -1,6 +1,8 @@
 package com.internalops.workbench;
 
 import com.internalops.auth.CurrentUser;
+import com.internalops.numbering.DocumentNumberService;
+import com.internalops.numbering.DocumentType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -9,23 +11,23 @@ import org.springframework.transaction.annotation.Transactional;
 import java.sql.PreparedStatement;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 
 /** Applies only the delta between the previous and requested cumulative shipment quantity. */
 @Service
 public class ShipmentQuantityService {
     private final JdbcTemplate jdbc;
     private final InventoryAllocationService allocation;
+    private final DocumentNumberService documentNumbers;
 
-    public ShipmentQuantityService(JdbcTemplate jdbc, InventoryAllocationService allocation) {
+    public ShipmentQuantityService(JdbcTemplate jdbc, InventoryAllocationService allocation, DocumentNumberService documentNumbers) {
         this.jdbc = jdbc;
         this.allocation = allocation;
+        this.documentNumbers = documentNumbers;
     }
 
     @Transactional
@@ -117,8 +119,7 @@ public class ShipmentQuantityService {
     }
 
     private long insertShipment(long orderId, String deliveryAddress, String operatorName, String remark) {
-        String shipmentNo = "SH" + LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
-                + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        String shipmentNo = documentNumbers.next(DocumentType.SALES_OUTBOUND, LocalDate.now());
         GeneratedKeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(

@@ -174,7 +174,7 @@ class ExcelExportServiceTest {
     void shipmentDocumentUsesTheSelectedShipmentBatchAndOutboundTemplate() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(argThat(sql -> sql.contains("FROM sales_shipment shipment")), eq(22L), eq(9L))).thenReturn(List.of(Map.of(
-                "shipment_no", "SH20260821001", "delivery_address", "珠海市香洲区收货地址", "operator_name", "田莎",
+                "shipment_no", "CK20260800001", "delivery_address", "珠海市香洲区收货地址", "operator_name", "田莎",
                 "shipped_at", "2026-08-21 10:30:00", "remark", "分批送货", "order_no", "DD20260800009",
                 "delivery_contact", "张三", "delivery_phone", "13800000000", "customer_name", "示例客户"
         )));
@@ -187,8 +187,8 @@ class ExcelExportServiceTest {
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.document("order", 9L, "shipment", 22L)))) {
             var sheet = workbook.getSheet("销售出库单");
             assertEquals("销售出库单", sheet.getRow(1).getCell(0).getStringCellValue());
-            assertEquals("订单编号：DD20260800009", sheet.getRow(2).getCell(0).getStringCellValue());
-            assertEquals("出库单号：SH20260821001", sheet.getRow(3).getCell(4).getStringCellValue());
+            assertEquals("关联订单号：DD20260800009", sheet.getRow(2).getCell(0).getStringCellValue());
+            assertEquals("销售出库单号：CK20260800001", sheet.getRow(3).getCell(4).getStringCellValue());
             assertEquals("收货地址：珠海市香洲区收货地址", sheet.getRow(4).getCell(4).getStringCellValue());
             assertEquals("产品分类", sheet.getRow(5).getCell(2).getStringCellValue());
             assertEquals("SKU-001", sheet.getRow(6).getCell(1).getStringCellValue());

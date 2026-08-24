@@ -1,5 +1,6 @@
 package com.internalops.workbench;
 
+import com.internalops.numbering.DocumentNumberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -25,7 +26,7 @@ class ShipmentQuantityServiceTest {
         when(jdbc.queryForMap(startsWith("SELECT id,actual_quantity"), eq(1L), eq(9L))).thenReturn(Map.of(
                 "id", 71L, "actual_quantity", 2, "locked_quantity", 2, "in_transit_quantity", 0
         ));
-        ShipmentQuantityService service = new ShipmentQuantityService(jdbc, mock(InventoryAllocationService.class));
+        ShipmentQuantityService service = new ShipmentQuantityService(jdbc, mock(InventoryAllocationService.class), mock(DocumentNumberService.class));
 
         Throwable failure = catchThrowable(() -> service.update(1L, new ShipmentQuantityRequest("测试地址", null, List.of(new ShipmentQuantityRequest.Item(10000, 3)))));
 

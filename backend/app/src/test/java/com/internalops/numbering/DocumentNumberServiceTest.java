@@ -32,6 +32,7 @@ class DocumentNumberServiceTest {
         assertThat(service.next(DocumentType.AFTER_SALES, august)).isEqualTo("SH20260800001");
         assertThat(service.next(DocumentType.PROCUREMENT_REVIEW, august)).isEqualTo("QR20260800001");
         assertThat(service.next(DocumentType.PURCHASE_ORDER, august)).isEqualTo("CG20260800001");
+        assertThat(service.next(DocumentType.SALES_OUTBOUND, august)).isEqualTo("CK20260800001");
         assertThat(service.next(DocumentType.SALES_ORDER, LocalDate.of(2026, 9, 1)))
                 .isEqualTo("DD20260900001");
     }

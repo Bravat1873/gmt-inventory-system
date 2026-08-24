@@ -13,7 +13,7 @@ function date(value?: string) { return value ? value.replace('T', ' ').slice(0, 
         <button type="button" class="export-option" @click="emit('export', 'sales')"><strong>销售订单</strong><span>导出完整销售订单单据</span></button>
         <p v-if="!shipments.length" class="empty-state">当前订单尚无发货记录，发货后可导出对应批次的销售出库单。</p>
         <button v-for="shipment in shipments" :key="shipment.id" type="button" class="export-option" @click="emit('export', 'shipment', shipment.id)">
-          <strong>销售出库单</strong><span>{{ shipment.shipmentNo || '发货批次' }} · {{ date(shipment.shippedAt) }} · {{ shipment.totalQuantity ?? 0 }} 件</span>
+          <strong>销售出库单</strong><span>关联订单 {{ orderNo }} · 出库单号 {{ shipment.shipmentNo || '待生成' }} · {{ date(shipment.shippedAt) }} · {{ shipment.totalQuantity ?? 0 }} 件</span>
         </button>
       </div>
     </section>

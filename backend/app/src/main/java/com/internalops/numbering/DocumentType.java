@@ -1,7 +1,7 @@
 package com.internalops.numbering;
 
 public enum DocumentType {
-    SALES_ORDER("DD"), AFTER_SALES("SH"), PROCUREMENT_REVIEW("QR"), PURCHASE_ORDER("CG");
+    SALES_ORDER("DD"), SALES_OUTBOUND("CK"), AFTER_SALES("SH"), PROCUREMENT_REVIEW("QR"), PURCHASE_ORDER("CG");
 
     private final String prefix;
 

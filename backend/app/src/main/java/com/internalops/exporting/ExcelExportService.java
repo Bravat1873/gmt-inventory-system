@@ -237,13 +237,15 @@ public class ExcelExportService {
     public String documentFilename(String module, long id, String type, Long shipmentId) {
         if ("order".equals(module) && "shipment".equals(type) && shipmentId != null) {
             Map<String, Object> row = jdbc.queryForMap("""
-                    SELECT shipment.shipment_no,customer.customer_name
+                    SELECT shipment.shipment_no,orders.order_no,customer.customer_name
                     FROM sales_shipment shipment
                     JOIN sales_order orders ON orders.id=shipment.sales_order_id
                     JOIN customer ON customer.id=orders.customer_id
                     WHERE shipment.id=? AND shipment.sales_order_id=?
                     """, shipmentId, id);
-            return "销售出库单-" + string(row.get("shipment_no")) + "-" + string(row.get("customer_name")) + ".xlsx";
+            return "销售出库单-订单号" + string(row.get("order_no"))
+                    + "-出库单号" + string(row.get("shipment_no"))
+                    + "-" + string(row.get("customer_name")) + ".xlsx";
         }
         return module + "-单据-" + id + ".xlsx";
     }
@@ -280,10 +282,10 @@ public class ExcelExportService {
             for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
             mergedRow(sheet, 0, 0, 7, "珠海吉门第科技有限公司", title, 28);
             mergedRow(sheet, 1, 0, 7, "销售出库单", title, 28);
-            mergedRow(sheet, 2, 0, 3, "订单编号：" + string(header.get("order_no")), cell, 24);
+            mergedRow(sheet, 2, 0, 3, "关联订单号：" + string(header.get("order_no")), cell, 24);
             mergedRow(sheet, 2, 4, 7, "发货日期：" + string(header.get("shipped_at")), cell, 24);
             mergedRow(sheet, 3, 0, 3, "客户名称：" + string(header.get("customer_name")), cell, 24);
-            mergedRow(sheet, 3, 4, 7, "出库单号：" + string(header.get("shipment_no")), cell, 24);
+            mergedRow(sheet, 3, 4, 7, "销售出库单号：" + string(header.get("shipment_no")), cell, 24);
             String contact = firstNonBlank(string(header.get("delivery_contact")), "");
             String phone = firstNonBlank(string(header.get("delivery_phone")), "");
             mergedRow(sheet, 4, 0, 3, "客户联系人：" + (contact.isBlank() && phone.isBlank() ? "" : contact + " " + phone), cell, 40);
