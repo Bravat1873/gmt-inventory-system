@@ -124,8 +124,9 @@ it.each(['order', 'finance'] as const)('emits the original %s row from its invoi
 })
 
 it('emits invoices for actual purchases but not purchase suggestions', async () => {
+  const purchaseRow = markRaw({ id: 1, recordType: 'PURCHASE' })
   loadModule.mockResolvedValue({ items: [
-    { id: 1, recordType: 'PURCHASE' },
+    purchaseRow,
     { id: 2, recordType: 'SUGGESTION' }
   ], total: 2, page: 1, pageSize: 10, totalPages: 1 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
@@ -133,7 +134,7 @@ it('emits invoices for actual purchases but not purchase suggestions', async () 
 
   expect(wrapper.findAll('[data-test="invoice"]')).toHaveLength(1)
   await wrapper.get('[data-test="invoice"]').trigger('click')
-  expect(wrapper.emitted('invoice')?.[0]?.[0]).toMatchObject({ id: 1, recordType: 'PURCHASE' })
+  expect(wrapper.emitted('invoice')?.[0]?.[0]).toBe(purchaseRow)
 })
 
 it('keeps all finance actions in one horizontal sticky action column', async () => {
