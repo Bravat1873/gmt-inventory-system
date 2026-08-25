@@ -9,6 +9,13 @@ import ProductCodeRulesDialog from './components/ProductCodeRulesDialog.vue'
 const api = vi.hoisted(() => ({
   loadModule: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 }),
   postAction: vi.fn(),
+  loadFinanceRecords: vi.fn(),
+  loadFinanceReviewSummary: vi.fn(),
+  reviewFinanceRecord: vi.fn(),
+  reviewFinanceInvoice: vi.fn(),
+  loadInvoices: vi.fn(),
+  saveInvoice: vi.fn(),
+  deleteInvoice: vi.fn(),
   createManualPurchase: vi.fn(),
   createEntity: vi.fn(), updateEntity: vi.fn(), createOrder: vi.fn(), updateOrder: vi.fn(), getOrder: vi.fn(), reviewOrder: vi.fn(), deleteOrder: vi.fn(),
   loadSupplierOptions: vi.fn().mockResolvedValue([]), loadSupplierProducts: vi.fn().mockResolvedValue([]),
@@ -240,5 +247,66 @@ describe('连续导航和浏览器地址状态', () => {
     expect(wrapper.find('.nav-subitem').exists()).toBe(true)
     await wrapper.get('[data-module="customer"]').trigger('click')
     expect(wrapper.find('.nav-subitem').exists()).toBe(true)
+  })
+
+  it('keeps finance review dialog open after rejecting so the rejection remark remains visible', async () => {
+    api.loadFinanceReviewSummary
+      .mockResolvedValueOnce({ confirmedMoneyAmount: 0, confirmedInvoiceAmount: 0, differenceAmount: 0, moneyRecords: [{ id: 81, amount: 200, reviewStatus: 'PENDING', paymentMethod: '银行转账', occurredAt: '2026-08-25T10:00:00' }], invoiceRecords: [] })
+      .mockResolvedValueOnce({ confirmedMoneyAmount: 0, confirmedInvoiceAmount: 0, differenceAmount: 0, moneyRecords: [{ id: 81, amount: 200, reviewStatus: 'REJECTED', paymentMethod: '银行转账', occurredAt: '2026-08-25T10:00:00', reviewRemark: '资料不完整' }], invoiceRecords: [] })
+    api.reviewFinanceRecord.mockResolvedValue({ id: 81, reviewStatus: 'REJECTED' })
+    const wrapper = mount(App)
+    await flushPromises()
+
+    wrapper.getComponent(ModuleListPage).vm.$emit('financeReview', { id: 10, cashDirection: 'PAYABLE' })
+    await flushPromises()
+    await wrapper.get('.review-remark textarea').setValue('资料不完整')
+    await wrapper.get('[data-test="money-reject-81"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findComponent((await import('./components/FinanceReviewDialog.vue')).default).exists()).toBe(true)
+    expect(wrapper.text()).toContain('已驳回')
+    expect(wrapper.text()).toContain('资料不完整')
+  })
+
+  it('does not show unsaved confirmation when closing invoice dialog after saving', async () => {
+    api.loadInvoices.mockResolvedValue([])
+    api.saveInvoice.mockResolvedValue({ id: 91, invoiceNo: 'FP-91' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const wrapper = mount(App, { attachTo: host })
+    await flushPromises()
+
+    wrapper.getComponent(ModuleListPage).vm.$emit('invoice', { id: 10, cashDirection: 'RECEIVABLE' })
+    await flushPromises()
+    await wrapper.get('[data-test="invoice-no"]').setValue('FP-91')
+    await wrapper.get('form.invoice-form').trigger('submit.prevent')
+    await flushPromises()
+    await wrapper.get('.invoice-dialog .dialog-close').trigger('click')
+
+    expect(confirm).not.toHaveBeenCalled()
+    wrapper.unmount()
+    host.remove()
+    confirm.mockRestore()
+  })
+
+  it('does not show unsaved confirmation when closing invoice dialog after clearing the form', async () => {
+    api.loadInvoices.mockResolvedValue([])
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const wrapper = mount(App, { attachTo: host })
+    await flushPromises()
+
+    wrapper.getComponent(ModuleListPage).vm.$emit('invoice', { id: 10, cashDirection: 'RECEIVABLE' })
+    await flushPromises()
+    await wrapper.get('[data-test="invoice-no"]').setValue('FP-92')
+    await wrapper.get('.invoice-form footer button[type="button"]').trigger('click')
+    await wrapper.get('.invoice-dialog .dialog-close').trigger('click')
+
+    expect(confirm).not.toHaveBeenCalled()
+    wrapper.unmount()
+    host.remove()
+    confirm.mockRestore()
   })
 })

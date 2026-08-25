@@ -197,9 +197,15 @@ export function deleteOrder(id: number) {
   return request<void>(`/api/orders/${id}`, { method: 'DELETE' })
 }
 export interface ShipmentQuantityItem { lineNo: number; shippedQuantity: number }
-export function updateShipmentQuantities(orderId: number, deliveryAddress: string, items: ShipmentQuantityItem[], remark?: string) {
+export interface ShipmentLogisticsInput { logisticsCompany?: string; logisticsNo?: string; logisticsRemark?: string }
+export function updateShipmentQuantities(orderId: number, deliveryAddress: string, items: ShipmentQuantityItem[], remark?: string, logistics?: ShipmentLogisticsInput) {
   return request<Record<string, unknown>>(`/api/orders/${orderId}/shipment-quantities`, {
-    method: 'PUT', body: JSON.stringify({ deliveryAddress, items, ...(remark === undefined ? {} : { remark }) })
+    method: 'PUT', body: JSON.stringify({ deliveryAddress, items, ...(remark === undefined ? {} : { remark }), ...logistics })
+  })
+}
+export function updateShipmentLogistics(orderId: number, shipmentId: number, logistics: ShipmentLogisticsInput) {
+  return request<Record<string, unknown>>(`/api/orders/${orderId}/shipments/${shipmentId}/logistics`, {
+    method: 'PUT', body: JSON.stringify(logistics)
   })
 }
 export function postAction<T = Record<string, unknown>>(path: string, data: Record<string, unknown> = {}) {
@@ -346,6 +352,75 @@ export function payPurchaseByNumber(purchaseNo: string, data: PurchasePaymentDat
     `/api/procurement/purchases/by-number/${encodeURIComponent(purchaseNo)}/payment`,
     { method: 'POST', body: JSON.stringify(data) }
   )
+}
+
+export interface FinanceRecord {
+  id: number
+  amount: number
+  confirmedAmount?: number | null
+  paymentMethod?: string
+  paymentRemark?: string
+  occurredAt?: string
+  reviewStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null
+  reviewRemark?: string
+  reviewedAt?: string
+}
+
+export interface InvoiceData {
+  id?: number
+  invoiceNo: string
+  confirmedInvoiceNo?: string | null
+  invoiceDate?: string
+  taxInclusiveAmount?: number
+  confirmedAmount?: number | null
+  remark?: string
+  reviewStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null
+  reviewRemark?: string | null
+  reviewedAt?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface FinanceReviewSummary {
+  confirmedMoneyAmount: number
+  pendingMoneyCount?: number
+  moneyRecords: FinanceRecord[]
+  confirmedInvoiceAmount: number
+  pendingInvoiceCount?: number
+  invoiceRecords: InvoiceData[]
+  differenceAmount: number
+}
+
+export function loadFinanceRecords(type: 'SALES' | 'PURCHASE', id: number) {
+  return request<FinanceRecord[]>(`/api/finance/orders/${type}/${id}/records`)
+}
+
+export function loadFinanceReviewSummary(type: 'SALES' | 'PURCHASE', id: number) {
+  return request<FinanceReviewSummary>(`/api/finance/orders/${type}/${id}/review-summary`)
+}
+
+export function reviewFinanceRecord(kind: 'receipts' | 'payments', id: number, approved: boolean, reviewRemark?: string, confirmedAmount?: number) {
+  return request<Record<string, unknown>>(`/api/finance/orders/${kind}/${id}/review`, {
+    method: 'POST', body: JSON.stringify({ approved, confirmedAmount, reviewRemark: reviewRemark || undefined })
+  })
+}
+
+export function reviewFinanceInvoice(id: number, approved: boolean, data: { confirmedAmount?: number; confirmedInvoiceNo?: string; reviewRemark?: string }) {
+  return request<Record<string, unknown>>(`/api/finance/orders/invoices/${id}/review`, {
+    method: 'POST', body: JSON.stringify({ approved, ...data })
+  })
+}
+
+export function loadInvoices(type: 'SALES' | 'PURCHASE', id: number) {
+  return request<InvoiceData[]>(`/api/finance/orders/${type}/${id}/invoices`)
+}
+
+export function saveInvoice(type: 'SALES' | 'PURCHASE', id: number, invoice: InvoiceData) {
+  return request<InvoiceData>(`/api/finance/orders/${type}/${id}/invoices`, { method: 'POST', body: JSON.stringify(invoice) })
+}
+
+export function deleteInvoice(type: 'SALES' | 'PURCHASE', id: number, invoiceId: number) {
+  return request<void>(`/api/finance/orders/${type}/${id}/invoices/${invoiceId}`, { method: 'DELETE' })
 }
 
 export interface PurchaseReceiptItem {

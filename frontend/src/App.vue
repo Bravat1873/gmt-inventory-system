@@ -15,6 +15,8 @@ import PaymentDialog from './components/PaymentDialog.vue'
 import PurchaseReceiptDialog from './components/PurchaseReceiptDialog.vue'
 import ProcurementReviewDialog from './components/ProcurementReviewDialog.vue'
 import ReceiptDialog from './components/ReceiptDialog.vue'
+import FinanceReviewDialog from './components/FinanceReviewDialog.vue'
+import InvoiceDialog from './components/InvoiceDialog.vue'
 import ShipmentQuantityDialog from './components/ShipmentQuantityDialog.vue'
 import OrderDocumentExportDialog from './components/OrderDocumentExportDialog.vue'
 import OrderAllocationDialog from './components/OrderAllocationDialog.vue'
@@ -49,6 +51,8 @@ const purchaseReceiptOrder = ref<PurchaseDetail>()
 const procurementReviewId = ref<number>()
 const receiptOpen = ref(false)
 const receiptRow = ref<Record<string, unknown>>()
+const financeReviewRow = ref<Record<string, unknown>>()
+const invoiceRow = ref<Record<string, unknown>>()
 const traceOpen = ref(false)
 const businessTrace = ref<BusinessTrace | null>(null)
 const productGalleryRow = ref<Record<string, unknown>>()
@@ -106,6 +110,8 @@ function selectModule(key: ModuleKey) {
   purchaseReceiptOrder.value = undefined
   procurementReviewId.value = undefined
   receiptOpen.value = false
+  financeReviewRow.value = undefined
+  invoiceRow.value = undefined
   allocationOpen.value = false
   orderAllocation.value = undefined
   traceOpen.value = false
@@ -198,7 +204,7 @@ async function openTrace(type: 'order' | 'purchase', id: number) {
 
 async function details(row: Record<string, unknown>) {
   const type = activeModule.value === 'finance'
-    ? (row.businessType === '閲囪喘璁㈠崟' ? 'purchase' : 'order')
+    ? (String(row.cashDirection) === 'PAYABLE' ? 'purchase' : 'order')
     : activeModule.value as 'order' | 'purchase'
   await openTrace(type, Number(row.id))
 }
@@ -222,6 +228,18 @@ async function receipt(row: Record<string, unknown>) {
 function payment(row: Record<string, unknown>) {
   paymentRow.value = row
   paymentOpen.value = true
+}
+
+function financeType(row: Record<string, unknown>): 'SALES' | 'PURCHASE' {
+  return String(row.cashDirection) === 'PAYABLE' ? 'PURCHASE' : 'SALES'
+}
+
+function openFinanceReview(row: Record<string, unknown>) {
+  financeReviewRow.value = row
+}
+
+function openInvoice(row: Record<string, unknown>) {
+  invoiceRow.value = row
 }
 
 async function purchaseReceipt(row: Record<string, unknown>) {
@@ -331,7 +349,7 @@ async function saved(closeDialog = true) {
     </aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><DashboardPage v-if="activeModule === 'dashboard'" @navigate="navigateFromDashboard" /><ProductCodeRulesDialog v-else-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @import="openImport" @export-document="exportDocument" @export-summary="exportSummary" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @review-order="reviewOrderRow" @delete-order="deleteOrderRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
+    <main><div class="content"><DashboardPage v-if="activeModule === 'dashboard'" @navigate="navigateFromDashboard" /><ProductCodeRulesDialog v-else-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :current-user-role="user.role" @action="primary" @import="openImport" @export-document="exportDocument" @export-summary="exportSummary" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @finance-review="openFinanceReview" @invoice="openInvoice" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @review-order="reviewOrderRow" @delete-order="deleteOrderRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
     <div v-if="importOpen && currentModule.importType && canUseCurrentModuleImport" class="dialog-mask import-dialog-mask"><ImportPanel :type="currentModule.importType" :title="currentModule.importActionLabel ?? currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <CustomerDialog v-if="entityOpen && activeModule === 'customer'" :row="editRow" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
@@ -343,6 +361,8 @@ async function saved(closeDialog = true) {
     <PurchaseReceiptDialog v-if="purchaseReceiptOpen && purchaseReceiptOrder" :purchase="purchaseReceiptOrder" @close="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined" @saved="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined; saved()" @message="showMessage" />
     <ProcurementReviewDialog v-if="procurementReviewId" :suggestion-id="procurementReviewId" @close="procurementReviewId=undefined" @saved="procurementReviewId=undefined; list?.reload()" @message="showMessage" />
     <ReceiptDialog v-if="receiptOpen && receiptRow" :order="receiptRow" @close="receiptOpen=false" @saved="receiptOpen=false; saved()" @message="showMessage" />
+    <FinanceReviewDialog v-if="financeReviewRow" :type="financeType(financeReviewRow)" :business-id="Number(financeReviewRow.id)" @close="financeReviewRow=undefined" @saved="saved(false)" @message="showMessage" />
+    <InvoiceDialog v-if="invoiceRow" :type="financeType(invoiceRow)" :business-id="Number(invoiceRow.id)" @close="invoiceRow=undefined" @saved="saved" @message="showMessage" />
     <OrderAllocationDialog v-if="allocationOpen && orderAllocation" :allocation="orderAllocation" @close="allocationOpen=false; orderAllocation=undefined" @saved="allocationOpen=false; orderAllocation=undefined; list?.reload()" @message="showMessage" />
     <ShipmentQuantityDialog v-if="shipmentOpen && shipmentOrder" :order="shipmentOrder" @close="shipmentOpen=false" @saved="shipmentOpen=false; list?.reload()" @message="showMessage" />
     <OrderDocumentExportDialog v-if="documentExportOrder" :order-no="String(documentExportOrder.orderNo ?? '')" :shipments="documentExportShipments" @close="documentExportOrder=undefined" @export="exportOrderDocument" />
