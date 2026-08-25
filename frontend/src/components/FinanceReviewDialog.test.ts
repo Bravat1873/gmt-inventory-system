@@ -66,7 +66,7 @@ it('submits confirmed invoice number and amount', async () => {
   await wrapper.get('[data-test="invoice-approve-21"]').trigger('click')
   await flushPromises()
 
-  expect(reviewFinanceInvoice).toHaveBeenCalledWith(21, true, {
+  expect(reviewFinanceInvoice).toHaveBeenCalledWith('PURCHASE', 21, true, {
     confirmedAmount: 255,
     confirmedInvoiceNo: 'FINAL-1',
     reviewRemark: undefined

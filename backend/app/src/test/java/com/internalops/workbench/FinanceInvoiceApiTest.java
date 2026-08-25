@@ -79,7 +79,7 @@ class FinanceInvoiceApiTest {
 
         Long invoiceId = jdbc.queryForObject("SELECT id FROM purchase_invoice WHERE invoice_no='CG-F-002'", Long.class);
 
-        mvc.perform(post("/api/finance/orders/invoices/{id}/review", invoiceId).cookie(session)
+        mvc.perform(post("/api/finance/orders/PURCHASE/invoices/{id}/review", invoiceId).cookie(session)
                         .contentType("application/json")
                         .content("""
                                 {"approved":true,"confirmedAmount":120.00,"confirmedInvoiceNo":"CG-F-FINAL-002","reviewRemark":"按票面确认"}
@@ -99,6 +99,51 @@ class FinanceInvoiceApiTest {
         assertThat(row.get("tax_inclusive_amount")).isEqualTo(new java.math.BigDecimal("122.00"));
         assertThat(row.get("confirmed_amount")).isEqualTo(new java.math.BigDecimal("120.00"));
         assertThat(row.get("review_status")).isEqualTo("APPROVED");
+    }
+
+    @Test
+    void reviewingPurchaseInvoiceWithSameIdDoesNotChangeSalesInvoice() throws Exception {
+        jdbc.update("""
+                UPDATE sales_invoice
+                SET review_status='PENDING', confirmed_invoice_no=NULL, confirmed_amount=NULL
+                WHERE id=31
+                """);
+        jdbc.update("""
+                INSERT INTO purchase_invoice(id,purchase_order_id,invoice_no,tax_inclusive_amount,review_status,created_by)
+                VALUES(31,20,'CG-F-SAME-ID',55.00,'PENDING',9)
+                """);
+
+        mvc.perform(post("/api/finance/orders/PURCHASE/invoices/{id}/review", 31).cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"approved":true,"confirmedAmount":55.00,"confirmedInvoiceNo":"CG-F-SAME-ID-FINAL"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reviewStatus").value("APPROVED"));
+
+        assertThat(jdbc.queryForObject("SELECT review_status FROM purchase_invoice WHERE id=31", String.class)).isEqualTo("APPROVED");
+        Map<String, Object> salesInvoice = jdbc.queryForMap("SELECT review_status,confirmed_invoice_no,confirmed_amount FROM sales_invoice WHERE id=31");
+        assertThat(salesInvoice.get("review_status")).isEqualTo("PENDING");
+        assertThat(salesInvoice.get("confirmed_invoice_no")).isNull();
+        assertThat(salesInvoice.get("confirmed_amount")).isNull();
+    }
+
+    @Test
+    void savesInvoiceWithoutAmountAndSummaryTreatsAmountAsZero() throws Exception {
+        jdbc.update("DELETE FROM purchase_invoice WHERE purchase_order_id=20");
+
+        mvc.perform(post("/api/finance/orders/PURCHASE/20/invoices").cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"invoiceNo":"CG-F-NO-AMOUNT","remark":"待补金额"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.invoiceNo").value("CG-F-NO-AMOUNT"));
+
+        assertThat(jdbc.queryForObject("SELECT tax_inclusive_amount FROM purchase_invoice WHERE invoice_no='CG-F-NO-AMOUNT'", java.math.BigDecimal.class)).isNull();
+        mvc.perform(get("/api/finance/orders/PURCHASE/20/review-summary").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.confirmedInvoiceAmount").value(0));
     }
 
     @Test

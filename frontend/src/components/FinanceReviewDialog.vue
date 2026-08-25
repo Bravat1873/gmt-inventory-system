@@ -75,7 +75,7 @@ async function reviewInvoice(invoice: InvoiceData, approved: boolean) {
   if (!invoice.id) return
   busy.value = `invoice-${invoice.id}`
   try {
-    await reviewFinanceInvoice(invoice.id, approved, {
+    await reviewFinanceInvoice(props.type, invoice.id, approved, {
       confirmedAmount: numberDraft(invoiceAmountDrafts.value[invoice.id] ?? ''),
       confirmedInvoiceNo: invoiceNoDrafts.value[invoice.id]?.trim() || undefined,
       reviewRemark: remark.value.trim() || undefined

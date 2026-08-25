@@ -83,6 +83,14 @@ public class CustomerFundService {
     }
 
     @Transactional
+    public long creditForOrder(long orderId, BigDecimal amount, String reason) {
+        requirePositive(amount);
+        Map<String,Object> order = one("SELECT customer_id,order_no FROM sales_order WHERE id=? FOR UPDATE", orderId);
+        return post(number(order, "customer_id"), "ORDER_REFUND", "IN", amount, null,
+                "SALES_ORDER", orderId, String.valueOf(order.get("order_no")), null, clean(reason));
+    }
+
+    @Transactional
     public long reverse(long ledgerId, CustomerFundReversalCommand command) {
         requireReviewer();
         if (command == null || blank(command.reason())) throw new IllegalArgumentException("请填写冲正原因");

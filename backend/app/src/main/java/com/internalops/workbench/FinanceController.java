@@ -16,7 +16,7 @@ public class FinanceController {
     @GetMapping("/{type}/{id}/records") public ApiResponse<Object> records(@PathVariable String type,@PathVariable long id){return ApiResponse.ok(review.records(type,id));}
     @PostMapping("/receipts/{id}/review") public ApiResponse<Map<String,Object>> reviewReceipt(@PathVariable long id,@RequestBody FinanceReviewRequest request){return ApiResponse.ok(review.reviewReceipt(id,request));}
     @PostMapping("/payments/{id}/review") public ApiResponse<Map<String,Object>> reviewPayment(@PathVariable long id,@RequestBody FinanceReviewRequest request){return ApiResponse.ok(review.reviewPayment(id,request));}
-    @PostMapping("/invoices/{id}/review") public ApiResponse<Map<String,Object>> reviewInvoice(@PathVariable long id,@RequestBody FinanceReviewRequest request){return ApiResponse.ok(review.reviewInvoice(id,request));}
+    @PostMapping("/{type}/invoices/{id}/review") public ApiResponse<Map<String,Object>> reviewInvoice(@PathVariable String type,@PathVariable long id,@RequestBody FinanceReviewRequest request){return ApiResponse.ok(review.reviewInvoice(type,id,request));}
     @GetMapping("/{type}/{id}/review-summary") public ApiResponse<Map<String,Object>> reviewSummary(@PathVariable String type,@PathVariable long id){return ApiResponse.ok(review.reviewSummary(type,id));}
     @GetMapping("/{type}/{id}/invoices") public ApiResponse<Object> invoices(@PathVariable String type,@PathVariable long id){return ApiResponse.ok(invoices.list(type,id));}
     @PostMapping("/{type}/{id}/invoices") public ApiResponse<Map<String,Object>> addInvoice(@PathVariable String type,@PathVariable long id,@RequestBody InvoiceRequest request){return ApiResponse.ok(invoices.save(type,id,request));}

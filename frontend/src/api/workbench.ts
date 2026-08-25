@@ -405,8 +405,8 @@ export function reviewFinanceRecord(kind: 'receipts' | 'payments', id: number, a
   })
 }
 
-export function reviewFinanceInvoice(id: number, approved: boolean, data: { confirmedAmount?: number; confirmedInvoiceNo?: string; reviewRemark?: string }) {
-  return request<Record<string, unknown>>(`/api/finance/orders/invoices/${id}/review`, {
+export function reviewFinanceInvoice(type: 'SALES' | 'PURCHASE', id: number, approved: boolean, data: { confirmedAmount?: number; confirmedInvoiceNo?: string; reviewRemark?: string }) {
+  return request<Record<string, unknown>>(`/api/finance/orders/${type}/invoices/${id}/review`, {
     method: 'POST', body: JSON.stringify({ approved, ...data })
   })
 }

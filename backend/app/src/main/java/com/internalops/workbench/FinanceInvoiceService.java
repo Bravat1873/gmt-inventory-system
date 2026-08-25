@@ -46,7 +46,13 @@ public class FinanceInvoiceService {
         String key = foreignKey(type);
         jdbc.update("INSERT INTO " + table + "(" + key + ",invoice_no,invoice_date,tax_inclusive_amount,remark,review_status,created_by,created_at) VALUES(?,?,?,?,?,'PENDING',?,?)", businessId, request.invoiceNo().trim(), request.invoiceDate(), request.taxInclusiveAmount(), clean(request.remark()), CurrentUser.required().id(), LocalDateTime.now());
         Long id = jdbc.queryForObject("SELECT id FROM " + table + " WHERE invoice_no=?", Long.class, request.invoiceNo().trim());
-        return Map.of("id", id, "businessId", businessId, "invoiceNo", request.invoiceNo().trim(), "taxInclusiveAmount", request.taxInclusiveAmount(), "reviewStatus", "PENDING");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", id);
+        result.put("businessId", businessId);
+        result.put("invoiceNo", request.invoiceNo().trim());
+        result.put("taxInclusiveAmount", request.taxInclusiveAmount());
+        result.put("reviewStatus", "PENDING");
+        return result;
     }
 
     @Transactional
