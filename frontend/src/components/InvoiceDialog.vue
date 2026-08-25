@@ -26,8 +26,16 @@ onMounted(load)
       <header class="invoice-dialog-header"><div><h2>维护发票</h2><p>发票独立维护，不改变收款、付款、已收或已付金额。</p><p>关联{{ props.type === 'SALES' ? '销售订单' : '采购单' }}：{{ props.businessNo || '—' }}</p></div><button class="dialog-close" :disabled="saving" @click="emit('close')">关闭</button></header>
       <div v-if="loading" class="empty">正在读取发票…</div>
       <div v-else class="invoice-content">
+        <section class="invoice-history">
+          <div class="invoice-history-head"><h3>历史发票及复核状态</h3><span>{{ invoices.length }} 条记录</span></div>
+          <div v-if="!invoices.length" class="empty history-empty">暂无发票记录</div>
+          <div v-else class="invoice-table-wrap"><table>
+            <thead><tr><th>原发票号码</th><th>财务确认号码</th><th>日期</th><th>原金额</th><th>确认金额</th><th>状态</th><th>复核备注</th><th>操作</th></tr></thead>
+            <tbody><tr v-for="invoice in invoices" :key="invoice.id ?? invoice.invoiceNo"><td><strong>{{ invoice.invoiceNo }}</strong></td><td>{{ invoice.confirmedInvoiceNo || '—' }}</td><td>{{ date(invoice.invoiceDate) }}</td><td>{{ money(invoice.taxInclusiveAmount) }}</td><td>{{ money(invoice.confirmedAmount ?? invoice.taxInclusiveAmount) }}</td><td><span class="invoice-status" :class="String(invoice.reviewStatus || 'PENDING').toLowerCase()">{{ reviewLabel(invoice.reviewStatus) }}</span></td><td class="invoice-remark">{{ invoice.reviewRemark || invoice.remark || '—' }}</td><td><button :data-test="`delete-invoice-${invoice.id}`" class="danger" :disabled="saving || !invoice.id" @click="remove(invoice)">删除</button></td></tr></tbody>
+          </table></div>
+        </section>
         <form class="invoice-form" @submit.prevent="save">
-          <h3>新增发票</h3>
+          <h3>本次登记</h3>
           <label class="invoice-field"><span>发票号码</span><input data-test="invoice-no" v-model="form.invoiceNo" maxlength="100"></label>
           <label class="invoice-field"><span>发票日期</span><ChineseDatePicker v-model="form.invoiceDate" placeholder="请选择发票日期" /></label>
           <label class="invoice-field"><span>发票含税金额</span><input data-test="invoice-amount" v-model="form.taxInclusiveAmount" type="number" step="0.01"></label>
@@ -35,14 +43,6 @@ onMounted(load)
           <p v-if="error" class="form-error">{{ error }}</p>
           <footer><button type="button" :disabled="saving" @click="resetForm">清空</button><button class="primary-action" :disabled="saving">{{ saving ? '正在保存…' : '保存发票' }}</button></footer>
         </form>
-        <section class="invoice-history">
-          <div class="invoice-history-head"><h3>历史发票</h3><span>{{ invoices.length }} 条记录</span></div>
-          <div v-if="!invoices.length" class="empty history-empty">暂无发票记录</div>
-          <div v-else class="invoice-table-wrap"><table>
-            <thead><tr><th>原发票号码</th><th>财务确认号码</th><th>日期</th><th>原金额</th><th>确认金额</th><th>状态</th><th>复核备注</th><th>操作</th></tr></thead>
-            <tbody><tr v-for="invoice in invoices" :key="invoice.id ?? invoice.invoiceNo"><td><strong>{{ invoice.invoiceNo }}</strong></td><td>{{ invoice.confirmedInvoiceNo || '—' }}</td><td>{{ date(invoice.invoiceDate) }}</td><td>{{ money(invoice.taxInclusiveAmount) }}</td><td>{{ money(invoice.confirmedAmount ?? invoice.taxInclusiveAmount) }}</td><td><span class="invoice-status" :class="String(invoice.reviewStatus || 'PENDING').toLowerCase()">{{ reviewLabel(invoice.reviewStatus) }}</span></td><td class="invoice-remark">{{ invoice.reviewRemark || invoice.remark || '—' }}</td><td><button :data-test="`delete-invoice-${invoice.id}`" class="danger" :disabled="saving || !invoice.id" @click="remove(invoice)">删除</button></td></tr></tbody>
-          </table></div>
-        </section>
       </div>
     </section>
   </div>
@@ -50,12 +50,12 @@ onMounted(load)
 
 <style scoped>
 .invoice-dialog{width:min(1040px,94vw);overflow:hidden}.invoice-dialog-header{align-items:flex-start}.invoice-dialog-header p{margin:5px 0 0;color:#667085;font-size:13px;line-height:1.45}
-.invoice-content{display:grid;grid-template-columns:minmax(300px,360px) minmax(0,1fr);gap:20px;padding:20px 22px 22px;background:#f7f8fa}
+.invoice-content{display:grid;grid-template-columns:1fr;gap:16px;padding:20px 22px 22px;background:#f7f8fa}
 .invoice-dialog h3{margin:0 0 14px;font-size:16px}.invoice-dialog .invoice-form,.invoice-history{border:1px solid #e1e5ea;border-radius:6px;background:#fff;box-shadow:0 1px 2px rgb(16 24 40 / 4%)}
-.invoice-dialog .invoice-form{display:grid;grid-template-columns:1fr;align-content:start;gap:14px;padding:18px}.invoice-field{min-width:0}.invoice-dialog label span{display:block;margin-bottom:6px;color:#40444c;font-size:13px;font-weight:650}
+.invoice-dialog .invoice-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:14px;padding:18px}.invoice-dialog .invoice-form h3,.invoice-dialog .invoice-form footer,.invoice-remark-field{grid-column:1 / -1}.invoice-field{min-width:0}.invoice-dialog label span{display:block;margin-bottom:6px;color:#40444c;font-size:13px;font-weight:650}
 .invoice-dialog input,.invoice-dialog textarea{width:100%;box-sizing:border-box;border:1px solid #cbd0d6;border-radius:5px;padding:9px 10px;background:#fff;font:inherit;line-height:1.4}.invoice-dialog input:focus,.invoice-dialog textarea:focus{border-color:#111;outline:2px solid rgb(0 0 0 / 9%);outline-offset:0}
 .invoice-dialog textarea{min-height:104px;resize:vertical}.invoice-dialog footer{display:flex;justify-content:flex-end;gap:8px;margin-top:2px;padding-top:14px;border-top:1px solid #e5e7eb}.invoice-dialog .form-error{margin:-4px 0 0}
-.invoice-history{min-width:0;overflow:hidden}.invoice-history-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 18px 0}.invoice-history-head h3{margin:0}.invoice-history-head span{color:#667085;font-size:12px}.invoice-table-wrap{margin:14px 18px 18px;overflow:auto;border:1px solid #dfe3e8;border-radius:6px}.invoice-history table{width:100%;border-collapse:collapse;table-layout:auto}.invoice-history th,.invoice-history td{height:auto;padding:12px 14px;border-bottom:1px solid #edf0f2;text-align:left;vertical-align:top;white-space:nowrap}.invoice-history th{color:#667085;background:#f8fafc;font-size:12px;font-weight:700}.invoice-history tbody tr:last-child td{border-bottom:0}.invoice-history td{word-break:break-word}.invoice-history td strong{font-weight:700}.invoice-remark{max-width:220px;color:#48515c;white-space:normal}.invoice-status{display:inline-flex;align-items:center;min-height:24px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700}.invoice-status.pending{color:#8a4b08;background:#fff4d6}.invoice-status.approved{color:#167247;background:#e8f7ef}.invoice-status.rejected{color:#b42318;background:#fff1f0}.history-empty{margin:14px 18px 18px;border:1px dashed #d0d5dd;border-radius:6px;background:#fff}
+.invoice-history{min-width:0;max-height:300px;overflow:hidden}.invoice-history-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 18px 0}.invoice-history-head h3{margin:0}.invoice-history-head span{color:#667085;font-size:12px}.invoice-table-wrap{max-height:226px;margin:14px 18px 18px;overflow:auto;border:1px solid #dfe3e8;border-radius:6px}.invoice-history table{width:100%;border-collapse:collapse;table-layout:auto}.invoice-history th,.invoice-history td{height:auto;padding:12px 14px;border-bottom:1px solid #edf0f2;text-align:left;vertical-align:top;white-space:nowrap}.invoice-history th{color:#667085;background:#f8fafc;font-size:12px;font-weight:700}.invoice-history tbody tr:last-child td{border-bottom:0}.invoice-history td{word-break:break-word}.invoice-history td strong{font-weight:700}.invoice-remark{max-width:220px;color:#48515c;white-space:normal}.invoice-status{display:inline-flex;align-items:center;min-height:24px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700}.invoice-status.pending{color:#8a4b08;background:#fff4d6}.invoice-status.approved{color:#167247;background:#e8f7ef}.invoice-status.rejected{color:#b42318;background:#fff1f0}.history-empty{margin:14px 18px 18px;border:1px dashed #d0d5dd;border-radius:6px;background:#fff}
 .danger{min-height:30px;padding:5px 10px;border:1px solid #e3a7a0;border-radius:4px;color:#b42318;background:#fff;cursor:pointer}.danger:hover{background:#fff1f0}.danger:disabled{opacity:.55;cursor:not-allowed}.empty{padding:34px;text-align:center;color:#667085}
-@media(max-width:760px){.invoice-content{grid-template-columns:1fr;padding:16px}.invoice-dialog footer{justify-content:stretch}.invoice-dialog footer button{flex:1}.invoice-history{overflow-x:auto}}
+@media(max-width:760px){.invoice-content,.invoice-dialog .invoice-form{grid-template-columns:1fr;padding:16px}.invoice-dialog footer{justify-content:stretch}.invoice-dialog footer button{flex:1}.invoice-history{overflow-x:auto}}
 </style>

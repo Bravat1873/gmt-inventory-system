@@ -61,6 +61,19 @@ it('shows original and finance confirmed invoice values in history', async () =>
   expect(wrapper.text()).toContain('已通过')
 })
 
+it('places invoice history above the new invoice form', async () => {
+  loadInvoices.mockResolvedValue([{ id: 1, invoiceNo: 'FP-001', reviewStatus: 'REJECTED', reviewRemark: '号码需更正' }])
+  const wrapper = mount(InvoiceDialog, { props: { type: 'PURCHASE', businessId: 8, businessNo: 'CG20260800001' } })
+  await flushPromises()
+
+  expect(wrapper.findAll('.invoice-content > *').map(node => node.classes())).toEqual([
+    expect.arrayContaining(['invoice-history']),
+    expect.arrayContaining(['invoice-form'])
+  ])
+  expect(wrapper.text()).toContain('已驳回')
+  expect(wrapper.text()).toContain('号码需更正')
+})
+
 it('prefills a purchase invoice with the latest payment and preserves a manual amount', async () => {
   loadInvoices.mockResolvedValue([])
   loadFinanceRecords.mockResolvedValue([
