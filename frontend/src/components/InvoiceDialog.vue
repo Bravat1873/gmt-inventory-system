@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import ChineseDatePicker from './ChineseDatePicker.vue'
-import { deleteInvoice, loadInvoices, saveInvoice, type InvoiceData } from '../api/workbench'
+import { deleteInvoice, loadFinanceRecords, loadInvoices, saveInvoice, type FinanceRecord, type InvoiceData } from '../api/workbench'
 
 const props = defineProps<{ type: 'SALES' | 'PURCHASE'; businessId: number; businessNo: string }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
@@ -9,7 +9,7 @@ const form = reactive({ invoiceNo: '', invoiceDate: '', taxInclusiveAmount: '', 
 const invoices = ref<InvoiceData[]>([])
 const dialog = ref<HTMLElement>()
 const loading = ref(true); const saving = ref(false); const error = ref('')
-async function load() { loading.value = true; error.value = ''; try { invoices.value = await loadInvoices(props.type, props.businessId) } catch (cause) { error.value = cause instanceof Error ? cause.message : '读取发票失败' } finally { loading.value = false } }
+async function load() { loading.value = true; error.value = ''; try { const [invoiceData, records]: [InvoiceData[], FinanceRecord[]] = await Promise.all([loadInvoices(props.type, props.businessId), loadFinanceRecords(props.type, props.businessId)]); invoices.value = invoiceData; if (form.taxInclusiveAmount === '' && records[0]?.amount != null) form.taxInclusiveAmount = String(records[0].amount) } catch (cause) { error.value = cause instanceof Error ? cause.message : '读取发票失败' } finally { loading.value = false } }
 function markClean() { dialog.value?.dispatchEvent(new CustomEvent('dialog-clean', { bubbles: true })) }
 function resetForm() { form.invoiceNo = ''; form.invoiceDate = ''; form.taxInclusiveAmount = ''; form.remark = ''; markClean() }
 function money(value: unknown) { return value == null || value === '' ? '—' : `¥ ${Number(value).toFixed(2)}` }

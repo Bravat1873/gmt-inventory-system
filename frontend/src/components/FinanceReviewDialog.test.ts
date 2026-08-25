@@ -72,3 +72,25 @@ it('submits confirmed invoice number and amount', async () => {
     reviewRemark: undefined
   })
 })
+
+it('shows both original and confirmed invoice numbers for a reviewed invoice', async () => {
+  loadFinanceReviewSummary.mockResolvedValue({
+    confirmedMoneyAmount: 0,
+    confirmedInvoiceAmount: 260,
+    differenceAmount: -260,
+    moneyRecords: [],
+    invoiceRecords: [{
+      id: 22,
+      invoiceNo: 'RAW-001',
+      confirmedInvoiceNo: 'FINAL-001',
+      taxInclusiveAmount: 260,
+      confirmedAmount: 260,
+      reviewStatus: 'APPROVED'
+    }]
+  })
+  const wrapper = mount(FinanceReviewDialog, { props: { type: 'PURCHASE', businessId: 8 } })
+  await flushPromises()
+
+  expect(wrapper.text()).toContain('RAW-001')
+  expect(wrapper.text()).toContain('FINAL-001')
+})

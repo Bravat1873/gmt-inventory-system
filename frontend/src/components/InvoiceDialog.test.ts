@@ -2,13 +2,14 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import InvoiceDialog from './InvoiceDialog.vue'
 
-const { deleteInvoice, loadInvoices, saveInvoice } = vi.hoisted(() => ({
+const { deleteInvoice, loadFinanceRecords, loadInvoices, saveInvoice } = vi.hoisted(() => ({
   deleteInvoice: vi.fn(),
+  loadFinanceRecords: vi.fn(),
   loadInvoices: vi.fn(),
   saveInvoice: vi.fn()
 }))
 
-vi.mock('../api/workbench', () => ({ deleteInvoice, loadInvoices, saveInvoice }))
+vi.mock('../api/workbench', () => ({ deleteInvoice, loadFinanceRecords, loadInvoices, saveInvoice }))
 vi.mock('./ChineseDatePicker.vue', () => ({
   default: { props: ['modelValue'], emits: ['update:modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }
 }))
@@ -53,6 +54,35 @@ it('shows original and finance confirmed invoice values in history', async () =>
   expect(wrapper.text()).toContain('FINAL-001')
   expect(wrapper.text()).toContain('¥ 120.00')
   expect(wrapper.text()).toContain('已通过')
+})
+
+it('prefills a purchase invoice with the latest payment and preserves a manual amount', async () => {
+  loadInvoices.mockResolvedValue([])
+  loadFinanceRecords.mockResolvedValue([
+    { id: 12, amount: 200, occurredAt: '2026-08-12T10:00:00' },
+    { id: 11, amount: 100, occurredAt: '2026-08-11T10:00:00' }
+  ])
+  saveInvoice.mockResolvedValue({ id: 33, invoiceNo: 'CG-F-003' })
+  const wrapper = mount(InvoiceDialog, { props: { type: 'PURCHASE', businessId: 8, businessNo: 'CG20260800001' } })
+  await flushPromises()
+
+  expect((wrapper.get('[data-test="invoice-amount"]').element as HTMLInputElement).value).toBe('200')
+
+  await wrapper.get('[data-test="invoice-no"]').setValue('CG-F-003')
+  await wrapper.get('[data-test="invoice-amount"]').setValue('180')
+  await wrapper.get('form').trigger('submit.prevent')
+  await flushPromises()
+
+  expect(saveInvoice).toHaveBeenCalledWith('PURCHASE', 8, expect.objectContaining({ invoiceNo: 'CG-F-003', taxInclusiveAmount: 180 }))
+})
+
+it('leaves the invoice amount blank when there are no finance records', async () => {
+  loadInvoices.mockResolvedValue([])
+  loadFinanceRecords.mockResolvedValue([])
+  const wrapper = mount(InvoiceDialog, { props: { type: 'SALES', businessId: 10, businessNo: 'DD20260800001' } })
+  await flushPromises()
+
+  expect((wrapper.get('[data-test="invoice-amount"]').element as HTMLInputElement).value).toBe('')
 })
 
 it('deletes only the selected invoice by id', async () => {
