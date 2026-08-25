@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
+import { markRaw } from 'vue'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import ModuleListPage from './ModuleListPage.vue'
@@ -111,7 +112,7 @@ it('renders finance direction dots at the same size and with the same soft outer
 })
 
 it.each(['order', 'finance'] as const)('emits the original %s row from its invoice action', async key => {
-  const row = { id: 12, orderNo: 'DD20260800012', businessNo: 'SO001' }
+  const row = markRaw({ id: 12, orderNo: 'DD20260800012', businessNo: 'SO001' })
   loadModule.mockResolvedValue({ items: [row], total: 1, page: 1, pageSize: 10, totalPages: 1 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === key)! } })
   await flushPromises()
@@ -119,7 +120,7 @@ it.each(['order', 'finance'] as const)('emits the original %s row from its invoi
   const invoice = wrapper.get('[data-test="invoice"]')
   expect(invoice.text()).toBe('发票')
   await invoice.trigger('click')
-  expect(wrapper.emitted('invoice')?.[0]?.[0]).toMatchObject(row)
+  expect(wrapper.emitted('invoice')?.[0]?.[0]).toBe(row)
 })
 
 it('emits invoices for actual purchases but not purchase suggestions', async () => {
