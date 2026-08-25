@@ -10,6 +10,8 @@ import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.jdbc.SqlConfig;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -63,6 +65,40 @@ class FinanceInvoiceApiTest {
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM sales_invoice WHERE sales_order_id=10", Integer.class);
         assertThat(count).isEqualTo(3);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_invoice WHERE invoice_no='XS-F-001'", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void approvingInvoiceStoresConfirmedInvoiceNumberAndAmount() throws Exception {
+        mvc.perform(post("/api/finance/orders/PURCHASE/20/invoices").cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"invoiceNo":"CG-F-002","invoiceDate":"2026-08-25","taxInclusiveAmount":122.00,"remark":"业务补录"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reviewStatus").value("PENDING"));
+
+        Long invoiceId = jdbc.queryForObject("SELECT id FROM purchase_invoice WHERE invoice_no='CG-F-002'", Long.class);
+
+        mvc.perform(post("/api/finance/orders/invoices/{id}/review", invoiceId).cookie(session)
+                        .contentType("application/json")
+                        .content("""
+                                {"approved":true,"confirmedAmount":120.00,"confirmedInvoiceNo":"CG-F-FINAL-002","reviewRemark":"按票面确认"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reviewStatus").value("APPROVED"))
+                .andExpect(jsonPath("$.data.confirmedInvoiceNo").value("CG-F-FINAL-002"))
+                .andExpect(jsonPath("$.data.confirmedAmount").value(120.0));
+
+        Map<String, Object> row = jdbc.queryForMap("""
+                SELECT invoice_no,confirmed_invoice_no,tax_inclusive_amount,confirmed_amount,review_status
+                FROM purchase_invoice
+                WHERE id=?
+                """, invoiceId);
+        assertThat(row.get("invoice_no")).isEqualTo("CG-F-002");
+        assertThat(row.get("confirmed_invoice_no")).isEqualTo("CG-F-FINAL-002");
+        assertThat(row.get("tax_inclusive_amount")).isEqualTo(new java.math.BigDecimal("122.00"));
+        assertThat(row.get("confirmed_amount")).isEqualTo(new java.math.BigDecimal("120.00"));
+        assertThat(row.get("review_status")).isEqualTo("APPROVED");
     }
 
     @Test

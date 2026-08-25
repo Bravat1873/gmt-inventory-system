@@ -143,6 +143,10 @@ INSERT INTO sales_invoice(id,sales_order_id,invoice_no,invoice_date,tax_inclusiv
 VALUES(31,10,'XS-F-001',DATE '2026-08-10',30.00,'首张发票',9);
 INSERT INTO sales_invoice(id,sales_order_id,invoice_no,invoice_date,tax_inclusive_amount,remark,created_by)
 VALUES(32,10,'XS-F-002',DATE '2026-08-11',70.00,'第二张发票',9);
+UPDATE sales_invoice
+SET confirmed_invoice_no=invoice_no,
+    confirmed_amount=tax_inclusive_amount,
+    review_status='APPROVED';
 INSERT INTO purchase_order(id,purchase_no,supplier_id,status,total_amount,created_at,updated_at)
 VALUES(20,'PO-F-002',2,'PENDING_SUPPLIER_PAYMENT',100.00,TIMESTAMP '2026-08-06 12:00:00',TIMESTAMP '2026-08-06 12:00:00');
 INSERT INTO purchase_order_item(id,purchase_order_id,quantity,received_quantity)
@@ -150,3 +154,7 @@ VALUES(22,20,1,0);
 INSERT INTO supplier_payment(id,purchase_order_id,amount,invoice_no) VALUES(21,20,40.00,'CG-F-001');
 INSERT INTO purchase_invoice(id,purchase_order_id,invoice_no,invoice_date,tax_inclusive_amount,remark,created_by)
 VALUES(41,20,'CG-F-001',DATE '2026-08-12',40.00,'采购发票',9);
+UPDATE purchase_invoice
+SET confirmed_invoice_no=invoice_no,
+    confirmed_amount=tax_inclusive_amount,
+    review_status='APPROVED';

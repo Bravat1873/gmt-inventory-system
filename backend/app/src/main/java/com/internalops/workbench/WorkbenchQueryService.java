@@ -541,14 +541,14 @@ public class WorkbenchQueryService {
                 + "SELECT o.id, 'RECEIVABLE' AS cash_direction, '销售订单' AS business_type, o.order_no AS business_no, c.customer_name AS counterparty, "
                 + "COALESCE((SELECT SUM(i.quantity*i.sale_price) FROM sales_order_item i WHERE i.sales_order_id=o.id),0) AS amount, "
                 + "COALESCE((SELECT SUM(COALESCE(cr.confirmed_amount,cr.amount)) FROM customer_receipt cr WHERE cr.sales_order_id=o.id AND COALESCE(cr.review_status,'APPROVED')='APPROVED'),0) AS settled_amount, "
-                + "(SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(si.invoice_no), '')) FROM sales_invoice si WHERE si.sales_order_id=o.id) AS invoice_nos, "
-                + "(SELECT COUNT(*) FROM customer_receipt cr WHERE cr.sales_order_id=o.id AND cr.review_status='PENDING') AS pending_review_count, "
+                + "(SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(si.confirmed_invoice_no,si.invoice_no)), '')) FROM sales_invoice si WHERE si.sales_order_id=o.id AND COALESCE(si.review_status,'APPROVED')='APPROVED') AS invoice_nos, "
+                + "((SELECT COUNT(*) FROM customer_receipt cr WHERE cr.sales_order_id=o.id AND cr.review_status='PENDING') + (SELECT COUNT(*) FROM sales_invoice si WHERE si.sales_order_id=o.id AND si.review_status='PENDING')) AS pending_review_count, "
                 + "o.created_at, o.updated_at FROM sales_order o JOIN customer c ON c.id=o.customer_id WHERE o.status<>'DRAFT' "
                 + "UNION ALL "
                 + "SELECT p.id, 'PAYABLE', '采购订单', p.purchase_no, sp.supplier_name, p.total_amount, "
                 + "COALESCE((SELECT SUM(COALESCE(spay.confirmed_amount,spay.amount)) FROM supplier_payment spay WHERE spay.purchase_order_id=p.id AND COALESCE(spay.review_status,'APPROVED')='APPROVED'),0), "
-                + "(SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(pi.invoice_no), '')) FROM purchase_invoice pi WHERE pi.purchase_order_id=p.id), "
-                + "(SELECT COUNT(*) FROM supplier_payment spay WHERE spay.purchase_order_id=p.id AND spay.review_status='PENDING'), "
+                + "(SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(pi.confirmed_invoice_no,pi.invoice_no)), '')) FROM purchase_invoice pi WHERE pi.purchase_order_id=p.id AND COALESCE(pi.review_status,'APPROVED')='APPROVED'), "
+                + "((SELECT COUNT(*) FROM supplier_payment spay WHERE spay.purchase_order_id=p.id AND spay.review_status='PENDING') + (SELECT COUNT(*) FROM purchase_invoice pi WHERE pi.purchase_order_id=p.id AND pi.review_status='PENDING')), "
                 + "p.created_at, p.updated_at FROM purchase_order p JOIN supplier sp ON sp.id=p.supplier_id) f";
         modules.put("finance", new ModuleSpec(
                 "SELECT f.id, f.cash_direction AS `cashDirection`, f.business_type AS `businessType`, f.business_no AS `businessNo`, f.counterparty, f.invoice_nos AS `invoiceNos`, f.pending_review_count AS `pendingReviewCount`, f.amount, f.settled_amount AS `settledAmount`, "
