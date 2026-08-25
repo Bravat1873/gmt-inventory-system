@@ -32,18 +32,18 @@ it('defaults the receipt date to today and allows submitting a future date', asy
   await dateInput.setValue('2026-09-20')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
-  await wrapper.get('[data-test="receipt-invoice-no"]').setValue('XS-202609-01')
-  await wrapper.get('form').trigger('submit')
-  await flushPromises()
-  expect(postAction).toHaveBeenLastCalledWith('/api/finance/orders/1/receipt', expect.objectContaining({ receivedAt: '2026-09-20', invoiceNo: 'XS-202609-01' }))
+  expect(wrapper.find('[data-test="receipt-invoice-no"]').exists()).toBe(false)
+  expect(postAction).toHaveBeenLastCalledWith('/api/finance/orders/1/receipt', expect.objectContaining({ receivedAt: '2026-09-20' }))
+  expect(postAction.mock.calls.at(-1)?.[1]).not.toHaveProperty('invoiceNo')
 })
 
-it('allows an invoice-only supplement after the order has been settled', async () => {
+it('keeps invoice-only supplement out of the receipt dialog after the order has been settled', async () => {
   const wrapper = mount(ReceiptDialog, { props: { order: { id: 1, orderNo: 'SO001', receivedAmount: 100, items: [{ quantity: 2, shippedQuantity: 0, salePrice: 50 }] } } })
 
-  await wrapper.get('[data-test="receipt-invoice-no"]').setValue('XS-补录-01')
+  expect(wrapper.find('[data-test="receipt-invoice-no"]').exists()).toBe(false)
   await wrapper.get('form').trigger('submit')
   await flushPromises()
 
-  expect(postAction).toHaveBeenCalledWith('/api/finance/orders/1/receipt', expect.objectContaining({ amount: 0, invoiceNo: 'XS-补录-01' }))
+  expect(postAction).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('收款金额不能为 0')
 })
