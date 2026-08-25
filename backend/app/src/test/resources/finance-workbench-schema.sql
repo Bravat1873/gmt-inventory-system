@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS sales_invoice;
 DROP TABLE IF EXISTS customer_receipt;
 DROP TABLE IF EXISTS user_session;
 DROP TABLE IF EXISTS sys_user;
+DROP TABLE IF EXISTS purchase_order_item;
 DROP TABLE IF EXISTS purchase_order;
 DROP TABLE IF EXISTS sales_order_item;
 DROP TABLE IF EXISTS sales_order;
@@ -85,8 +86,15 @@ CREATE TABLE purchase_order(
     supplier_id BIGINT NOT NULL,
     status VARCHAR(40) NOT NULL,
     total_amount DECIMAL(18,2) NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL
+);
+CREATE TABLE purchase_order_item(
+    id BIGINT PRIMARY KEY,
+    purchase_order_id BIGINT NOT NULL,
+    quantity DECIMAL(18,3) NOT NULL,
+    received_quantity DECIMAL(18,3) NOT NULL DEFAULT 0
 );
 CREATE TABLE supplier_payment(
     id BIGINT PRIMARY KEY,
@@ -137,6 +145,8 @@ INSERT INTO sales_invoice(id,sales_order_id,invoice_no,invoice_date,tax_inclusiv
 VALUES(32,10,'XS-F-002',DATE '2026-08-11',70.00,'第二张发票',9);
 INSERT INTO purchase_order(id,purchase_no,supplier_id,status,total_amount,created_at,updated_at)
 VALUES(20,'PO-F-002',2,'PENDING_SUPPLIER_PAYMENT',100.00,TIMESTAMP '2026-08-06 12:00:00',TIMESTAMP '2026-08-06 12:00:00');
+INSERT INTO purchase_order_item(id,purchase_order_id,quantity,received_quantity)
+VALUES(22,20,1,0);
 INSERT INTO supplier_payment(id,purchase_order_id,amount,invoice_no) VALUES(21,20,40.00,'CG-F-001');
 INSERT INTO purchase_invoice(id,purchase_order_id,invoice_no,invoice_date,tax_inclusive_amount,remark,created_by)
 VALUES(41,20,'CG-F-001',DATE '2026-08-12',40.00,'采购发票',9);

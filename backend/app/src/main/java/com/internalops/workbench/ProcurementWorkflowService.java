@@ -519,27 +519,26 @@ public class ProcurementWorkflowService {
         var purchase = jdbc.queryForMap("SELECT status,total_amount FROM purchase_order WHERE id=? FOR UPDATE", id);
         BigDecimal total = (BigDecimal) val(purchase, "total_amount");
         BigDecimal paid = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(amount),0) FROM supplier_payment WHERE purchase_order_id=?",
+                "SELECT COALESCE(SUM(COALESCE(confirmed_amount,amount)),0) FROM supplier_payment WHERE purchase_order_id=? AND COALESCE(review_status, 'APPROVED')='APPROVED'",
                 BigDecimal.class, id);
         BigDecimal amount = request.amount();
-        if (amount == null || amount.signum() < 0
-                || (amount.signum() == 0 && (request.invoiceNo() == null || request.invoiceNo().isBlank()))) {
-            throw new IllegalArgumentException("请填写付款金额或发票号码");
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("付款金额必须大于 0；发票请单独维护");
+        }
+        if (request.invoiceNo() != null && !request.invoiceNo().isBlank() || request.invoiceDate() != null) {
+            throw new IllegalArgumentException("发票请单独维护，不能随付款登记");
         }
         BigDecimal outstanding = total.subtract(paid);
         if (amount.compareTo(outstanding) > 0) throw new IllegalArgumentException("本次付款金额不能超过未付金额");
         jdbc.update("""
                         INSERT INTO supplier_payment(
-                            purchase_order_id,amount,payment_method,payment_remark,invoice_no,invoice_date,paid_at,confirmed_by)
-                        VALUES(?,?,?,?,?,?,?,1)
+                            purchase_order_id,amount,payment_method,payment_remark,paid_at,confirmed_by,review_status)
+                        VALUES(?,?,?,?,?,NULL,'PENDING')
                         """,
                 id, amount, request.paymentMethod() == null || request.paymentMethod().isBlank() ? "银行转账" : request.paymentMethod().trim(),
-                optionalText(request.paymentRemark()), optionalText(request.invoiceNo()), request.invoiceDate(), LocalDateTime.now());
-        BigDecimal paidAfter = paid.add(amount);
-        BigDecimal outstandingAfter = total.subtract(paidAfter);
-        updatePurchaseProgressStatus(id);
-        return Map.of("id", id, "paidAmount", paidAfter, "outstandingAmount", outstandingAfter,
-                "paymentStatus", outstandingAfter.signum() == 0 ? "PAID" : "PARTIALLY_PAID");
+                optionalText(request.paymentRemark()), LocalDateTime.now());
+        return Map.of("id", id, "paidAmount", paid, "outstandingAmount", total.subtract(paid),
+                "paymentStatus", paid.compareTo(total) >= 0 ? "PAID" : "PARTIALLY_PAID", "reviewStatus", "PENDING");
     }
 
     @Transactional
@@ -655,7 +654,8 @@ public class ProcurementWorkflowService {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", num(row, "id"));
             item.put("skuId", num(row, "sku_id"));
-            item.put("supplierPurchaseInfoId", num(row, "supplier_purchase_info_id"));
+            // Historical purchase items can predate this optional quotation link.
+            item.put("supplierPurchaseInfoId", nullableNum(row, "supplier_purchase_info_id"));
             item.put("productCode", val(row, "product_code"));
             item.put("customerPartNumber", val(row, "customer_part_number"));
             item.put("model", val(row, "model"));
@@ -677,9 +677,9 @@ public class ProcurementWorkflowService {
         return result;
     }
 
-    private void updatePurchaseProgressStatus(long id) {
+    void updatePurchaseProgressStatus(long id) {
         BigDecimal total = jdbc.queryForObject("SELECT total_amount FROM purchase_order WHERE id=?", BigDecimal.class, id);
-        BigDecimal paid = jdbc.queryForObject("SELECT COALESCE(SUM(amount),0) FROM supplier_payment WHERE purchase_order_id=?", BigDecimal.class, id);
+        BigDecimal paid = jdbc.queryForObject("SELECT COALESCE(SUM(COALESCE(confirmed_amount,amount)),0) FROM supplier_payment WHERE purchase_order_id=? AND COALESCE(review_status, 'APPROVED')='APPROVED'", BigDecimal.class, id);
         Map<String, Object> quantities = jdbc.queryForMap("SELECT COALESCE(SUM(quantity),0) ordered_quantity,COALESCE(SUM(received_quantity),0) received_quantity FROM purchase_order_item WHERE purchase_order_id=?", id);
         boolean paidInFull = paid.compareTo(total) >= 0;
         boolean receivedInFull = num(quantities, "ordered_quantity") == num(quantities, "received_quantity");
@@ -801,6 +801,11 @@ public class ProcurementWorkflowService {
 
     private long num(Map<String, Object> values, String key) {
         return ((Number) Objects.requireNonNull(val(values, key))).longValue();
+    }
+
+    private Long nullableNum(Map<String, Object> values, String key) {
+        Object value = val(values, key);
+        return value instanceof Number number ? number.longValue() : null;
     }
 
     private String str(Map<String, Object> values, String key) {
