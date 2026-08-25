@@ -371,7 +371,7 @@ export interface InvoiceData {
   invoiceNo: string
   confirmedInvoiceNo?: string | null
   invoiceDate?: string
-  taxInclusiveAmount?: number
+  taxInclusiveAmount?: number | null
   confirmedAmount?: number | null
   remark?: string
   reviewStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null
