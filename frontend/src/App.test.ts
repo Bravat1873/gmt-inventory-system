@@ -268,6 +268,22 @@ describe('连续导航和浏览器地址状态', () => {
     expect(wrapper.text()).toContain('资料不完整')
   })
 
+  it('normalizes order and purchase invoice events with their business numbers', async () => {
+    api.loadInvoices.mockResolvedValue([])
+    const wrapper = mount(App)
+    await flushPromises()
+
+    wrapper.getComponent(ModuleListPage).vm.$emit('invoice', { id: 10, orderNo: 'DD20260800001' })
+    await flushPromises()
+    expect(wrapper.get('.invoice-dialog-header').text()).toContain('关联销售订单：DD20260800001')
+
+    await wrapper.get('[data-module="purchase"]').trigger('click')
+    await flushPromises()
+    wrapper.getComponent(ModuleListPage).vm.$emit('invoice', { id: 20, purchaseNo: 'CG20260800001' })
+    await flushPromises()
+    expect(wrapper.get('.invoice-dialog-header').text()).toContain('关联采购单：CG20260800001')
+  })
+
   it('does not show unsaved confirmation when closing invoice dialog after saving', async () => {
     api.loadInvoices.mockResolvedValue([])
     api.saveInvoice.mockResolvedValue({ id: 91, invoiceNo: 'FP-91' })

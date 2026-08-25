@@ -19,9 +19,10 @@ it('shows existing invoice history and adds a new invoice', async () => {
     { id: 31, invoiceNo: 'XS-F-001', invoiceDate: '2026-08-10', taxInclusiveAmount: 30, remark: '首张发票' }
   ])
   saveInvoice.mockResolvedValue({ id: 33, invoiceNo: 'XS-F-003' })
-  const wrapper = mount(InvoiceDialog, { props: { type: 'SALES', businessId: 10 } })
+  const wrapper = mount(InvoiceDialog, { props: { type: 'SALES', businessId: 10, businessNo: 'DD20260800001' } })
   await flushPromises()
 
+  expect(wrapper.get('.invoice-dialog-header').text()).toContain('关联销售订单：DD20260800001')
   expect(wrapper.text()).toContain('XS-F-002')
   expect(wrapper.text()).toContain('XS-F-001')
 
@@ -45,7 +46,7 @@ it('shows original and finance confirmed invoice values in history', async () =>
       reviewRemark: '财务确认'
     }
   ])
-  const wrapper = mount(InvoiceDialog, { props: { type: 'PURCHASE', businessId: 8 } })
+  const wrapper = mount(InvoiceDialog, { props: { type: 'PURCHASE', businessId: 8, businessNo: 'CG20260800001' } })
   await flushPromises()
 
   expect(wrapper.text()).toContain('RAW-001')
@@ -58,7 +59,7 @@ it('deletes only the selected invoice by id', async () => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   loadInvoices.mockResolvedValue([{ id: 31, invoiceNo: 'XS-F-001', invoiceDate: '2026-08-10', taxInclusiveAmount: 30 }])
   deleteInvoice.mockResolvedValue(undefined)
-  const wrapper = mount(InvoiceDialog, { props: { type: 'SALES', businessId: 10 } })
+  const wrapper = mount(InvoiceDialog, { props: { type: 'SALES', businessId: 10, businessNo: 'DD20260800001' } })
   await flushPromises()
 
   await wrapper.get('[data-test="delete-invoice-31"]').trigger('click')

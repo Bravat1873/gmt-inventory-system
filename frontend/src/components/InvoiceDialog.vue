@@ -3,7 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import ChineseDatePicker from './ChineseDatePicker.vue'
 import { deleteInvoice, loadInvoices, saveInvoice, type InvoiceData } from '../api/workbench'
 
-const props = defineProps<{ type: 'SALES' | 'PURCHASE'; businessId: number }>()
+const props = defineProps<{ type: 'SALES' | 'PURCHASE'; businessId: number; businessNo: string }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
 const form = reactive({ invoiceNo: '', invoiceDate: '', taxInclusiveAmount: '', remark: '' })
 const invoices = ref<InvoiceData[]>([])
@@ -23,7 +23,7 @@ onMounted(load)
 <template>
   <div class="dialog-mask">
     <section ref="dialog" class="dialog-card invoice-dialog" role="dialog" aria-modal="true">
-      <header class="invoice-dialog-header"><div><h2>维护发票</h2><p>发票独立维护，不改变收款、付款、已收或已付金额。</p></div><button class="dialog-close" :disabled="saving" @click="emit('close')">关闭</button></header>
+      <header class="invoice-dialog-header"><div><h2>维护发票</h2><p>发票独立维护，不改变收款、付款、已收或已付金额。</p><p>关联{{ props.type === 'SALES' ? '销售订单' : '采购单' }}：{{ props.businessNo || '—' }}</p></div><button class="dialog-close" :disabled="saving" @click="emit('close')">关闭</button></header>
       <div v-if="loading" class="empty">正在读取发票…</div>
       <div v-else class="invoice-content">
         <form class="invoice-form" @submit.prevent="save">
