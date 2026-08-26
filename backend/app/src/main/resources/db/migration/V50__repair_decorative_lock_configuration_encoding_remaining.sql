@@ -1,2 +1,7 @@
--- Deliberately left data-neutral for production deployments.
-SELECT 1;
+UPDATE sku
+SET configuration = REPLACE(
+    configuration,
+    CONVERT(0xC3A8C2A3E280A6C3A9C2A5C2B0C3A9E2809DC281 USING utf8mb4),
+    '装饰锁'
+)
+WHERE INSTR(HEX(configuration), 'C3A8C2A3E280A6C3A9C2A5C2B0C3A9E2809DC281') > 0;

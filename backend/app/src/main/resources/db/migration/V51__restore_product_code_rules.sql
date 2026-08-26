@@ -1,2 +1,106 @@
--- Deliberately left data-neutral for production deployments.
-SELECT 1;
+-- Restore the complete approved product-code dictionary without deleting referenced rules.
+INSERT INTO product_code_rule(category, code, display_name, enabled, sort_order, remark)
+VALUES
+    ('BRAND', 'SXSEL', 'STANLEY', TRUE, 10, NULL),
+    ('BRAND', 'CS', 'CESHI', TRUE, 10, NULL),
+    ('BRAND', 'BR', 'BRAVAT', TRUE, 20, NULL),
+    ('BRAND', 'G', 'GMT', TRUE, 30, NULL),
+
+    ('SERIES', 'P90', 'P90', TRUE, 10, NULL),
+    ('SERIES', 'P50', 'P50', TRUE, 20, NULL),
+    ('SERIES', 'S70', 'S70', TRUE, 30, NULL),
+    ('SERIES', 'S50', 'S50', TRUE, 40, NULL),
+    ('SERIES', 'F70', 'F70', TRUE, 50, NULL),
+    ('SERIES', 'F50', 'F50', TRUE, 60, NULL),
+    ('SERIES', 'D51', 'D51', TRUE, 70, NULL),
+    ('SERIES', 'T5', 'T5', TRUE, 80, '由2026-08-16产品清单导入补充'),
+    ('SERIES', 'T7', 'T7', TRUE, 90, '由2026-08-16产品清单导入补充'),
+    ('SERIES', 'M3', 'M3', TRUE, 100, '由2026-08-16产品清单导入补充'),
+    ('SERIES', 'G3', 'G3', TRUE, 110, '由2026-08-16产品清单导入补充'),
+    ('SERIES', 'T2', 'T2', TRUE, 120, '由2026-08-16产品清单导入补充'),
+    ('SERIES', 'G2', 'G2', TRUE, 130, '由2026-08-16产品清单导入补充'),
+    ('SERIES', 'A71', 'A71', TRUE, 140, '由2026-08-16产品清单导入补充'),
+    ('SERIES', 'C51', 'C51', TRUE, 150, '由2026-08-16产品清单导入补充'),
+    ('SERIES', 'D61', 'D61', TRUE, 160, '由2026-08-14产品清单导入补充'),
+    ('SERIES', 'K60', 'K60', TRUE, 170, '由2026-08-14产品清单导入补充'),
+    ('SERIES', 'M30', 'M30', TRUE, 180, '由2026-08-14产品清单导入补充'),
+    ('SERIES', 'E71', 'E71', TRUE, 190, '由2026-08-14产品清单导入补充'),
+    ('SERIES', 'Q71', 'Q71', TRUE, 200, '由2026-08-14产品清单导入补充'),
+
+    ('BODY_COLOR', 'HGT', '红钻铜', TRUE, 10, NULL),
+    ('BODY_COLOR', 'FGJ', '富贵金', TRUE, 20, NULL),
+    ('BODY_COLOR', 'YZH', '宇宙黑', TRUE, 30, NULL),
+    ('BODY_COLOR', 'PBY', '瀑布银', TRUE, 40, NULL),
+    ('BODY_COLOR', 'XKH', '星空黑', TRUE, 50, NULL),
+    ('BODY_COLOR', 'BSL', '宝石蓝', TRUE, 60, NULL),
+    ('BODY_COLOR', 'MKJ', 'MKJ', TRUE, 70, '由2026-08-16产品清单导入补充'),
+
+    ('LOCK_TYPE', '60', '6068', TRUE, 10, NULL),
+    ('LOCK_TYPE', '70', '7068', TRUE, 20, NULL),
+    ('LOCK_TYPE', '00', '直舌', TRUE, 30, NULL),
+    ('LOCK_TYPE', '01', '钩舌', TRUE, 40, NULL),
+    ('LOCK_TYPE', '10', '10', TRUE, 50, '由2026-08-16产品清单导入补充'),
+    ('LOCK_TYPE', 'ZS', '装饰锁', TRUE, 60, '由2026-08-14产品清单导入补充'),
+
+    ('CONNECTIVITY', 'W', 'WiFi', TRUE, 10, NULL),
+    ('CONNECTIVITY', 'B', 'Bluetooth', TRUE, 20, NULL),
+    ('CONNECTIVITY', 'C', 'Cat.1/4G', TRUE, 30, NULL),
+    ('CONNECTIVITY', 'N', 'NB-IoT', TRUE, 40, NULL),
+    ('CONNECTIVITY', 'O', '单机', TRUE, 50, NULL),
+    ('CONNECTIVITY', 'M', 'MATTER', TRUE, 60, NULL),
+    ('CONNECTIVITY', 'S', '无联网（装饰锁）', TRUE, 70, '由2026-08-14产品清单导入补充'),
+
+    ('SALES_CHANNEL', 'P', '平面', TRUE, 10, NULL),
+    ('SALES_CHANNEL', 'G', '工程', TRUE, 20, NULL),
+    ('SALES_CHANNEL', 'E', '电商', TRUE, 30, NULL),
+    ('SALES_CHANNEL', 'K', '商超', TRUE, 40, NULL),
+    ('SALES_CHANNEL', 'D', '东铁专供', TRUE, 50, NULL),
+
+    ('OPERATING_ENTITY', 'Z', '珠海', TRUE, 10, NULL),
+    ('OPERATING_ENTITY', 'S', '深圳', TRUE, 20, NULL),
+    ('OPERATING_ENTITY', 'G', '广州', TRUE, 30, NULL),
+
+    ('LANGUAGE', 'E', '英文版', TRUE, 10, NULL),
+    ('LANGUAGE', 'C', '中文版', TRUE, 20, NULL),
+    ('LANGUAGE', 'S', '西班牙语', TRUE, 30, NULL),
+
+    ('DOOR_MODEL', 'N', '对开门', TRUE, 10, NULL),
+    ('DOOR_MODEL', 'K', '子母门', TRUE, 20, NULL),
+    ('DOOR_MODEL', 'M', '单开门', TRUE, 30, NULL),
+    ('DOOR_MODEL', 'L', '连套门（一门一套）', TRUE, 40, NULL),
+
+    ('SECURITY_GRADE', 'J', '甲', TRUE, 10, NULL),
+    ('SECURITY_GRADE', 'Y', '乙', TRUE, 20, NULL),
+    ('SECURITY_GRADE', 'B', '丙', TRUE, 30, NULL),
+    ('SECURITY_GRADE', 'D', '丁', TRUE, 40, NULL),
+    ('SECURITY_GRADE', 'T', '特级加强', TRUE, 50, NULL),
+
+    ('BASE_MATERIAL', '1', '钢板/锌钢板', TRUE, 10, NULL),
+    ('BASE_MATERIAL', '2', '2.0不锈铁', TRUE, 20, NULL),
+    ('BASE_MATERIAL', '3', '304不锈钢', TRUE, 30, NULL),
+    ('BASE_MATERIAL', '4', '316不锈钢', TRUE, 40, NULL),
+    ('BASE_MATERIAL', '5', '铜板/锌铜板', TRUE, 50, NULL),
+    ('BASE_MATERIAL', '6', '木板', TRUE, 60, NULL),
+    ('BASE_MATERIAL', '7', '岩板', TRUE, 70, NULL),
+    ('BASE_MATERIAL', '8', '铝合金', TRUE, 80, NULL),
+    ('BASE_MATERIAL', '9', '特殊板材', TRUE, 90, NULL),
+
+    ('THICKNESS', '050', '50mm', TRUE, 10, NULL),
+    ('THICKNESS', '055', '55mm', TRUE, 20, NULL),
+    ('THICKNESS', '080', '80mm', TRUE, 30, NULL),
+    ('THICKNESS', '085', '85mm', TRUE, 40, NULL),
+    ('THICKNESS', '100', '100mm', TRUE, 50, NULL),
+    ('THICKNESS', '120', '120mm', TRUE, 60, NULL),
+
+    ('FINISH_COLOR', 'A', '花色A', TRUE, 10, NULL),
+    ('FINISH_COLOR', 'B', '花色B', TRUE, 20, NULL),
+    ('FINISH_COLOR', 'C', '花色C', TRUE, 30, NULL),
+    ('FINISH_COLOR', 'D', '花色D', TRUE, 40, NULL),
+    ('FINISH_COLOR', 'E', '花色E', TRUE, 50, NULL),
+    ('FINISH_COLOR', 'F', '花色F', TRUE, 60, NULL)
+ON DUPLICATE KEY UPDATE
+    display_name = VALUES(display_name),
+    enabled = TRUE,
+    sort_order = VALUES(sort_order),
+    remark = VALUES(remark),
+    updated_at = CURRENT_TIMESTAMP(3);
