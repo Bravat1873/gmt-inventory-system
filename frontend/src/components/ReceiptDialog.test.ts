@@ -2,8 +2,8 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ReceiptDialog from './ReceiptDialog.vue'
 
-const { postAction } = vi.hoisted(() => ({ postAction: vi.fn() }))
-vi.mock('../api/workbench', () => ({ postAction }))
+const { postAction, loadFinanceRecords } = vi.hoisted(() => ({ postAction: vi.fn(), loadFinanceRecords: vi.fn().mockResolvedValue([]) }))
+vi.mock('../api/workbench', () => ({ postAction, loadFinanceRecords }))
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-08-11T08:00:00+08:00')); postAction.mockReset().mockResolvedValue({}) })
 afterEach(() => vi.useRealTimers())
@@ -46,4 +46,13 @@ it('keeps invoice-only supplement out of the receipt dialog after the order has 
 
   expect(postAction).not.toHaveBeenCalled()
   expect(wrapper.text()).toContain('收款金额不能为 0')
+})
+
+it('shows receipt history and review status above the receipt form', async () => {
+  loadFinanceRecords.mockResolvedValue([{ id: 9, amount: 100, paymentMethod: '现金', occurredAt: '2026-08-25T10:00:00', reviewStatus: 'PENDING' }])
+  const wrapper = mount(ReceiptDialog, { props: { order: { id: 10, orderNo: 'DD001', receivableAmount: 200 } } })
+  await flushPromises()
+
+  expect(wrapper.findAll('.receipt-content > *').at(0)?.classes()).toContain('fund-history')
+  expect(wrapper.text()).toContain('待复核')
 })

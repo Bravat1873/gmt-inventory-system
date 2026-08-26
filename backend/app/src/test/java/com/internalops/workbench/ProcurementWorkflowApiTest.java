@@ -146,7 +146,7 @@ class ProcurementWorkflowApiTest {
     }
 
     @Test
-    void allowsMultiplePartialPaymentsUntilPurchaseIsSettled() throws Exception {
+    void paymentRegistrationCreatesPendingReviewsWithoutChangingApprovedAmounts() throws Exception {
         Cookie session = login();
         long purchaseId = createManualPurchase(session, 10);
 
@@ -154,17 +154,64 @@ class ProcurementWorkflowApiTest {
                         .contentType("application/json")
                         .content("{\"amount\":30.00,\"paymentMethod\":\"银行转账\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.paidAmount").value(30.0))
-                .andExpect(jsonPath("$.data.outstandingAmount").value(70.0));
+                .andExpect(jsonPath("$.data.paidAmount").value(0.0))
+                .andExpect(jsonPath("$.data.outstandingAmount").value(100.0))
+                .andExpect(jsonPath("$.data.reviewStatus").value("PENDING"));
 
         mvc.perform(post("/api/procurement/purchases/{id}/payment", purchaseId).cookie(session)
                         .contentType("application/json")
                         .content("{\"amount\":70.00,\"paymentMethod\":\"银行转账\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.paidAmount").value(100.0))
-                .andExpect(jsonPath("$.data.outstandingAmount").value(0.0));
+                .andExpect(jsonPath("$.data.paidAmount").value(0.0))
+                .andExpect(jsonPath("$.data.outstandingAmount").value(100.0))
+                .andExpect(jsonPath("$.data.reviewStatus").value("PENDING"));
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM supplier_payment WHERE purchase_order_id=?", Integer.class, purchaseId)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM supplier_payment WHERE purchase_order_id=? AND review_status='PENDING'", Integer.class, purchaseId)).isEqualTo(2);
+    }
+
+    @Test
+    void purchaseQueriesIgnorePendingAndRejectedPaymentReviews() throws Exception {
+        Cookie session = login();
+        long purchaseId = createManualPurchase(session, 10);
+
+        mvc.perform(post("/api/procurement/purchases/{id}/payment", purchaseId).cookie(session)
+                        .contentType("application/json")
+                        .content("{\"amount\":25.00,\"paymentMethod\":\"银行转账\"}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/workbench/purchase").cookie(session).param("page", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].paidAmount").value(0.0))
+                .andExpect(jsonPath("$.data.items[0].outstandingAmount").value(100.0))
+                .andExpect(jsonPath("$.data.items[0].paymentStatus").value("UNPAID"));
+
+        long paymentId = jdbc.queryForObject("SELECT id FROM supplier_payment WHERE purchase_order_id=?", Long.class, purchaseId);
+        mvc.perform(post("/api/finance/orders/payments/{id}/review", paymentId).cookie(session)
+                        .contentType("application/json")
+                        .content("{\"approved\":false,\"reviewRemark\":\"资料退回\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reviewStatus").value("REJECTED"));
+
+        mvc.perform(get("/api/workbench/purchase").cookie(session).param("page", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].paidAmount").value(0.0))
+                .andExpect(jsonPath("$.data.items[0].outstandingAmount").value(100.0))
+                .andExpect(jsonPath("$.data.items[0].paymentStatus").value("UNPAID"));
+    }
+
+    @Test
+    void returnsLegacyPurchaseWithoutSupplierPurchaseInformation() throws Exception {
+        Cookie session = login();
+        long purchaseId = createManualPurchase(session, 10);
+        jdbc.update("UPDATE purchase_order_item SET supplier_purchase_info_id=NULL WHERE purchase_order_id=?", purchaseId);
+
+        String response = mvc.perform(get("/api/procurement/purchases/{id}", purchaseId).cookie(session))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(mapper.readTree(response).path("data").path("items").get(0).path("supplierPurchaseInfoId").isNull())
+                .isTrue();
     }
 
     @Test
@@ -186,19 +233,15 @@ class ProcurementWorkflowApiTest {
     }
 
     @Test
-    void rejectsPaymentThatExceedsOutstandingAmount() throws Exception {
+    void rejectsZeroPaymentAndAllowsSeparatePendingPaymentReviews() throws Exception {
         Cookie session = login();
         long purchaseId = createManualPurchase(session, 10);
         mvc.perform(post("/api/procurement/purchases/{id}/payment", purchaseId).cookie(session)
-                        .contentType("application/json").content("{\"amount\":80.00}"))
-                .andExpect(status().isOk());
-
-        mvc.perform(post("/api/procurement/purchases/{id}/payment", purchaseId).cookie(session)
-                        .contentType("application/json").content("{\"amount\":21.00}"))
+                        .contentType("application/json").content("{\"amount\":0,\"invoiceNo\":\"CG-INV-001\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("本次付款金额不能超过未付金额"));
+                .andExpect(jsonPath("$.message").value("付款金额必须大于 0；发票请单独维护"));
         assertThat(jdbc.queryForObject("SELECT COALESCE(SUM(amount),0) FROM supplier_payment WHERE purchase_order_id=?", java.math.BigDecimal.class, purchaseId))
-                .isEqualByComparingTo("80.00");
+                .isEqualByComparingTo("0.00");
     }
 
     @Test
@@ -294,6 +337,11 @@ class ProcurementWorkflowApiTest {
         long itemId = jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?", Long.class, purchaseId);
         mvc.perform(post("/api/procurement/purchases/{id}/payment", purchaseId).cookie(session)
                         .contentType("application/json").content("{\"amount\":25.00}"))
+                .andExpect(status().isOk());
+        long paymentId = jdbc.queryForObject("SELECT id FROM supplier_payment WHERE purchase_order_id=?", Long.class, purchaseId);
+        mvc.perform(post("/api/finance/orders/payments/{id}/review", paymentId).cookie(session)
+                        .contentType("application/json")
+                        .content("{\"approved\":true,\"reviewRemark\":\"确认付款\"}"))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/procurement/purchases/{id}/receive", purchaseId).cookie(session)
                         .contentType("application/json")

@@ -80,7 +80,7 @@ public class SalesOrderCommandService {
         BigDecimal receivableAmount = items.stream()
                 .map(item -> BigDecimal.valueOf(((Number) item.get("quantity")).longValue()).multiply((BigDecimal) item.get("salePrice")))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal receivedAmount = jdbc.queryForObject("SELECT COALESCE(SUM(amount), 0) FROM customer_receipt WHERE sales_order_id=?", BigDecimal.class, id);
+        BigDecimal receivedAmount = jdbc.queryForObject("SELECT COALESCE(SUM(amount), 0) FROM customer_receipt WHERE sales_order_id=? AND COALESCE(review_status,'APPROVED')='APPROVED'", BigDecimal.class, id);
         String defaultShipmentAddress = blankToNull(Objects.toString(value(order, "delivery_address"), null));
         if (defaultShipmentAddress == null) {
             defaultShipmentAddress = blankToNull(jdbc.queryForObject("SELECT address FROM customer WHERE id=?", String.class, value(order, "customer_id")));
@@ -96,12 +96,12 @@ public class SalesOrderCommandService {
 
     private List<Map<String, Object>> shipmentHistory(long orderId) {
         List<Map<String, Object>> shipments = jdbc.query("""
-                SELECT s.id,s.shipment_no,s.delivery_address,s.operator_name,s.shipped_at,s.remark,
+                SELECT s.id,s.shipment_no,s.delivery_address,s.operator_name,s.shipped_at,s.remark,s.logistics_company,s.logistics_no,s.logistics_remark,s.logistics_updated_at,
                        COALESCE(SUM(si.quantity),0) total_quantity
                 FROM sales_shipment s
                 LEFT JOIN sales_shipment_item si ON si.sales_shipment_id=s.id
                 WHERE s.sales_order_id=?
-                GROUP BY s.id,s.shipment_no,s.delivery_address,s.operator_name,s.shipped_at,s.remark
+                GROUP BY s.id,s.shipment_no,s.delivery_address,s.operator_name,s.shipped_at,s.remark,s.logistics_company,s.logistics_no,s.logistics_remark,s.logistics_updated_at
                 ORDER BY s.shipped_at DESC,s.id DESC
                 """, (rs, n) -> {
             Map<String, Object> shipment = new LinkedHashMap<>();
@@ -111,6 +111,11 @@ public class SalesOrderCommandService {
             shipment.put("operatorName", rs.getString("operator_name"));
             shipment.put("shippedAt", rs.getTimestamp("shipped_at").toLocalDateTime());
             shipment.put("remark", rs.getString("remark"));
+            shipment.put("logisticsCompany", rs.getString("logistics_company"));
+            shipment.put("logisticsNo", rs.getString("logistics_no"));
+            shipment.put("logisticsRemark", rs.getString("logistics_remark"));
+            var logisticsUpdatedAt = rs.getTimestamp("logistics_updated_at");
+            shipment.put("logisticsUpdatedAt", logisticsUpdatedAt == null ? null : logisticsUpdatedAt.toLocalDateTime());
             shipment.put("totalQuantity", rs.getInt("total_quantity"));
             return shipment;
         }, orderId);
@@ -263,7 +268,7 @@ public class SalesOrderCommandService {
     public void delete(long id) {
         String currentStatus = jdbc.queryForObject("SELECT status FROM sales_order WHERE id=? FOR UPDATE", String.class, id);
         if (!DELETABLE_STATUSES.contains(currentStatus)) throw new IllegalStateException("当前订单状态不可删除");
-        if (jdbc.queryForObject("SELECT COUNT(*) FROM customer_receipt WHERE sales_order_id=?", Integer.class, id) > 0) {
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM customer_receipt WHERE sales_order_id=? AND COALESCE(review_status, 'APPROVED')='APPROVED'", Integer.class, id) > 0) {
             throw new IllegalStateException("已确认收款的订单不可删除");
         }
         if (jdbc.queryForObject("SELECT COUNT(*) FROM sales_shipment WHERE sales_order_id=?", Integer.class, id) > 0) {
@@ -280,6 +285,7 @@ public class SalesOrderCommandService {
         }
         if (!"DRAFT".equals(currentStatus)) allocation.releaseAll(id, "ORDER_DELETE_RELEASE");
         deleteShortageCoverage(id);
+        jdbc.update("DELETE FROM customer_receipt WHERE sales_order_id=? AND review_status='PENDING'", id);
         jdbc.update("DELETE FROM sales_order_item WHERE sales_order_id=?", id);
         jdbc.update("DELETE FROM sales_order WHERE id=?", id);
         autoProcurement.requestRecalculation();

@@ -328,6 +328,21 @@ class SalesOrderCommandApiTest {
         org.junit.jupiter.api.Assertions.assertEquals(0, jdbc.queryForObject("SELECT shipped_quantity FROM sales_order_item WHERE sales_order_id=?", Integer.class, id));
     }
 
+    @Test void recordsLogisticsPerShipmentBatchAndAllowsLaterCorrection() throws Exception {
+        long id=createReadyOrder("Order Address", "[{\"lineNo\":10000,\"skuId\":1,\"quantity\":2,\"salePrice\":12.50}]");
+        mvc.perform(put("/api/orders/{id}/shipment-quantities", id).contentType("application/json")
+                        .content("{\"deliveryAddress\":\"Order Address\",\"logisticsCompany\":\"顺丰\",\"logisticsNo\":\"SF001\",\"items\":[{\"lineNo\":10000,\"shippedQuantity\":1}]}"))
+                .andExpect(status().isOk());
+        long shipmentId=jdbc.queryForObject("SELECT id FROM sales_shipment WHERE sales_order_id=?", Long.class, id);
+        mvc.perform(put("/api/orders/{id}/shipments/{shipmentId}/logistics", id, shipmentId).contentType("application/json")
+                        .content("{\"logisticsCompany\":\"京东物流\",\"logisticsNo\":\"JD002\",\"logisticsRemark\":\"拆分第二箱\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.logisticsNo").value("JD002"));
+        mvc.perform(get("/api/orders/{id}", id)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shipments[0].logisticsCompany").value("京东物流"))
+                .andExpect(jsonPath("$.data.shipments[0].logisticsNo").value("JD002"));
+    }
+
     @Test void rejectsUnicodeBlankDeliveryAddressWhenShipmentIncreases() throws Exception {
         long id=createReadyOrder("", "[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]");
 
@@ -348,7 +363,7 @@ class SalesOrderCommandApiTest {
                 .andExpect(status().isOk());
 
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sales_shipment WHERE sales_order_id=?", Integer.class, id));
-        org.junit.jupiter.api.Assertions.assertTrue(jdbc.queryForObject("SELECT shipment_no FROM sales_shipment WHERE sales_order_id=?", String.class, id).matches("SH\\d{8}[A-Z0-9]{12}"));
+        org.junit.jupiter.api.Assertions.assertTrue(jdbc.queryForObject("SELECT shipment_no FROM sales_shipment WHERE sales_order_id=?", String.class, id).matches("CK\\d{11}"));
         org.junit.jupiter.api.Assertions.assertEquals("Shenzhen Nanshan", jdbc.queryForObject("SELECT delivery_address FROM sales_shipment WHERE sales_order_id=?", String.class, id));
         org.junit.jupiter.api.Assertions.assertEquals("First batch", jdbc.queryForObject("SELECT remark FROM sales_shipment WHERE sales_order_id=?", String.class, id));
         org.junit.jupiter.api.Assertions.assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM sales_shipment_item si JOIN sales_shipment s ON s.id=si.sales_shipment_id WHERE s.sales_order_id=?", Integer.class, id));

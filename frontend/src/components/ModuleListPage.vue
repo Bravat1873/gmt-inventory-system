@@ -74,10 +74,10 @@ function columnWidth(field: string) {
 }
 const actionColumnWidth = computed(() => {
   if (props.module.key === 'customer') return 190
-  if (props.module.key === 'order') return 520
-  if (props.module.key === 'purchase') return 540
+  if (props.module.key === 'order') return 480
+  if (props.module.key === 'purchase') return 380
   if (props.module.key === 'afterSales') return 300
-  if (props.module.key === 'finance') return 420
+  if (props.module.key === 'finance') return 280
   return 110
 })
 const tableMinWidth = computed(() => Math.max(1050, props.module.fields.reduce((width, field) => width + columnWidth(field), 0) + actionColumnWidth.value))
@@ -95,7 +95,7 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
       <div class="table-wrap">
         <table :style="{ minWidth: `${tableMinWidth}px` }">
           <colgroup><col v-for="field in module.fields" :key="field" :style="{ width: `${columnWidth(field)}px` }"><col :style="{ width: `${actionColumnWidth}px` }"></colgroup>
-          <thead><tr><th v-for="(column, index) in module.columns" :key="column" :class="{ sortable: module.sortable[index] }" @click="orderBy(module.sortable[index])">{{ column }}<span v-if="module.sortable[index] && sort === module.sortable[index]">{{ direction === 'asc' ? ' ↑' : ' ↓' }}</span></th><th>操作</th></tr></thead>
+          <thead><tr><th v-for="(column, index) in module.columns" :key="column" :class="{ sortable: module.sortable[index] }" @click="orderBy(module.sortable[index])">{{ column }}<span v-if="module.sortable[index] && sort === module.sortable[index]">{{ direction === 'asc' ? ' ↑' : ' ↓' }}</span></th><th class="action-column-header">操作</th></tr></thead>
           <tbody>
             <tr v-if="loading"><td :colspan="module.columns.length + 1" class="empty-state">正在读取</td></tr>
             <tr v-else-if="!data.items.length"><td :colspan="module.columns.length + 1" class="empty-state">暂无数据</td></tr>

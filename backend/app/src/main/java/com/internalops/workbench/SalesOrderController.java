@@ -22,6 +22,7 @@ public class SalesOrderController {
     @GetMapping("/{id}/allocations") public ApiResponse<Map<String,Object>> allocations(@PathVariable long id){return ApiResponse.ok(allocationService.view(id));}
     @PutMapping("/{id}/allocations") public ApiResponse<Map<String,Object>> updateAllocations(@PathVariable long id,@RequestBody OrderAllocationRequest r){return ApiResponse.ok(allocationService.update(id,r));}
     @PutMapping("/{id}/shipment-quantities") public ApiResponse<Map<String,Object>> updateShipmentQuantities(@PathVariable long id,@RequestBody ShipmentQuantityRequest r){return ApiResponse.ok(shipmentQuantityService.update(id,r));}
+    @PutMapping("/{id}/shipments/{shipmentId}/logistics") public ApiResponse<Map<String,Object>> updateShipmentLogistics(@PathVariable long id,@PathVariable long shipmentId,@RequestBody ShipmentLogisticsRequest r){return ApiResponse.ok(shipmentQuantityService.updateLogistics(id,shipmentId,r));}
     @ExceptionHandler(IllegalArgumentException.class) public ResponseEntity<ApiResponse<Object>> bad(IllegalArgumentException e){return ResponseEntity.badRequest().body(new ApiResponse<>(false,null,e.getMessage()));}
     @ExceptionHandler(IllegalStateException.class) public ResponseEntity<ApiResponse<Object>> conflict(IllegalStateException e){return ResponseEntity.status(409).body(new ApiResponse<>(false,null,e.getMessage()));}
 }

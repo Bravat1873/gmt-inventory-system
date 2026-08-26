@@ -102,7 +102,7 @@ onMounted(reload)
           <h2>资金与发票复核</h2>
           <p>原登记信息保留，财务确认值用于最终已收、已付和发票核对。</p>
         </div>
-        <button class="dialog-close" @click="emit('close')">关闭</button>
+        <button class="dialog-close" data-skip-unsaved-confirm @click="emit('close')">关闭</button>
       </header>
 
       <div class="finance-review-body">

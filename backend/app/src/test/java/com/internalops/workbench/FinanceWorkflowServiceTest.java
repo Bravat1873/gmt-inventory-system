@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -27,6 +28,7 @@ class FinanceWorkflowServiceTest {
         Map<String, Object> result = service.receipt(7L, new FinanceActionRequest(new BigDecimal("100"), "银行转账", null, null, null, selectedDate));
 
         assertEquals(LocalDateTime.of(2026, 9, 20, 0, 0), result.get("receivedAt"));
+        assertEquals("PENDING", result.get("reviewStatus"));
     }
     @Test
     void receiptIsRecordedWithoutChangingAnOrderThatIsReadyToShip() {
@@ -57,21 +59,25 @@ class FinanceWorkflowServiceTest {
     }
 
     @Test
-    void recordsInvoiceInformationWithEachReceipt() {
+    void receiptCreatesPendingReviewWithoutChangingCustomerFunds() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        CustomerFundService customerFunds = mock(CustomerFundService.class);
         when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(Map.of("status", "READY_TO_SHIP", "total_amount", new BigDecimal("100")));
         when(jdbc.queryForObject(contains("FROM sales_order_item"), eq(BigDecimal.class), eq(7L))).thenReturn(new BigDecimal("100"));
         when(jdbc.queryForObject(contains("FROM customer_receipt"), eq(BigDecimal.class), eq(7L))).thenReturn(BigDecimal.ZERO);
-        FinanceWorkflowService service = new FinanceWorkflowService(jdbc, mock(InventoryAllocationService.class), mock(CustomerFundService.class));
+        FinanceWorkflowService service = new FinanceWorkflowService(jdbc, mock(InventoryAllocationService.class), customerFunds);
 
-        service.receipt(7L, new FinanceActionRequest(new BigDecimal("100"), "银行转账", "XS-202608-01", LocalDate.of(2026, 8, 24), "尾款", LocalDate.of(2026, 8, 24)));
+        Map<String, Object> result = service.receipt(7L, new FinanceActionRequest(new BigDecimal("100"), "银行转账", null, null, "尾款", LocalDate.of(2026, 8, 24)));
 
-        verify(jdbc).update(contains("invoice_no"), eq(7L), eq(new BigDecimal("100")), eq("银行转账"),
-                eq("XS-202608-01"), eq(LocalDate.of(2026, 8, 24)), eq("尾款"), any(LocalDateTime.class));
+        assertEquals("PENDING", result.get("reviewStatus"));
+        assertEquals(BigDecimal.ZERO, result.get("receivedAmount"));
+        assertEquals(new BigDecimal("100"), result.get("outstandingAmount"));
+        verify(customerFunds, never()).debitForOrder(anyLong(), any(), anyString());
+        verify(jdbc).update(contains("review_status"), eq(7L), eq(new BigDecimal("100")), eq("银行转账"), eq("尾款"), any(LocalDateTime.class));
     }
 
     @Test
-    void allowsZeroAmountInvoiceSupplementWithoutDebitingCustomerFunds() {
+    void rejectsZeroAmountEvenWhenAnInvoiceNumberIsProvided() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         CustomerFundService customerFunds = mock(CustomerFundService.class);
         when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(Map.of("status", "READY_TO_SHIP", "total_amount", new BigDecimal("100")));
@@ -79,10 +85,11 @@ class FinanceWorkflowServiceTest {
         when(jdbc.queryForObject(contains("FROM customer_receipt"), eq(BigDecimal.class), eq(7L))).thenReturn(new BigDecimal("100"));
         FinanceWorkflowService service = new FinanceWorkflowService(jdbc, mock(InventoryAllocationService.class), customerFunds);
 
-        Map<String, Object> result = service.receipt(7L, new FinanceActionRequest(BigDecimal.ZERO, "银行转账", "XS-补录", null, null, LocalDate.of(2026, 8, 24)));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.receipt(7L, new FinanceActionRequest(BigDecimal.ZERO, "银行转账", "XS-补录", null, null, LocalDate.of(2026, 8, 24))));
 
-        assertEquals(BigDecimal.ZERO, result.get("outstandingAmount"));
+        assertEquals("收款金额不能为 0；发票请单独维护", error.getMessage());
         verify(customerFunds, never()).debitForOrder(anyLong(), any(), anyString());
-        verify(jdbc).update(contains("customer_receipt"), eq(7L), eq(BigDecimal.ZERO), eq("银行转账"), eq("XS-补录"), isNull(), isNull(), any(LocalDateTime.class));
+        verify(jdbc, never()).update(contains("customer_receipt"), (Object[]) any());
     }
 }

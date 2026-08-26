@@ -22,6 +22,12 @@ it('provides supplier management in the left navigation definitions', () => {
   expect(supplier.label).toBe('供应商管理')
   expect(supplier.fields).toContain('productCount')
 })
+
+it('keeps each left navigation module key unique', () => {
+  const keys = moduleDefinitions.map(item => item.key)
+  expect(new Set(keys).size).toBe(keys.length)
+})
+
 it('offers supplier spreadsheet import and displays the complete supplier profile', () => {
   const supplier = moduleDefinitions.find(item => item.key === 'supplier')!
 

@@ -105,7 +105,8 @@ public class ShipmentQuantityService {
             jdbc.update("UPDATE sales_order_item SET shipped_quantity=?, locked_quantity=?, uncovered_quantity=?, version=version+1 WHERE id=?", target, finalLocked, uncovered, lineId);
         }
         if (!positiveDeltas.isEmpty()) {
-            long shipmentId = insertShipment(orderId, deliveryAddress, currentOperatorName(), trimToNull(request.remark()));
+            long shipmentId = insertShipment(orderId, deliveryAddress, currentOperatorName(), trimToNull(request.remark()),
+                    cleanLogisticsCompany(request.logisticsCompany()), cleanLogisticsNo(request.logisticsNo()), cleanLogisticsRemark(request.logisticsRemark()));
             for (ShipmentDelta delta : positiveDeltas) {
                 jdbc.update("INSERT INTO sales_shipment_item(sales_shipment_id,sales_order_item_id,quantity) VALUES(?,?,?)",
                         shipmentId, delta.salesOrderItemId(), delta.quantity());
@@ -118,12 +119,26 @@ public class ShipmentQuantityService {
         return Map.of("id", orderId, "status", nextStatus, "remainingQuantity", remaining == null ? 0 : remaining);
     }
 
-    private long insertShipment(long orderId, String deliveryAddress, String operatorName, String remark) {
+    @Transactional
+    public Map<String, Object> updateLogistics(long orderId, long shipmentId, ShipmentLogisticsRequest request) {
+        if (request == null) throw new IllegalArgumentException("请填写物流信息");
+        jdbc.queryForObject("SELECT id FROM sales_shipment WHERE id=? AND sales_order_id=? FOR UPDATE", Long.class, shipmentId, orderId);
+        String company = cleanLogisticsCompany(request.logisticsCompany());
+        String number = cleanLogisticsNo(request.logisticsNo());
+        String remark = cleanLogisticsRemark(request.logisticsRemark());
+        jdbc.update("UPDATE sales_shipment SET logistics_company=?,logistics_no=?,logistics_remark=?,logistics_updated_at=? WHERE id=?",
+                company, number, remark, LocalDateTime.now(), shipmentId);
+        return Map.of("id", shipmentId, "logisticsCompany", company == null ? "" : company,
+                "logisticsNo", number == null ? "" : number, "logisticsRemark", remark == null ? "" : remark);
+    }
+
+    private long insertShipment(long orderId, String deliveryAddress, String operatorName, String remark,
+                                String logisticsCompany, String logisticsNo, String logisticsRemark) {
         String shipmentNo = documentNumbers.next(DocumentType.SALES_OUTBOUND, LocalDate.now());
         GeneratedKeyHolder keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO sales_shipment(shipment_no,sales_order_id,delivery_address,operator_name,shipped_at,remark) VALUES(?,?,?,?,?,?)",
+                    "INSERT INTO sales_shipment(shipment_no,sales_order_id,delivery_address,operator_name,shipped_at,remark,logistics_company,logistics_no,logistics_remark,logistics_updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
                     new String[]{"id"});
             statement.setString(1, shipmentNo);
             statement.setLong(2, orderId);
@@ -131,6 +146,10 @@ public class ShipmentQuantityService {
             statement.setString(4, operatorName);
             statement.setObject(5, LocalDateTime.now());
             statement.setString(6, remark);
+            statement.setString(7, logisticsCompany);
+            statement.setString(8, logisticsNo);
+            statement.setString(9, logisticsRemark);
+            statement.setObject(10, logisticsCompany == null && logisticsNo == null && logisticsRemark == null ? null : LocalDateTime.now());
             return statement;
         }, keys);
         return Objects.requireNonNull(keys.getKey()).longValue();
@@ -144,6 +163,15 @@ public class ShipmentQuantityService {
     private String trimToNull(String value) {
         if (value == null || value.isBlank()) return null;
         return value.trim();
+    }
+
+    private String cleanLogisticsCompany(String value) { return bounded(value, 200, "物流公司不能超过200个字符"); }
+    private String cleanLogisticsNo(String value) { return bounded(value, 100, "物流单号不能超过100个字符"); }
+    private String cleanLogisticsRemark(String value) { return bounded(value, 500, "物流备注不能超过500个字符"); }
+    private String bounded(String value, int max, String message) {
+        String cleaned = trimToNull(value);
+        if (cleaned != null && cleaned.length() > max) throw new IllegalArgumentException(message);
+        return cleaned;
     }
 
     private record ShipmentDelta(long salesOrderItemId, int quantity) {}

@@ -148,10 +148,33 @@ it('keeps all finance actions in one horizontal sticky action column', async () 
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')! } })
   await flushPromises()
 
-  expect(wrapper.findAll('col').at(-1)?.attributes('style')).toContain('width: 420px')
+  expect(wrapper.findAll('col').at(-1)?.attributes('style')).toContain('width: 280px')
   expect(wrapper.get('.finance-actions').element.tagName).toBe('DIV')
   const styles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8')
   expect(styles).toContain('.row-actions-content.finance-actions { display:flex; flex-wrap:nowrap;')
+})
+
+it.each(['order', 'purchase', 'finance'] as const)('right-aligns the shared action header for %s', async key => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === key)! } })
+  await flushPromises()
+
+  expect(wrapper.get('.action-column-header').text()).toBe('操作')
+})
+
+it.each([['order', 480], ['purchase', 380], ['finance', 280]] as const)('uses a single-line %s action column', async (key, width) => {
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === key)! } })
+  await flushPromises()
+
+  expect(wrapper.findAll('col').at(-1)?.attributes('style')).toContain(`width: ${width}px`)
+})
+
+it('keeps order actions on one line without clipping them', () => {
+  const styles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8')
+
+  expect(styles).toContain('.row-actions-content { display:flex; flex-wrap:nowrap;')
+  expect(styles).toContain('min-width:max-content;')
 })
 
 it.each(['order', 'purchase', 'finance'] as const)('provides a 查看 button for %s records', async key => {
@@ -187,7 +210,7 @@ it('shortens customer, order, after-sales and finance row action labels', async 
   loadModule.mockResolvedValueOnce({ items: [{ id: 1, status: 'READY_TO_SHIP' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
   const order = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')! } })
   await flushPromises()
-  expect(order.findAll('col').at(-1)?.attributes('style')).toContain('width: 520px')
+  expect(order.findAll('col').at(-1)?.attributes('style')).toContain('width: 480px')
   expect(order.get('[data-test="order-allocation"]').text()).toBe('分配')
 
   loadModule.mockResolvedValueOnce({ items: [{ id: 1, status: 'WAITING_RETURN' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
@@ -250,7 +273,7 @@ it('reserves enough sticky action-column width for every purchase action', async
   await flushPromises()
 
   const columns = wrapper.findAll('col')
-    expect(columns.at(-1)?.attributes('style')).toContain('width: 540px')
+    expect(columns.at(-1)?.attributes('style')).toContain('width: 380px')
   expect(wrapper.get('.row-actions-content').text()).toContain('单据')
   expect(wrapper.get('.row-actions-content').text()).toContain('登记')
   expect(wrapper.get('.row-actions-content').text()).toContain('收货')

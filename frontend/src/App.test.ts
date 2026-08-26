@@ -268,6 +268,31 @@ describe('连续导航和浏览器地址状态', () => {
     expect(wrapper.text()).toContain('资料不完整')
   })
 
+  it('does not show unsaved confirmation when closing finance review', async () => {
+    api.loadFinanceReviewSummary.mockResolvedValue({
+      confirmedMoneyAmount: 0,
+      confirmedInvoiceAmount: 0,
+      differenceAmount: 0,
+      moneyRecords: [{ id: 81, amount: 100, reviewStatus: 'PENDING', paymentMethod: '银行转账', occurredAt: '2026-08-25T10:00:00' }],
+      invoiceRecords: []
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const wrapper = mount(App, { attachTo: host })
+    await flushPromises()
+
+    wrapper.getComponent(ModuleListPage).vm.$emit('financeReview', { id: 10, cashDirection: 'PAYABLE' })
+    await flushPromises()
+    await wrapper.get('[data-test="money-confirmed-81"]').setValue('120')
+    await wrapper.get('.finance-review .dialog-close').trigger('click')
+
+    expect(confirm).not.toHaveBeenCalled()
+    wrapper.unmount()
+    host.remove()
+    confirm.mockRestore()
+  })
+
   it('normalizes order and purchase invoice events with their business numbers', async () => {
     api.loadInvoices.mockResolvedValue([])
     const wrapper = mount(App)
