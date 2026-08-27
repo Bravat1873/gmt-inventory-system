@@ -78,7 +78,7 @@ it('shows a finance summary export action', async () => {
   expect(wrapper.emitted('exportSummary')).toHaveLength(1)
 })
 
-it('shows only view action in finance management for finance users', async () => {
+it('shows finance registration and review but not invoice maintenance for finance users', async () => {
   loadModule.mockResolvedValue({ items: [{
     id: 1,
     cashDirection: 'RECEIVABLE',
@@ -90,9 +90,9 @@ it('shows only view action in finance management for finance users', async () =>
   await flushPromises()
 
   expect(wrapper.get('[data-test="view-details"]').text()).toBe('查看')
-  expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(true)
   expect(wrapper.find('[data-test="invoice"]').exists()).toBe(false)
-  expect(wrapper.get('.row-actions').text()).not.toContain('复核')
+  expect(wrapper.get('.row-actions').text()).toContain('复核')
 })
 
 it('shows only view action in finance management for regular users', async () => {

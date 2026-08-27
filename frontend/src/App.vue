@@ -86,7 +86,8 @@ const canUseCurrentModulePrimary = computed(() => {
     || user.value?.role === 'ADMIN' || user.value?.role === 'FINANCE'
 })
 const canUseCurrentModuleImport = computed(() => currentModule.value.importType !== undefined && canUseCurrentModulePrimary.value)
-const canWriteFinance = computed(() => user.value?.role === 'ADMIN')
+const canWriteFinance = computed(() => ['ADMIN', 'FINANCE'].includes(user.value?.role ?? 'USER'))
+const canMaintainInvoices = computed(() => user.value?.role === 'ADMIN')
 
 onMounted(async () => {
   try { user.value = await currentUser() } catch {} finally { authReady.value = true }
@@ -243,7 +244,7 @@ function openFinanceReview(row: Record<string, unknown>) {
 }
 
 function openInvoice(row: Record<string, unknown>) {
-  if (!canWriteFinance.value) return
+  if (!canMaintainInvoices.value) return
   if (activeModule.value === 'order') {
     invoiceContext.value = { type: 'SALES', businessId: Number(row.id), businessNo: String(row.orderNo ?? '') }
     return
@@ -374,7 +375,7 @@ async function saved(closeDialog = true) {
     <PurchaseReceiptDialog v-if="purchaseReceiptOpen && purchaseReceiptOrder" :purchase="purchaseReceiptOrder" @close="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined" @saved="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined; saved()" @message="showMessage" />
     <ProcurementReviewDialog v-if="procurementReviewId" :suggestion-id="procurementReviewId" @close="procurementReviewId=undefined" @saved="procurementReviewId=undefined; list?.reload()" @message="showMessage" />
     <ReceiptDialog v-if="receiptOpen && receiptRow" :order="receiptRow" @close="receiptOpen=false" @saved="receiptOpen=false; saved()" @message="showMessage" />
-    <FinanceReviewDialog v-if="financeReviewRow" :type="financeType(financeReviewRow)" :business-id="Number(financeReviewRow.id)" @close="financeReviewRow=undefined" @saved="saved(false)" @message="showMessage" />
+    <FinanceReviewDialog v-if="financeReviewRow" :type="financeType(financeReviewRow)" :business-id="Number(financeReviewRow.id)" :can-review-invoices="canMaintainInvoices" @close="financeReviewRow=undefined" @saved="saved(false)" @message="showMessage" />
     <InvoiceDialog v-if="invoiceContext" :type="invoiceContext.type" :business-id="invoiceContext.businessId" :business-no="invoiceContext.businessNo" @close="invoiceContext=undefined" @saved="saved" @message="showMessage" />
     <OrderAllocationDialog v-if="allocationOpen && orderAllocation" :allocation="orderAllocation" @close="allocationOpen=false; orderAllocation=undefined" @saved="allocationOpen=false; orderAllocation=undefined; list?.reload()" @message="showMessage" />
     <ShipmentQuantityDialog v-if="shipmentOpen && shipmentOrder" :order="shipmentOrder" @close="shipmentOpen=false" @saved="shipmentOpen=false; list?.reload()" @message="showMessage" />

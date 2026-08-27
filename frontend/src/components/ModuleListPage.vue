@@ -62,7 +62,8 @@ const canUsePrimary = computed(() => Boolean(props.module.actionLabel)
 function primary() { if (canUsePrimary.value) emit('action') }
 function importOrders() { if (canUsePrimary.value && props.module.importActionLabel) emit('import') }
 function canEditRow() { return props.module.key !== 'user' || props.currentUserRole === 'ADMIN' }
-const canWriteFinance = computed(() => props.currentUserRole === 'ADMIN')
+const canWriteFinance = computed(() => ['ADMIN', 'FINANCE'].includes(props.currentUserRole ?? 'USER'))
+const canMaintainInvoices = computed(() => props.currentUserRole === 'ADMIN')
 function productImageUrl(row: Record<string, unknown>) {
   if (row.primaryImageUrl) return String(row.primaryImageUrl)
   return row.primaryImageId ? `/api/product-images/${Number(row.primaryImageId)}/content` : ''
@@ -134,7 +135,7 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
                 <button v-if="module.key === 'finance' && canWriteFinance && isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-receipt" @click="emit('receipt', row)">登记</button>
                 <button v-if="module.key === 'finance' && canWriteFinance && !isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-payment" @click="emit('payment', row)">登记</button>
                 <button v-if="module.key === 'finance' && canWriteFinance && Number(row.pendingReviewCount ?? 0) > 0" @click="emit('financeReview', row)">复核</button>
-                <button v-if="(['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')) && canWriteFinance" data-test="invoice" @click="emit('invoice', row)">发票</button>
+                <button v-if="(['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')) && canMaintainInvoices" data-test="invoice" @click="emit('invoice', row)">发票</button>
                 <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && hasOutstandingAmount(row)" data-test="purchase-payment" @click="emit('payment', row)">登记</button>
                 <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && Number(row.remainingQuantity ?? 0) > 0" data-test="purchase-receipt" @click="emit('purchaseReceipt', row)">收货</button>
                 <button v-if="module.key === 'purchase' && row.recordType === 'SUGGESTION'" data-test="review-procurement" @click="emit('workflow', row)">复核</button>

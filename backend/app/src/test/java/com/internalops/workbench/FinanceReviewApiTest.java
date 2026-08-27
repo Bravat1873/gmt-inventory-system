@@ -75,13 +75,13 @@ class FinanceReviewApiTest {
     }
 
     @Test
-    void financeUserCannotReviewPayment() throws Exception {
+    void financeUserCanReviewPayment() throws Exception {
         jdbc.update("UPDATE supplier_payment SET review_status='PENDING' WHERE id=21");
 
         mvc.perform(post("/api/finance/orders/payments/21/review").cookie(session)
                         .contentType("application/json")
                         .content("{\"approved\":true}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("无此操作权限"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reviewStatus").value("APPROVED"));
     }
 }

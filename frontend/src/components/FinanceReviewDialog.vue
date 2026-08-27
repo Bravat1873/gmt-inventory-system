@@ -9,7 +9,7 @@ import {
   type InvoiceData
 } from '../api/workbench'
 
-const props = defineProps<{ type: 'SALES' | 'PURCHASE'; businessId: number }>()
+const props = withDefaults(defineProps<{ type: 'SALES' | 'PURCHASE'; businessId: number; canReviewInvoices?: boolean }>(), { canReviewInvoices: true })
 const emit = defineEmits<{ close: []; saved: [closeAfter?: boolean]; message: [text: string, kind?: 'success' | 'error'] }>()
 
 const summary = ref<FinanceReviewSummary>()
@@ -72,7 +72,7 @@ async function reviewMoney(record: FinanceRecord, approved: boolean) {
   }
 }
 async function reviewInvoice(invoice: InvoiceData, approved: boolean) {
-  if (!invoice.id) return
+  if (!props.canReviewInvoices || !invoice.id) return
   busy.value = `invoice-${invoice.id}`
   try {
     await reviewFinanceInvoice(props.type, invoice.id, approved, {
@@ -156,13 +156,13 @@ onMounted(reload)
                 <tbody>
                   <tr v-for="invoice in summary.invoiceRecords" :key="invoice.id">
                     <td>{{ invoice.invoiceNo }}</td>
-                    <td><input v-if="invoice.reviewStatus === 'PENDING' && invoice.id" v-model="invoiceNoDrafts[invoice.id]" :data-test="`invoice-no-confirmed-${invoice.id}`" class="compact-input invoice-no-input"><span v-else>{{ invoice.confirmedInvoiceNo || '-' }}</span></td>
+                    <td><input v-if="props.canReviewInvoices && invoice.reviewStatus === 'PENDING' && invoice.id" v-model="invoiceNoDrafts[invoice.id]" :data-test="`invoice-no-confirmed-${invoice.id}`" class="compact-input invoice-no-input"><span v-else>{{ invoice.confirmedInvoiceNo || '-' }}</span></td>
                     <td>¥ {{ money(invoice.taxInclusiveAmount) }}</td>
-                    <td><input v-if="invoice.reviewStatus === 'PENDING' && invoice.id" v-model="invoiceAmountDrafts[invoice.id]" :data-test="`invoice-confirmed-${invoice.id}`" class="compact-input" type="number" min="0" step="0.01"><span v-else>¥ {{ money(invoice.confirmedAmount ?? invoice.taxInclusiveAmount) }}</span></td>
+                    <td><input v-if="props.canReviewInvoices && invoice.reviewStatus === 'PENDING' && invoice.id" v-model="invoiceAmountDrafts[invoice.id]" :data-test="`invoice-confirmed-${invoice.id}`" class="compact-input" type="number" min="0" step="0.01"><span v-else>¥ {{ money(invoice.confirmedAmount ?? invoice.taxInclusiveAmount) }}</span></td>
                     <td><span class="status-pill" :class="String(invoice.reviewStatus || '').toLowerCase()">{{ textStatus(invoice.reviewStatus) }}</span></td>
                     <td class="remark-cell">{{ invoice.reviewRemark || invoice.remark || '-' }}</td>
                     <td class="review-actions">
-                      <template v-if="invoice.reviewStatus === 'PENDING' && invoice.id">
+                      <template v-if="props.canReviewInvoices && invoice.reviewStatus === 'PENDING' && invoice.id">
                         <button class="approve-action" :data-test="`invoice-approve-${invoice.id}`" :disabled="busy === `invoice-${invoice.id}`" @click="reviewInvoice(invoice, true)">通过</button>
                         <button class="reject-action" :data-test="`invoice-reject-${invoice.id}`" :disabled="busy === `invoice-${invoice.id}`" @click="reviewInvoice(invoice, false)">驳回</button>
                       </template>

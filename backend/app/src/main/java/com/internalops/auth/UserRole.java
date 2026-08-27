@@ -16,6 +16,10 @@ public enum UserRole {
     }
 
     public boolean canWriteFinance() {
+        return this == ADMIN || this == FINANCE;
+    }
+
+    public boolean canMaintainInvoices() {
         return this == ADMIN;
     }
 }

@@ -74,7 +74,16 @@ class FinanceInvoiceApiTest {
                         .contentType("application/json")
                         .content("{\"invoiceNo\":\"XS-F-DENIED\",\"taxInclusiveAmount\":10.50}"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("无此操作权限"));
+                .andExpect(jsonPath("$.message").value("无发票维护权限"));
+    }
+
+    @Test
+    void financeUserCannotReviewInvoice() throws Exception {
+        mvc.perform(post("/api/finance/orders/SALES/invoices/31/review").cookie(session)
+                        .contentType("application/json")
+                        .content("{\"approved\":true,\"confirmedAmount\":30.00,\"confirmedInvoiceNo\":\"XS-F-001\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("无发票维护权限"));
     }
 
     @Test
