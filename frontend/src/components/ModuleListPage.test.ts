@@ -78,6 +78,32 @@ it('shows a finance summary export action', async () => {
   expect(wrapper.emitted('exportSummary')).toHaveLength(1)
 })
 
+it('shows only view action in finance management for finance users', async () => {
+  loadModule.mockResolvedValue({ items: [{
+    id: 1,
+    cashDirection: 'RECEIVABLE',
+    businessType: '销售订单',
+    outstandingAmount: 120,
+    pendingReviewCount: 1
+  }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')!, currentUserRole: 'FINANCE' } })
+  await flushPromises()
+
+  expect(wrapper.get('[data-test="view-details"]').text()).toBe('查看')
+  expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="invoice"]').exists()).toBe(false)
+  expect(wrapper.get('.row-actions').text()).not.toContain('复核')
+})
+
+it.each(['FINANCE', 'USER'] as const)('hides user creation and editing for %s users', async role => {
+  loadModule.mockResolvedValue({ items: [{ id: 1, username: 'viewer' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'user')!, currentUserRole: role } })
+  await flushPromises()
+
+  expect(wrapper.find('[data-test="primary-action"]').exists()).toBe(false)
+  expect(wrapper.get('.row-actions').text()).not.toContain('修改')
+})
+
 it('hides every order creation entry from finance users', async () => {
   loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')!, currentUserRole: 'FINANCE' } })

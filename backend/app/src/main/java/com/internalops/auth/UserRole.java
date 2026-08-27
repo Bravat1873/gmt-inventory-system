@@ -16,6 +16,6 @@ public enum UserRole {
     }
 
     public boolean canWriteFinance() {
-        return this == ADMIN;
+        return this != FINANCE;
     }
 }

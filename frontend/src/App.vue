@@ -86,6 +86,7 @@ const canUseCurrentModulePrimary = computed(() => {
     || user.value?.role === 'ADMIN' || user.value?.role === 'FINANCE'
 })
 const canUseCurrentModuleImport = computed(() => currentModule.value.importType !== undefined && canUseCurrentModulePrimary.value)
+const canWriteFinance = computed(() => user.value?.role !== 'FINANCE')
 
 onMounted(async () => {
   try { user.value = await currentUser() } catch {} finally { authReady.value = true }
@@ -221,11 +222,13 @@ async function submitActionInput(value: string) {
 }
 
 async function receipt(row: Record<string, unknown>) {
+  if (activeModule.value === 'finance' && !canWriteFinance.value) return
   try { receiptRow.value = await getOrder(Number(row.id)); receiptOpen.value = true }
   catch (cause) { showMessage(cause instanceof Error ? cause.message : '璇诲彇璁㈠崟鏀舵淇℃伅澶辫触', 'error') }
 }
 
 function payment(row: Record<string, unknown>) {
+  if (activeModule.value === 'finance' && !canWriteFinance.value) return
   paymentRow.value = row
   paymentOpen.value = true
 }
@@ -235,10 +238,12 @@ function financeType(row: Record<string, unknown>): 'SALES' | 'PURCHASE' {
 }
 
 function openFinanceReview(row: Record<string, unknown>) {
+  if (!canWriteFinance.value) return
   financeReviewRow.value = row
 }
 
 function openInvoice(row: Record<string, unknown>) {
+  if (!canWriteFinance.value) return
   if (activeModule.value === 'order') {
     invoiceContext.value = { type: 'SALES', businessId: Number(row.id), businessNo: String(row.orderNo ?? '') }
     return
