@@ -133,6 +133,9 @@ INSERT INTO customer(id,customer_name) VALUES(1,'客户甲');
 INSERT INTO sys_user(id,username,display_name,enabled,role) VALUES(9,'finance-test','财务测试',TRUE,'FINANCE');
 INSERT INTO user_session(id,user_id,token_hash,expires_at,revoked_at)
 VALUES(9,9,'0762bbb22d5dbc5f919841b480a2873193873a3e7312032bee8a7ae0e35231e5',TIMESTAMP '2099-01-01 00:00:00',NULL);
+INSERT INTO sys_user(id,username,display_name,enabled,role) VALUES(1,'admin-test','管理员测试',TRUE,'ADMIN');
+INSERT INTO user_session(id,user_id,token_hash,expires_at,revoked_at)
+VALUES(1,1,'1d4f144f52846450e02414b4f60277722e181fe96d30a2392aef2a7838a6aeae',TIMESTAMP '2099-01-01 00:00:00',NULL);
 INSERT INTO supplier(id,supplier_name) VALUES(2,'供应商乙');
 INSERT INTO sales_order(id,order_no,customer_id,status,created_at,updated_at)
 VALUES(10,'SO-F-001',1,'WAITING_STOCK',TIMESTAMP '2026-08-06 10:00:00',TIMESTAMP '2026-08-06 10:00:00');

@@ -26,6 +26,7 @@ class FinanceReviewApiTest {
     @Autowired JdbcTemplate jdbc;
 
     private final Cookie session = new Cookie("OPS_SESSION", "finance-test-token");
+    private final Cookie adminSession = new Cookie("OPS_SESSION", "admin-test-token");
 
     @Test
     void returnsCamelCaseReviewFieldsForPendingSalesReceipt() throws Exception {
@@ -58,7 +59,7 @@ class FinanceReviewApiTest {
                 WHERE id=21
                 """);
 
-        mvc.perform(post("/api/finance/orders/payments/21/review").cookie(session)
+        mvc.perform(post("/api/finance/orders/payments/21/review").cookie(adminSession)
                         .contentType("application/json")
                         .content("""
                                 {"approved":true,"confirmedAmount":250.00,"reviewRemark":"按到账金额确认"}
@@ -71,5 +72,16 @@ class FinanceReviewApiTest {
         assertThat(row.get("amount")).isEqualTo(new java.math.BigDecimal("260.00"));
         assertThat(row.get("confirmed_amount")).isEqualTo(new java.math.BigDecimal("250.00"));
         assertThat(row.get("review_status")).isEqualTo("APPROVED");
+    }
+
+    @Test
+    void financeUserCannotReviewPayment() throws Exception {
+        jdbc.update("UPDATE supplier_payment SET review_status='PENDING' WHERE id=21");
+
+        mvc.perform(post("/api/finance/orders/payments/21/review").cookie(session)
+                        .contentType("application/json")
+                        .content("{\"approved\":true}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("无此操作权限"));
     }
 }

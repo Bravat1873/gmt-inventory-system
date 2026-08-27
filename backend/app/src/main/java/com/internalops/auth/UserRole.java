@@ -10,4 +10,12 @@ public enum UserRole {
     public boolean canManageRoles() {
         return this == ADMIN;
     }
+
+    public boolean canManageUsers() {
+        return this == ADMIN;
+    }
+
+    public boolean canWriteFinance() {
+        return this == ADMIN;
+    }
 }

@@ -41,7 +41,7 @@ public class MasterDataController {
         }
     }
     private void requireUserManagementPermission(String module) {
-        if ("user".equals(module) && !CurrentUser.required().role().canManageRoles()) {
+        if ("user".equals(module) && !CurrentUser.required().role().canManageUsers()) {
             throw new IllegalArgumentException("仅管理员可管理用户账号");
         }
     }

@@ -28,6 +28,7 @@ class FinanceInvoiceApiTest {
     @Autowired JdbcTemplate jdbc;
 
     private final Cookie session = new Cookie("OPS_SESSION", "finance-test-token");
+    private final Cookie adminSession = new Cookie("OPS_SESSION", "admin-test-token");
 
     @Test
     void invoiceTablesExposeFinanceReviewColumns() {
@@ -54,7 +55,7 @@ class FinanceInvoiceApiTest {
 
     @Test
     void createsAnotherInvoiceWithoutOverwritingHistory() throws Exception {
-        mvc.perform(post("/api/finance/orders/SALES/10/invoices").cookie(session)
+        mvc.perform(post("/api/finance/orders/SALES/10/invoices").cookie(adminSession)
                         .contentType("application/json")
                         .content("""
                                 {"invoiceNo":"XS-F-003","invoiceDate":"2026-08-12","taxInclusiveAmount":10.50,"remark":"补开发票"}
@@ -68,8 +69,17 @@ class FinanceInvoiceApiTest {
     }
 
     @Test
+    void financeUserCannotCreateInvoice() throws Exception {
+        mvc.perform(post("/api/finance/orders/SALES/10/invoices").cookie(session)
+                        .contentType("application/json")
+                        .content("{\"invoiceNo\":\"XS-F-DENIED\",\"taxInclusiveAmount\":10.50}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("无此操作权限"));
+    }
+
+    @Test
     void approvingInvoiceStoresConfirmedInvoiceNumberAndAmount() throws Exception {
-        mvc.perform(post("/api/finance/orders/PURCHASE/20/invoices").cookie(session)
+        mvc.perform(post("/api/finance/orders/PURCHASE/20/invoices").cookie(adminSession)
                         .contentType("application/json")
                         .content("""
                                 {"invoiceNo":"CG-F-002","invoiceDate":"2026-08-25","taxInclusiveAmount":122.00,"remark":"业务补录"}
@@ -79,7 +89,7 @@ class FinanceInvoiceApiTest {
 
         Long invoiceId = jdbc.queryForObject("SELECT id FROM purchase_invoice WHERE invoice_no='CG-F-002'", Long.class);
 
-        mvc.perform(post("/api/finance/orders/PURCHASE/invoices/{id}/review", invoiceId).cookie(session)
+        mvc.perform(post("/api/finance/orders/PURCHASE/invoices/{id}/review", invoiceId).cookie(adminSession)
                         .contentType("application/json")
                         .content("""
                                 {"approved":true,"confirmedAmount":120.00,"confirmedInvoiceNo":"CG-F-FINAL-002","reviewRemark":"按票面确认"}
@@ -113,7 +123,7 @@ class FinanceInvoiceApiTest {
                 VALUES(31,20,'CG-F-SAME-ID',55.00,'PENDING',9)
                 """);
 
-        mvc.perform(post("/api/finance/orders/PURCHASE/invoices/{id}/review", 31).cookie(session)
+        mvc.perform(post("/api/finance/orders/PURCHASE/invoices/{id}/review", 31).cookie(adminSession)
                         .contentType("application/json")
                         .content("""
                                 {"approved":true,"confirmedAmount":55.00,"confirmedInvoiceNo":"CG-F-SAME-ID-FINAL"}
@@ -132,7 +142,7 @@ class FinanceInvoiceApiTest {
     void savesInvoiceWithoutAmountAndSummaryTreatsAmountAsZero() throws Exception {
         jdbc.update("DELETE FROM purchase_invoice WHERE purchase_order_id=20");
 
-        mvc.perform(post("/api/finance/orders/PURCHASE/20/invoices").cookie(session)
+        mvc.perform(post("/api/finance/orders/PURCHASE/20/invoices").cookie(adminSession)
                         .contentType("application/json")
                         .content("""
                                 {"invoiceNo":"CG-F-NO-AMOUNT","remark":"待补金额"}
@@ -148,7 +158,7 @@ class FinanceInvoiceApiTest {
 
     @Test
     void deletesOnlyTheSelectedInvoice() throws Exception {
-        mvc.perform(delete("/api/finance/orders/SALES/10/invoices/31").cookie(session))
+        mvc.perform(delete("/api/finance/orders/SALES/10/invoices/31").cookie(adminSession))
                 .andExpect(status().isOk());
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_invoice WHERE sales_order_id=10", Integer.class)).isEqualTo(1);
