@@ -14,7 +14,7 @@
 - 不修改 `sys_user`、订单、采购、款项或发票业务数据。
 - `ADMIN` 保留全部操作。
 - `FINANCE` 与 `USER` 对用户管理均只读。
-- `FINANCE` 在财务管理中只可查看，所有资金、发票和复核写接口返回 HTTP 403；`ADMIN` 和 `USER` 保留原有财务写操作。
+- `FINANCE` 和 `USER` 在财务管理中只可查看，所有资金、发票和复核写接口返回 HTTP 403。
 
 ### Task 1: 后端财务写操作授权
 
@@ -24,7 +24,7 @@
 - Modify: `backend/app/src/test/java/com/internalops/workbench/FinanceReviewApiTest.java`
 - Modify: `backend/app/src/test/java/com/internalops/workbench/FinanceInvoiceApiTest.java`
 
-**Interfaces:** `UserRole.canManageUsers()` 仅在 `ADMIN` 返回 `true`；`UserRole.canWriteFinance()` 仅对 `FINANCE` 返回 `false`；财务角色对财务写接口收到 `403` 和“无此操作权限”。
+**Interfaces:** `UserRole.canManageUsers()` 和 `UserRole.canWriteFinance()` 仅在 `ADMIN` 返回 `true`；非管理员对财务写接口收到 `403` 和“无此操作权限”。
 
 - [ ] **Step 1: Write the failing test**
 
@@ -51,7 +51,7 @@ Expected: FAIL because a finance user can currently write finance records.
 - [ ] **Step 3: Write minimal implementation**
 
 ```java
-public boolean canWriteFinance() { return this != FINANCE; }
+public boolean canWriteFinance() { return this == ADMIN; }
 
 private void requireFinanceWrite() {
     if (!CurrentUser.required().role().canWriteFinance()) {

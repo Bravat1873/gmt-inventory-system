@@ -62,7 +62,7 @@ const canUsePrimary = computed(() => Boolean(props.module.actionLabel)
 function primary() { if (canUsePrimary.value) emit('action') }
 function importOrders() { if (canUsePrimary.value && props.module.importActionLabel) emit('import') }
 function canEditRow() { return props.module.key !== 'user' || props.currentUserRole === 'ADMIN' }
-const canWriteFinance = computed(() => props.currentUserRole !== 'FINANCE')
+const canWriteFinance = computed(() => props.currentUserRole === 'ADMIN')
 function productImageUrl(row: Record<string, unknown>) {
   if (row.primaryImageUrl) return String(row.primaryImageUrl)
   return row.primaryImageId ? `/api/product-images/${Number(row.primaryImageId)}/content` : ''

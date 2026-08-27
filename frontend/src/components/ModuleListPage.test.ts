@@ -95,6 +95,23 @@ it('shows only view action in finance management for finance users', async () =>
   expect(wrapper.get('.row-actions').text()).not.toContain('复核')
 })
 
+it('shows only view action in finance management for regular users', async () => {
+  loadModule.mockResolvedValue({ items: [{
+    id: 1,
+    cashDirection: 'RECEIVABLE',
+    businessType: '销售订单',
+    outstandingAmount: 120,
+    pendingReviewCount: 1
+  }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')!, currentUserRole: 'USER' } })
+  await flushPromises()
+
+  expect(wrapper.get('[data-test="view-details"]').text()).toBe('查看')
+  expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="invoice"]').exists()).toBe(false)
+  expect(wrapper.get('.row-actions').text()).not.toContain('复核')
+})
+
 it.each(['FINANCE', 'USER'] as const)('hides user creation and editing for %s users', async role => {
   loadModule.mockResolvedValue({ items: [{ id: 1, username: 'viewer' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'user')!, currentUserRole: role } })
@@ -140,7 +157,7 @@ it('renders finance direction dots at the same size and with the same soft outer
 it.each(['order', 'finance'] as const)('emits the original %s row from its invoice action', async key => {
   const row = markRaw({ id: 12, orderNo: 'DD20260800012', businessNo: 'SO001' })
   loadModule.mockResolvedValue({ items: [row], total: 1, page: 1, pageSize: 10, totalPages: 1 })
-  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === key)! } })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === key)!, currentUserRole: 'ADMIN' } })
   await flushPromises()
 
   const invoice = wrapper.get('[data-test="invoice"]')
@@ -155,7 +172,7 @@ it('emits invoices for actual purchases but not purchase suggestions', async () 
     purchaseRow,
     { id: 2, recordType: 'SUGGESTION' }
   ], total: 2, page: 1, pageSize: 10, totalPages: 1 })
-  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')!, currentUserRole: 'ADMIN' } })
   await flushPromises()
 
   expect(wrapper.findAll('[data-test="invoice"]')).toHaveLength(1)
@@ -171,7 +188,7 @@ it('keeps all finance actions in one horizontal sticky action column', async () 
     outstandingAmount: 120,
     pendingReviewCount: 1
   }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
-  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')! } })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')!, currentUserRole: 'ADMIN' } })
   await flushPromises()
 
   expect(wrapper.findAll('col').at(-1)?.attributes('style')).toContain('width: 280px')
@@ -245,7 +262,7 @@ it('shortens customer, order, after-sales and finance row action labels', async 
   expect(afterSales.get('.row-actions').text()).toContain('收货')
 
   loadModule.mockResolvedValueOnce({ items: [{ id: 1, cashDirection: 'RECEIVABLE', outstandingAmount: 120, pendingReviewCount: 2 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
-  const finance = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')! } })
+  const finance = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')!, currentUserRole: 'ADMIN' } })
   await flushPromises()
   expect(finance.get('[data-test="finance-receipt"]').text()).toBe('登记')
   expect(finance.get('.row-actions').text()).toContain('复核')
@@ -263,7 +280,7 @@ it('uses the exact same red and green shipment status dot for purchase status', 
 
 it('shows finance direction dot in the business type cell and the matching automatic settlement action', async () => {
   loadModule.mockResolvedValue({ items: [{ id: 1, cashDirection: 'RECEIVABLE', businessType: '销售订单', status: '待收款', businessNo: 'SO001', outstandingAmount: 120 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
-  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')! } })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')!, currentUserRole: 'ADMIN' } })
   await flushPromises()
 
   expect(wrapper.get('[data-test="finance-direction"]').attributes('aria-label')).toBe('收款')

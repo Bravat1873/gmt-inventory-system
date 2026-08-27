@@ -86,7 +86,7 @@ const canUseCurrentModulePrimary = computed(() => {
     || user.value?.role === 'ADMIN' || user.value?.role === 'FINANCE'
 })
 const canUseCurrentModuleImport = computed(() => currentModule.value.importType !== undefined && canUseCurrentModulePrimary.value)
-const canWriteFinance = computed(() => user.value?.role !== 'FINANCE')
+const canWriteFinance = computed(() => user.value?.role === 'ADMIN')
 
 onMounted(async () => {
   try { user.value = await currentUser() } catch {} finally { authReady.value = true }
