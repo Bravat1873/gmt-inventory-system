@@ -2,6 +2,7 @@ package com.internalops.importing;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @Sql(scripts = {"/import-schema.sql", "/sales-command-schema.sql"})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class SalesOrderImportPreviewEditTest {
     @Autowired ImportBatchRepository repository;
     @Autowired ImportPreviewService previewService;

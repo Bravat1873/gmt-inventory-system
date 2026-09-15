@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.ContentDisposition;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.ByteArrayInputStream;
@@ -32,9 +33,9 @@ class ProductImportTemplateApiTest {
                 .andExpect(content().contentType(XLSX_MEDIA_TYPE))
                 .andReturn().getResponse();
 
-        assertThat(response.getHeader(HttpHeaders.CONTENT_DISPOSITION))
-                .contains("attachment")
-                .contains("PRODUCT.xlsx");
+        var disposition = ContentDisposition.parse(response.getHeader(HttpHeaders.CONTENT_DISPOSITION));
+        assertThat(disposition.getType()).isEqualTo("attachment");
+        assertThat(disposition.getFilename()).isEqualTo("产品批量导入模板.xlsx");
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(response.getContentAsByteArray()))) {
             assertThat(workbook.getNumberOfSheets()).isEqualTo(4);

@@ -161,6 +161,11 @@ public class ImportCommitService {
     }
 
     private ImportBatchView commitSuppliers(ImportBatchView batch, ImportCommitRequest.SupplierMode mode) {
+        ImportCommitRequest.SupplierMode resolvedMode = mode == null ? ImportCommitRequest.SupplierMode.OVERWRITE : mode;
+        if (resolvedMode == ImportCommitRequest.SupplierMode.REPLACE_ALL) {
+            if (batch.errorRows() > 0) throw new IllegalArgumentException("全量替换前必须修正所有错误行");
+            if (batch.validRows() == 0) throw new IllegalArgumentException("全量替换至少需要一条有效供应商记录");
+        }
         jdbc.queryForList("SELECT id FROM supplier FOR UPDATE", Long.class);
         Map<String, Long> existingByName = new LinkedHashMap<>();
         for (Map<String, Object> supplier : jdbc.queryForList("SELECT id,supplier_name FROM supplier ORDER BY id")) {
@@ -178,6 +183,8 @@ public class ImportCommitService {
             if (row.status() != ImportRowStatus.VALID) continue;
             if (Boolean.TRUE.equals(row.data().get("_conflict"))
                     && "SKIP".equals(text(row.data(), "_conflictAction"))) {
+                Long retainedId = existingByName.get(normalizeName(text(row.data(), "supplierName")));
+                if (retainedId != null) importedIds.add(retainedId);
                 skipped++;
                 continue;
             }
@@ -200,6 +207,13 @@ public class ImportCommitService {
             }
         }
         int committed = created + updated;
+        int disabled = 0;
+        if (resolvedMode == ImportCommitRequest.SupplierMode.REPLACE_ALL) {
+            if (importedIds.isEmpty()) throw new IllegalArgumentException("全量替换至少需要一条保留的供应商记录");
+            String placeholders = String.join(",", java.util.Collections.nCopies(importedIds.size(), "?"));
+            disabled = jdbc.update("UPDATE supplier SET enabled=FALSE WHERE enabled=TRUE AND id NOT IN (" + placeholders + ")",
+                    importedIds.toArray());
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("created", created);
         result.put("updated", updated);
@@ -207,8 +221,8 @@ public class ImportCommitService {
         result.put("errors", batch.errorRows());
         result.put("ignored", batch.ignoredRows());
         result.put("skipped", skipped);
-        result.put("disabled", 0);
-        result.put("mode", "INCREMENTAL_UPSERT");
+        result.put("disabled", disabled);
+        result.put("mode", resolvedMode.name());
         repository.markCommitted(batch.batchId(), committed, result);
         return repository.findBatch(batch.batchId());
     }

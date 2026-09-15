@@ -13,7 +13,7 @@ it('keeps order actions inside their dedicated right-aligned table cell', async 
   const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')! } })
   await flushPromises()
 
-  expect(wrapper.get('colgroup col:last-child').attributes('style')).toContain('470px')
+  expect(wrapper.get('colgroup col:last-child').attributes('style')).toContain('480px')
   expect(wrapper.find('.row-actions > .row-actions-content').exists()).toBe(true)
 })
 

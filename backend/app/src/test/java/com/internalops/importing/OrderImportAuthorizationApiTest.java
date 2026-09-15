@@ -46,7 +46,7 @@ class OrderImportAuthorizationApiTest {
                 .build();
         when(previews.get(7L)).thenReturn(batch(ImportType.ORDER, "PREVIEW"));
         when(previews.preview(eq(ImportType.ORDER), any())).thenReturn(batch(ImportType.ORDER, "PREVIEW"));
-        when(commits.commit(eq(7L), any(), any(), any())).thenReturn(batch(ImportType.ORDER, "COMMITTED"));
+        when(commits.commit(eq(7L), any(), any(), any(), any())).thenReturn(batch(ImportType.ORDER, "COMMITTED"));
         when(errors.create(7L)).thenReturn(new byte[]{1});
     }
 
@@ -78,7 +78,7 @@ class OrderImportAuthorizationApiTest {
         verify(previews, never()).add(anyLong(), any());
         verify(previews, never()).update(anyLong(), anyLong(), any());
         verify(errors, never()).create(anyLong());
-        verify(commits, never()).commit(anyLong(), any(), any(), any());
+        verify(commits, never()).commit(anyLong(), any(), any(), any(), any());
     }
 
     @ParameterizedTest
@@ -98,7 +98,7 @@ class OrderImportAuthorizationApiTest {
     void financeKeepsExistingAccessToNonOrderImports() throws Exception {
         CurrentUser.set(new CurrentUser(3, "finance", "财务", UserRole.FINANCE));
         when(previews.get(11L)).thenReturn(batch(ImportType.COST, "PREVIEW"));
-        when(commits.commit(eq(11L), any(), any(), any())).thenReturn(batch(ImportType.COST, "COMMITTED"));
+        when(commits.commit(eq(11L), any(), any(), any(), any())).thenReturn(batch(ImportType.COST, "COMMITTED"));
 
         mvc.perform(post("/api/imports/11/commit"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.importType").value("COST"));

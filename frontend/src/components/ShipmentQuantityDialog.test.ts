@@ -45,7 +45,9 @@ it('submits the original cumulative quantity plus this shipment and its remark',
   await wrapper.get('footer .primary-action').trigger('click')
   await flushPromises()
 
-  expect(updateShipmentQuantities).toHaveBeenCalledWith(12, '默认收货地址', [{ lineNo: 10000, shippedQuantity: 8 }], '客户要求下午送达')
+  expect(updateShipmentQuantities).toHaveBeenCalledWith(12, '默认收货地址', [{ lineNo: 10000, shippedQuantity: 8 }], '客户要求下午送达', {
+    logisticsCompany: undefined, logisticsNo: undefined, logisticsRemark: undefined
+  })
 })
 
 it('updates the remaining quantity from the current shipment value', async () => {
@@ -127,5 +129,7 @@ it('does not include negative return lines in a shipment batch', async () => {
   await wrapper.get('footer .primary-action').trigger('click')
   await flushPromises()
 
-  expect(updateShipmentQuantities).toHaveBeenCalledWith(1, '默认收货地址', [{ lineNo: 10000, shippedQuantity: 4 }], undefined)
+  expect(updateShipmentQuantities).toHaveBeenCalledWith(1, '默认收货地址', [{ lineNo: 10000, shippedQuantity: 4 }], undefined, {
+    logisticsCompany: undefined, logisticsNo: undefined, logisticsRemark: undefined
+  })
 })

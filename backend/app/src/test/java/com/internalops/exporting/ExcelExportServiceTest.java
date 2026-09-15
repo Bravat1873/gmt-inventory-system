@@ -42,12 +42,13 @@ class ExcelExportServiceTest {
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.summary("finance")))) {
             var sheet = workbook.getSheet("财务汇总数据");
             assertEquals("业务单号", sheet.getRow(0).getCell(0).getStringCellValue());
-            assertEquals("应收/应付", sheet.getRow(0).getCell(4).getStringCellValue());
+            assertEquals("发票号码", sheet.getRow(0).getCell(4).getStringCellValue());
+            assertEquals("总金额", sheet.getRow(0).getCell(5).getStringCellValue());
             assertEquals("DD20260800009", sheet.getRow(1).getCell(0).getStringCellValue());
             assertEquals("应收", sheet.getRow(1).getCell(2).getStringCellValue());
-            assertEquals("待收款", sheet.getRow(1).getCell(7).getStringCellValue());
+            assertEquals("待收款", sheet.getRow(1).getCell(8).getStringCellValue());
             assertEquals("CG20260800001", sheet.getRow(2).getCell(0).getStringCellValue());
-            assertEquals("已付清", sheet.getRow(2).getCell(7).getStringCellValue());
+            assertEquals("已付清", sheet.getRow(2).getCell(8).getStringCellValue());
         }
     }
 

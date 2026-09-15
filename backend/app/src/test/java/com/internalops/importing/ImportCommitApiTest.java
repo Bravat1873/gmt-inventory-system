@@ -227,6 +227,40 @@ class ImportCommitApiTest {
                 .isEqualTo("PREVIEW");
     }
 
+    @Test
+    void replaceAllRejectsEmptyBatchRatherThanDisablingEverySupplier() throws Exception {
+        jdbc.update("INSERT INTO supplier(supplier_code,supplier_name,enabled) VALUES('SUP00001','原供应商',TRUE)");
+        long batchId = repository.create(ImportType.SUPPLIER, "empty.xlsx", "supplier-empty", List.of());
+
+        mvc.perform(post("/api/imports/{batchId}/commit", batchId).cookie(loginAs("regular-user"))
+                        .contentType("application/json").content("{\"supplierMode\":\"REPLACE_ALL\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("全量替换至少需要一条有效供应商记录"));
+
+        assertThat(jdbc.queryForObject("SELECT enabled FROM supplier WHERE supplier_code='SUP00001'", Boolean.class)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT status FROM import_batch WHERE id=?", String.class, batchId)).isEqualTo("PREVIEW");
+    }
+
+    @Test
+    void replaceAllRetainsAnExistingSupplierExplicitlySkippedAsAConflict() throws Exception {
+        jdbc.update("INSERT INTO supplier(supplier_code,supplier_name,enabled) VALUES('SUP00001','保留供应商',TRUE)");
+        jdbc.update("INSERT INTO supplier(supplier_code,supplier_name,enabled) VALUES('SUP00002','文件外供应商',TRUE)");
+        Map<String, Object> skipped = supplierData("保留供应商");
+        skipped.put("_conflict", true);
+        skipped.put("_conflictAction", "SKIP");
+        long batchId = repository.create(ImportType.SUPPLIER, "selected.xlsx", "supplier-skip", List.of(
+                row(skipped), row(supplierData("新供应商"))));
+
+        mvc.perform(post("/api/imports/{batchId}/commit", batchId).cookie(loginAs("regular-user"))
+                        .contentType("application/json").content("{\"supplierMode\":\"REPLACE_ALL\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.result.skipped").value(1))
+                .andExpect(jsonPath("$.data.result.disabled").value(1));
+
+        assertThat(jdbc.queryForObject("SELECT enabled FROM supplier WHERE supplier_name='保留供应商'", Boolean.class)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT enabled FROM supplier WHERE supplier_name='文件外供应商'", Boolean.class)).isFalse();
+    }
+
     @AfterEach
     void removePurchaseReferenceFixture() {
         jdbc.execute("DROP TABLE IF EXISTS purchase_supplier_reference");

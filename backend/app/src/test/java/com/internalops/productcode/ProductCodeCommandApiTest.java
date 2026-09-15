@@ -31,13 +31,13 @@ class ProductCodeCommandApiTest {
     }
 
     @Test
-    void createsEntryDoorCode() throws Exception {
+    void entryDoorUsesCurrentProductCodeRules() throws Exception {
         Cookie session = login();
         String json = "{\"customerPartNumber\":\"门客户号\",\"productName\":\"入户门\",\"productType\":\"ENTRY_DOOR\",\"materialType\":\"FINISHED_PRODUCT\"," +
-                "\"brandRuleId\":1,\"doorModelRuleId\":11,\"securityGradeRuleId\":12,\"baseMaterialRuleId\":13," +
-                "\"thicknessRuleId\":14,\"finishColorRuleId\":15}";
+                "\"brandRuleId\":1,\"seriesRuleId\":2,\"bodyColorRuleId\":3,\"lockTypeRuleId\":4," +
+                "\"connectivityRuleId\":5,\"salesChannelRuleId\":6,\"operatingEntityRuleId\":7,\"languageRuleId\":8}";
         mvc.perform(post("/api/workbench/product").cookie(session).contentType("application/json").content(json))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.productCode").value("BR_MJ3080A"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.productCode").value("BR_P90HGT60WPZE"))
                 .andExpect(jsonPath("$.data.customerPartNumber").value("门客户号"));
     }
     @Test

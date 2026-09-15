@@ -55,6 +55,9 @@ class CustomerFundApiTest {
 
     @Test
     void reviewCreatesLedgerAndSummaryAndCsvUseSameApprovedData() throws Exception {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        String from = today.withDayOfMonth(1).toString();
+        String to = today.withDayOfMonth(today.lengthOfMonth()).toString();
         String response = mvc.perform(post("/api/customers/1/funds/deposits").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\":100,\"paymentDate\":\"2026-08-14\",\"paymentMethod\":\"银行转账\"}"))
                 .andReturn().getResponse().getContentAsString();
@@ -65,9 +68,9 @@ class CustomerFundApiTest {
 
         mvc.perform(get("/api/customers/1/funds/ledger"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].entryType").value("CUSTOMER_DEPOSIT"));
-        mvc.perform(get("/api/customers/1/funds/summary").param("period", "MONTH").param("from", "2026-08-01").param("to", "2026-08-31"))
+        mvc.perform(get("/api/customers/1/funds/summary").param("period", "MONTH").param("from", from).param("to", to))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].depositAmount").value(100));
-        mvc.perform(get("/api/customers/1/funds/summary/export").param("period", "MONTH").param("from", "2026-08-01").param("to", "2026-08-31"))
+        mvc.perform(get("/api/customers/1/funds/summary/export").param("period", "MONTH").param("from", from).param("to", to))
                 .andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith("text/csv"))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("客户打款")));
     }
