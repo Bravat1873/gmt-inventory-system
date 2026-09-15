@@ -56,11 +56,12 @@ public class SalesOrderCommandService {
 
     public Map<String, Object> get(long id) {
         Map<String, Object> order = jdbc.queryForMap("SELECT id,order_no,external_order_no,customer_id,status,total_amount,order_date,order_type,salesperson,customer_contact,customer_phone,business_contact_name,business_contact_phone,order_contact_name,order_contact_phone,finance_contact_name,finance_contact_phone,order_remark,delivery_address,delivery_contact,delivery_phone,shipping_method,receipt_confirmed_at,shipped_at,carrier,tracking_no,shipping_remark,created_at,version FROM sales_order WHERE id=?", id);
-        List<Map<String, Object>> items = jdbc.query("SELECT i.id,i.line_no,i.sku_id,s.product_code,s.customer_part_number,s.product_name,s.model,s.product_type,s.product_configuration,s.color,s.configuration,s.unit,i.quantity,i.shipped_quantity,i.locked_quantity,i.uncovered_quantity,i.sale_price,i.cost_snapshot FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no", (rs, n) -> {
+        List<Map<String, Object>> items = jdbc.query("SELECT i.id,i.line_no,i.sku_id,s.product_code,s.customer_part_number,s.product_name,s.model,s.product_type,s.product_configuration,s.color,s.configuration,s.unit,i.quantity,i.shipped_quantity,i.locked_quantity,i.uncovered_quantity,i.sale_price,i.cost_snapshot,i.item_remark FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no", (rs, n) -> {
             Map<String, Object> m = new LinkedHashMap<>();
             int quantity = rs.getInt("quantity");
             int shipped = rs.getInt("shipped_quantity");
             m.put("id", rs.getLong("id")); m.put("lineNo", rs.getInt("line_no")); m.put("skuId", rs.getLong("sku_id"));
+            m.put("remark", rs.getString("item_remark"));
             m.put("productCode", rs.getString("product_code")); m.put("customerPartNumber", rs.getString("customer_part_number")); m.put("productName", rs.getString("product_name")); m.put("model", rs.getString("model")); m.put("productType", rs.getString("product_type")); m.put("productConfiguration", rs.getString("product_configuration")); m.put("color", rs.getString("color")); m.put("configuration", rs.getString("configuration")); m.put("unit", rs.getString("unit"));
             m.put("quantity", quantity); m.put("shippedQuantity", shipped); m.put("remainingQuantity", quantity - shipped);
             m.put("lockedQuantity", rs.getInt("locked_quantity")); m.put("uncoveredQuantity", rs.getInt("uncovered_quantity")); m.put("salePrice", rs.getBigDecimal("sale_price")); m.put("costSnapshot", rs.getBigDecimal("cost_snapshot"));
@@ -306,6 +307,7 @@ public class SalesOrderCommandService {
             if (item.skuId() == null || jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE id=? AND enabled=TRUE", Integer.class, item.skuId()) == 0) throw new IllegalArgumentException("订单中存在无效产品");
             if (item.quantity() == null || item.quantity() == 0) throw new IllegalArgumentException("产品数量不能为零；退货请填写负数");
             if (item.salePrice() == null || item.salePrice().signum() < 0) throw new IllegalArgumentException("销售单价不能为负数");
+            if (item.remark() != null && item.remark().length() > 1000) throw new IllegalArgumentException("明细备注不能超过1000个字符");
         }
     }
 
@@ -316,7 +318,7 @@ public class SalesOrderCommandService {
             int line = item.lineNo() != null && item.lineNo() > 0 ? item.lineNo() : nextLine;
             nextLine = Math.max(nextLine, line + 10000);
             BigDecimal cost = jdbc.queryForObject("SELECT current_cost FROM sku WHERE id=?", BigDecimal.class, item.skuId());
-            jdbc.update("INSERT INTO sales_order_item(sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity,sale_price,cost_snapshot) VALUES(?,?,?,?,0,0,?,?)", orderId, line, item.skuId(), item.quantity(), item.salePrice(), cost);
+            jdbc.update("INSERT INTO sales_order_item(sales_order_id,line_no,sku_id,quantity,locked_quantity,uncovered_quantity,sale_price,cost_snapshot,item_remark) VALUES(?,?,?,?,0,0,?,?,?)", orderId, line, item.skuId(), item.quantity(), item.salePrice(), cost, blankToNull(item.remark()));
         }
     }
     private long insert(String sql, Object... params) { var keys = new GeneratedKeyHolder(); jdbc.update(connection -> { PreparedStatement statement = connection.prepareStatement(sql, new String[]{"id"}); for (int i = 0; i < params.length; i++) statement.setObject(i + 1, params[i]); return statement; }, keys); return Objects.requireNonNull(keys.getKey()).longValue(); }

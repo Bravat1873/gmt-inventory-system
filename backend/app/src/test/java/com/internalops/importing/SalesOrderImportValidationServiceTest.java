@@ -17,6 +17,14 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SalesOrderImportValidationServiceTest {
+    @Test
+    void acceptsDifferentRemarksInTheSameOrderAndRejectsOversizedLineRemark() {
+        customer(1, "C-001", true);
+        sku(10, "P-001", "CM-001", true, 1);
+        var results = validation.validateAll(List.of(row(Map.of("remark", "第一条备注")), row(Map.of("remark", "第二条备注"))));
+        assertThat(results).allMatch(result -> result.status() == ImportRowStatus.VALID);
+        assertThat(validation.validateAll(List.of(row(Map.of("remark", "长".repeat(1001))))).get(0).status()).isEqualTo(ImportRowStatus.ERROR);
+    }
     private JdbcTemplate jdbc;
     private SalesOrderImportValidationService validation;
 
@@ -221,8 +229,7 @@ class SalesOrderImportValidationServiceTest {
                 Arguments.of("deliveryAddress", "上海市浦东新区", "收货地址"),
                 Arguments.of("deliveryContact", "收货联系人", "收货联系人"),
                 Arguments.of("deliveryPhone", "13800138003", "收货联系电话"),
-                Arguments.of("shippingMethod", "陆运", "运输方式"),
-                Arguments.of("remark", "加急", "备注"));
+                Arguments.of("shippingMethod", "陆运", "运输方式"));
     }
 
     private void assertError(Map<String, Object> overrides, String expectedMessage) {

@@ -219,6 +219,8 @@ class ExcelExportServiceTest {
             assertEquals("采购备注：采购备注", sheet.getRow(11).getCell(0).getStringCellValue());
             assertEquals("注意事项", sheet.getRow(13).getCell(0).getStringCellValue());
             String notices = sheet.getRow(13).getCell(3).getStringCellValue();
+            assertTrue(notices.contains("3. 发货提前说明，送货单需随货一起给到仓库并发电子档给采购对接人；"));
+            assertTrue(notices.contains("7. 货款结算方式：按约定执行；"));
             assertTrue(notices.contains("1. 卖方接到订单后，请在24小时内确认，并回传至sha.tian@seagullgroup.cn；"));
             assertTrue(notices.contains("8. 此采购订单作为采购合同的附件。"));
         }

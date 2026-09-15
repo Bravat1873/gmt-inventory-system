@@ -36,7 +36,7 @@ function header(key: string) { const raw = props.trace.header[key]; return key =
           <div><span>当前状态</span><strong>{{ header('status') }}</strong></div>
           <div><span>金额</span><strong>¥{{ header('totalAmount') }}</strong></div>
         </section>
-        <section class="trace-section trace-remark">
+        <section v-if="trace.type !== 'order' || header('remark') !== '—'" class="trace-section trace-remark">
           <h3>{{ trace.type === 'order' ? '订单备注' : '采购备注' }}</h3>
           <p>{{ header('remark') === '—' ? '暂无备注' : header('remark') }}</p>
         </section>
@@ -61,6 +61,7 @@ function header(key: string) { const raw = props.trace.header[key]; return key =
               <div class="trace-detail-metrics">
                 <div v-for="key in detailKeys().filter(value => !['productCode','customerPartNumber','productName','model','configuration','unit'].includes(value))" :key="key"><span>{{ detailLabel(key) }}</span><strong>{{ value(row[key]) }}</strong></div>
               </div>
+              <div v-if="trace.type === 'order'" class="trace-line-remark" data-test="trace-line-remark"><span>明细备注</span><p>{{ value(row.remark) }}</p></div>
             </article>
           </div>
           <p v-else class="trace-empty">暂无明细</p>

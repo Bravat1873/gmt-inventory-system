@@ -192,6 +192,8 @@ describe('simple Excel import', () => {
     automaticOrders.rows[1].data.externalOrderNo = ''
     automaticOrders.rows[2].data.externalOrderNo = ''
     automaticOrders.rows[2].data.orderDate = '2026-08-19'
+    automaticOrders.rows[0].data.remark = '第一行备注'
+    automaticOrders.rows[1].data.remark = '第二行备注'
     previewImport.mockResolvedValue(automaticOrders)
     const wrapper = mount(ImportPanel, { props: { type: 'ORDER', title: '导入订单' } })
     await selectFile(wrapper, 'orders-auto.xlsx')
@@ -200,8 +202,9 @@ describe('simple Excel import', () => {
     expect(wrapper.text()).toContain('系统自动编号（DD年月序列号）')
     expect(wrapper.get('[data-test="order-preview-group-AUTO|C001|2026-08-17|工程订单"]').text()).toContain('客户编码：C001')
     const firstGroup = wrapper.get('[data-test="order-preview-group-AUTO|C001|2026-08-17|工程订单"]')
-    expect(firstGroup.findAll('.order-preview-table thead th')).toHaveLength(7)
-    expect(firstGroup.findAll('.order-preview-table tbody tr').at(0)?.findAll('td')).toHaveLength(7)
+    expect(firstGroup.findAll('.order-preview-table thead th')).toHaveLength(8)
+    expect(firstGroup.findAll('.order-preview-table tbody tr').at(0)?.findAll('td')).toHaveLength(8)
+    expect(firstGroup.findAll('[data-test="order-preview-remark"]').map(cell => cell.text())).toEqual(['第一行备注', '第二行备注'])
   })
 
   it('shows the normalized backend ORDER status before the imported status text', async () => {

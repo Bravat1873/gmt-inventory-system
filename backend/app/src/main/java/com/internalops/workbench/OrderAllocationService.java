@@ -25,6 +25,7 @@ public class OrderAllocationService {
                 SELECT i.line_no,s.product_code,s.customer_part_number,s.model,s.product_name,i.quantity,i.shipped_quantity,
                        i.locked_quantity,i.uncovered_quantity,
                        COALESCE(b.actual_quantity,0) AS actual_quantity,
+                       COALESCE(b.in_transit_quantity,0) AS in_transit_quantity,
                        COALESCE(b.actual_quantity-b.locked_quantity,0) AS available_quantity
                 FROM sales_order_item i
                 JOIN sku s ON s.id=i.sku_id
@@ -97,6 +98,7 @@ public class OrderAllocationService {
         item.put("lockedQuantity", number(row, "locked_quantity"));
         item.put("uncoveredQuantity", number(row, "uncovered_quantity"));
         item.put("actualQuantity", number(row, "actual_quantity"));
+        item.put("inTransitQuantity", number(row, "in_transit_quantity"));
         item.put("availableQuantity", number(row, "available_quantity"));
         return item;
     }

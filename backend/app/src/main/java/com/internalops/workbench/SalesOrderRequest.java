@@ -11,5 +11,9 @@ public record SalesOrderRequest(Long customerId, String externalOrderNo, LocalDa
                                 String financeContactName, String financeContactPhone,
                                 String remark, String deliveryAddress, String deliveryContact, String deliveryPhone,
                                 String shippingMethod, Integer version, List<Item> items) {
-    public record Item(Integer lineNo, Long skuId, Integer quantity, BigDecimal salePrice) {}
+    public record Item(Integer lineNo, Long skuId, Integer quantity, BigDecimal salePrice, String remark) {
+        public Item(Integer lineNo, Long skuId, Integer quantity, BigDecimal salePrice) {
+            this(lineNo, skuId, quantity, salePrice, null);
+        }
+    }
 }

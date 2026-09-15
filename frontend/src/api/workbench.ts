@@ -212,11 +212,14 @@ export function postAction<T = Record<string, unknown>>(path: string, data: Reco
   return request<T>(path, { method: 'POST', body: JSON.stringify(data) })
 }
 
-export interface ManualPurchaseData {
-  supplierId: number
+export interface ManualPurchaseItem {
   skuId: number
   supplierPurchaseInfoId: number
   quantity: number
+}
+export interface ManualPurchaseData {
+  supplierId: number
+  items: ManualPurchaseItem[]
   expectedArrivalDate?: string
   deliveryAddress?: string
   remark?: string
@@ -532,7 +535,7 @@ export function deleteProductCodeRule(id: number) {
 export interface OrderAllocationItem {
   productCode?: string; model?: string
   lineNo: number; customerPartNumber?: string; productName?: string; quantity: number; shippedQuantity: number
-  lockedQuantity: number; uncoveredQuantity: number; actualQuantity: number; availableQuantity: number
+  lockedQuantity: number; uncoveredQuantity: number; actualQuantity: number; availableQuantity: number; inTransitQuantity?: number
 }
 export interface OrderAllocation { id: number; version: number; status: string; adjustable: boolean; items: OrderAllocationItem[] }
 export function loadOrderAllocations(id: number) { return request<OrderAllocation>(`/api/orders/${id}/allocations`) }

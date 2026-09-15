@@ -19,7 +19,8 @@ final class SalesOrderExcelParser {
             Map.entry("含税单价", "salePrice"), Map.entry("业务联系人", "businessContactName"), Map.entry("业务联系电话", "businessContactPhone"),
             Map.entry("订单联系人", "orderContactName"), Map.entry("联系人", "orderContactName"), Map.entry("订单联系电话", "orderContactPhone"), Map.entry("联系电话", "orderContactPhone"), Map.entry("财务联系人", "financeContactName"),
             Map.entry("财务联系电话", "financeContactPhone"), Map.entry("收货地址", "deliveryAddress"), Map.entry("收货联系人", "deliveryContact"),
-            Map.entry("收货联系电话", "deliveryPhone"), Map.entry("发货方式", "shippingMethod"), Map.entry("订单备注", "remark"));
+            Map.entry("收货联系电话", "deliveryPhone"), Map.entry("发货方式", "shippingMethod"), Map.entry("订单备注", "remark"),
+            Map.entry("明细备注", "remark"), Map.entry("备注", "remark"));
 
     List<ParsedImportRow> parse(Workbook workbook) {
         Sheet sheet = findOrderSheet(workbook);

@@ -20,6 +20,47 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../api/workbench', () => api)
 
+it('adds multiple products from one supplier and saves the pending product too', async () => {
+  vi.clearAllMocks()
+  const wrapper = mount(ManualPurchaseDialog)
+  await flushPromises()
+  await wrapper.get('[data-test="product-search"]').trigger('focus')
+  await wrapper.get('[data-test="product-option-101"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('[data-test="supplier-search"]').trigger('focus')
+  await wrapper.get('[data-test="supplier-option-201"]').trigger('click')
+  await wrapper.get('input[type="number"]').setValue('5')
+  await wrapper.get('[data-test="add-purchase-line"]').trigger('click')
+  expect(wrapper.get('[data-test="manual-purchase-lines"]').text()).toContain('已添加 1 条明细')
+  await wrapper.get('[data-test="product-search"]').trigger('focus')
+  await wrapper.get('[data-test="product-option-102"]').trigger('click')
+  await flushPromises()
+  expect((wrapper.get('[data-test="supplier-search"]').element as HTMLInputElement).value).toBe('贝朗供应商')
+  await wrapper.findAll('input[type="number"]')[1].setValue('10')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.createManualPurchase).toHaveBeenCalledWith(expect.objectContaining({ supplierId: 201, items: [
+    { skuId: 101, supplierPurchaseInfoId: 12, quantity: 5 }, { skuId: 102, supplierPurchaseInfoId: 12, quantity: 10 }
+  ] }))
+})
+
+it('restores every product of an existing purchase without dropping lines on save', async () => {
+  vi.clearAllMocks()
+  const wrapper = mount(ManualPurchaseDialog, { props: { purchase: {
+    id: 91, supplierId: 201, purchaseNo: 'CG-001', supplierName: '贝朗供应商', totalAmount: 3300,
+    items: [{ id: 1, skuId: 101, supplierPurchaseInfoId: 12, quantity: 5, receivedQuantity: 0, remainingQuantity: 5 },
+      { id: 2, skuId: 102, supplierPurchaseInfoId: 12, quantity: 10, receivedQuantity: 0, remainingQuantity: 10 }]
+  } } })
+  await flushPromises()
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  const payload = api.updateManualPurchase.mock.calls[0][1]
+  expect(payload.items).toHaveLength(2)
+  expect(payload.items).toEqual(expect.arrayContaining([
+    { skuId: 101, supplierPurchaseInfoId: 12, quantity: 5 }, { skuId: 102, supplierPurchaseInfoId: 12, quantity: 10 }
+  ]))
+})
+
 it('shows searchable products with product code first', async () => {
   api.loadOrderSkus.mockResolvedValueOnce([{ id: 201, productCode: 'BR_P90', customerPartNumber: 'P90-001', model: 'P90' }])
   const wrapper = mount(ManualPurchaseDialog)
@@ -126,7 +167,7 @@ it('updates an existing manual purchase instead of creating another purchase', a
   await flushPromises()
 
   expect(api.updateManualPurchase).toHaveBeenCalledWith(91, expect.objectContaining({
-    quantity: 5,
+    items: [{ skuId: 101, supplierPurchaseInfoId: 12, quantity: 5 }],
     deliveryAddress: '珠海市香洲区交货地址',
     remark: '原备注'
   }))

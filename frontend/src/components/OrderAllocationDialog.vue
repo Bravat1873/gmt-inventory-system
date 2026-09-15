@@ -42,6 +42,7 @@ async function save() {
             <div><span>订单数量</span><strong>{{ item.quantity }}</strong></div>
             <div><span>已发货数量</span><strong>{{ item.shippedQuantity }}</strong></div>
             <div><span>实际库存数量</span><strong>{{ item.actualQuantity }}</strong></div>
+            <div><span>在途数量</span><strong data-test="allocation-in-transit">{{ item.inTransitQuantity ?? 0 }}</strong></div>
             <div><span>本单锁定数量</span><strong>{{ item.lockedQuantity }}</strong></div>
             <div><span>未锁定库存数量</span><strong>{{ item.availableQuantity }}</strong></div>
           </div>

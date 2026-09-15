@@ -18,6 +18,20 @@ class SalesOrderCommandApiTest {
     @Autowired MockMvc mvc;
     @SpyBean JdbcTemplate jdbc;
 
+    @Test void keepsLineRemarksOnEditAndExposesInTransitForManualAllocation() throws Exception {
+        jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,27,0)");
+        String order = """
+                {"customerId":1,"version":0,"orderDate":"2026-08-06","orderType":"工程订单","salesperson":"Admin","items":[{"lineNo":10000,"skuId":1,"quantity":5,"salePrice":12.50,"remark":"本行先发"}]}
+                """;
+        String created = mvc.perform(post("/api/orders").contentType("application/json").content(order)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long id = new com.fasterxml.jackson.databind.ObjectMapper().readTree(created).path("data").path("id").asLong();
+        mvc.perform(get("/api/orders/{id}", id)).andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].remark").value("本行先发"));
+        mvc.perform(put("/api/orders/{id}", id).contentType("application/json").content(order.replace("本行先发", "本行后发")))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/orders/{id}", id)).andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].remark").value("本行后发"));
+        mvc.perform(get("/api/orders/{id}/allocations", id)).andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].inTransitQuantity").value(27));
+    }
+
     @Test void createsOrdersAsDraftThenReviewsThemToAllocateInventory() throws Exception {
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,1,10,0,0,0)");
         String order="{\"customerId\":1,\"orderDate\":\"2026-08-06\",\"orderType\":\"工程订单\",\"salesperson\":\"Admin\",\"items\":[{\"lineNo\":10000,\"skuId\":1,\"quantity\":5,\"salePrice\":12.50}]}";

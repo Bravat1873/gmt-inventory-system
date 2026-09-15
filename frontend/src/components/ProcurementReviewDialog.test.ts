@@ -26,7 +26,7 @@ const detail = {
 
 beforeEach(() => {
   Object.values(api).forEach(mock => mock.mockReset())
-  api.loadProcurementSuggestion.mockResolvedValue(detail)
+  api.loadProcurementSuggestion.mockResolvedValue(structuredClone(detail))
 })
 
 it('loads a QR suggestion and keeps the overlay non-dismissible', async () => {
@@ -63,4 +63,17 @@ it('requires a rejection reason', async () => {
   await wrapper.get('[data-test="reject-procurement"]').trigger('click')
   expect(wrapper.text()).toContain('请填写无需采购原因')
   expect(api.rejectProcurementSuggestion).not.toHaveBeenCalled()
+})
+
+it('accepts zero quantities and reports an all-zero review without an empty purchase', async () => {
+  api.updateProcurementSuggestion.mockResolvedValue({ id: 7, status: 'DRAFT', version: 3 })
+  api.confirmProcurementSuggestion.mockResolvedValue({ status: 'REJECTED' })
+  const wrapper = mount(ProcurementReviewDialog, { props: { suggestionId: 7 } })
+  await flushPromises()
+  await wrapper.get('[data-test="review-quantity-71"]').setValue('0')
+  await wrapper.get('[data-test="confirm-procurement"]').trigger('click')
+  await flushPromises()
+  expect(api.updateProcurementSuggestion).toHaveBeenCalledWith(7, 2, [{ id: 71, quantity: 0, expectedArrivalDate: '2026-08-20' }])
+  expect(wrapper.emitted('message')?.[0]?.[0]).toContain('已标记为无需采购')
+  expect(wrapper.emitted('saved')).toBeTruthy()
 })

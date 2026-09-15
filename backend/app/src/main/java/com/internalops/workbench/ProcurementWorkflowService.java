@@ -271,7 +271,9 @@ public class ProcurementWorkflowService {
         for(Object raw:items) {
             if(!(raw instanceof Map<?,?> input)) throw new IllegalArgumentException("采购明细格式不正确");
             long itemId=((Number)input.get("id")).longValue();
-            int quantity=((Number)input.get("quantity")).intValue();
+            int quantity;
+            try { quantity = new BigDecimal(String.valueOf(input.get("quantity"))).intValueExact(); }
+            catch (NumberFormatException | ArithmeticException ex) { throw new IllegalArgumentException("采购数量须为整数"); }
             List<Map<String,Object>> lines=jdbc.queryForList("""
                     SELECT psi.id,pi.moq FROM procurement_suggestion_item psi
                     JOIN sku_supplier_purchase_info pi ON pi.id=psi.supplier_purchase_info_id
@@ -279,7 +281,8 @@ public class ProcurementWorkflowService {
                     """,itemId,suggestionId);
             if(lines.isEmpty()) throw new IllegalArgumentException("采购明细不存在");
             int moq=(int)num(lines.get(0),"moq");
-            if(quantity<moq) throw new IllegalArgumentException("采购数量不能低于最小起购量 "+moq);
+            if(quantity<0) throw new IllegalArgumentException("采购数量不能小于零");
+            if(quantity>0 && quantity<moq) throw new IllegalArgumentException("采购数量不能低于最小起购量 "+moq);
             LocalDate eta=input.get("expectedArrivalDate")==null?null:LocalDate.parse(String.valueOf(input.get("expectedArrivalDate")));
             jdbc.update("UPDATE procurement_suggestion_item SET suggested_quantity=?,expected_arrival_date=? WHERE id=?",quantity,eta,itemId);
         }
@@ -347,7 +350,7 @@ public class ProcurementWorkflowService {
             throw new IllegalStateException("当前采购建议不能重复确认");
         }
         var lines = jdbc.queryForList("""
-                SELECT sku_id,supplier_id,suggested_quantity,purchase_price,expected_arrival_date,supplier_purchase_info_id
+                SELECT id,sku_id,supplier_id,suggested_quantity,purchase_price,expected_arrival_date,supplier_purchase_info_id
                 FROM procurement_suggestion_item WHERE suggestion_id=? ORDER BY id
                 """, suggestionId);
         if (lines.isEmpty()) {
@@ -358,17 +361,34 @@ public class ProcurementWorkflowService {
             if (num(line, "supplier_id") != supplierId) {
                 throw new IllegalStateException("同一采购建议只能绑定一个供应商");
             }
-            if (num(line, "suggested_quantity") <= 0) {
-                throw new IllegalStateException("确认采购数量必须大于零");
+            if (num(line, "suggested_quantity") < 0) {
+                throw new IllegalStateException("确认采购数量不能小于零");
             }
         }
 
-        BigDecimal total = lines.stream()
+        // Keep coverage consistent with the quantities actually being purchased.
+        for (var line : lines) {
+            int remaining = (int) num(line, "suggested_quantity");
+            var coverages = jdbc.queryForList("SELECT id,covered_quantity FROM shortage_coverage WHERE suggestion_item_id=? AND active=TRUE ORDER BY id FOR UPDATE", num(line, "id"));
+            for (var coverage : coverages) {
+                int covered = Math.min(remaining, (int) num(coverage, "covered_quantity"));
+                jdbc.update("UPDATE shortage_coverage SET covered_quantity=?,active=? WHERE id=?", covered, covered > 0, num(coverage, "id"));
+                remaining -= covered;
+            }
+        }
+        var selectedLines = lines.stream().filter(line -> num(line, "suggested_quantity") > 0).toList();
+        if (selectedLines.isEmpty()) {
+            jdbc.update("UPDATE procurement_suggestion_item SET confirmed_quantity=0 WHERE suggestion_id=?", suggestionId);
+            jdbc.update("UPDATE procurement_suggestion SET status='REJECTED',review_reason='本次各项采购数量均为 0，无需采购',version=version+1 WHERE id=?", suggestionId);
+            return Map.of("suggestionId", suggestionId, "status", "REJECTED");
+        }
+
+        BigDecimal total = selectedLines.stream()
                 .map(line -> ((BigDecimal) val(line, "purchase_price"))
                         .multiply(BigDecimal.valueOf(num(line, "suggested_quantity"))))
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
-        LocalDate eta = lines.stream()
+        LocalDate eta = selectedLines.stream()
                 .map(line -> localDate(val(line, "expected_arrival_date")))
                 .filter(Objects::nonNull)
                 .max(LocalDate::compareTo)
@@ -383,7 +403,7 @@ public class ProcurementWorkflowService {
                 purchaseNo, suggestionId, supplierId, total, eta, deliveryAddress);
 
         int lineNo = 1;
-        for (var line : lines) {
+        for (var line : selectedLines) {
             long skuId = num(line, "sku_id");
             int quantity = (int) num(line, "suggested_quantity");
             BigDecimal price = (BigDecimal) val(line, "purchase_price");
@@ -412,28 +432,8 @@ public class ProcurementWorkflowService {
 
     @Transactional
     public Map<String, Object> manual(ManualPurchaseRequest request) {
-        if (request.quantity() == 0) throw new IllegalArgumentException("采购数量不能为零");
-        List<Map<String, Object>> matches = jdbc.queryForList("""
-                SELECT pi.id,pi.purchase_price,pi.moq,cfg.sku_id,cfg.supplier_id
-                FROM sku_supplier_purchase_info pi
-                JOIN sku_supplier_config cfg ON cfg.id=pi.supplier_product_config_id
-                JOIN supplier sp ON sp.id=cfg.supplier_id
-                JOIN sku s ON s.id=cfg.sku_id
-                WHERE pi.id=? AND pi.enabled=TRUE AND cfg.enabled=TRUE
-                  AND sp.enabled=TRUE AND s.enabled=TRUE
-                  AND cfg.supplier_id=? AND cfg.sku_id=?
-                  AND pi.purchase_price IS NOT NULL
-                  AND pi.moq IS NOT NULL
-                  AND pi.lead_time_days IS NOT NULL
-                """, request.supplierPurchaseInfoId(), request.supplierId(), request.skuId());
-        if (matches.isEmpty()) throw new IllegalArgumentException("所选采购信息不属于该供应商和产品，或已停用");
-        Map<String, Object> quote = matches.get(0);
-        int moq = (int) num(quote, "moq");
-        if (request.quantity() > 0 && request.quantity() < moq) throw new IllegalArgumentException("采购数量不能低于最小起订量 " + moq);
-        BigDecimal purchasePrice = (BigDecimal) val(quote, "purchase_price");
-        BigDecimal total = purchasePrice.multiply(BigDecimal.valueOf(request.quantity())).setScale(2, RoundingMode.HALF_UP);
-        if (total.abs().compareTo(MAX_PURCHASE_TOTAL) > 0)
-            throw new IllegalArgumentException("采购总额超出数据库金额范围");
+        List<ManualPurchaseLine> items = validateManualItems(request);
+        BigDecimal total = manualTotal(items);
         String purchaseNo = documentNumbers.next(DocumentType.PURCHASE_ORDER, LocalDate.now());
         long purchaseId = insert("""
                 INSERT INTO purchase_order(
@@ -441,18 +441,62 @@ public class ProcurementWorkflowService {
                     expected_arrival_date,delivery_address,purchase_remark,created_by)
                 VALUES(?,NULL,TRUE,?,'PENDING_SUPPLIER_PAYMENT',?,?,?,?,1)
                 """, purchaseNo, request.supplierId(), total, request.expectedArrivalDate(), request.deliveryAddress(), request.remark());
-        jdbc.update("""
-                INSERT INTO purchase_order_item(
-                    purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price,supplier_purchase_info_id)
-                VALUES(?,1,?,?,?,?,?)
-                """, purchaseId, request.skuId(), request.quantity(), request.quantity() < 0 ? request.quantity() : 0, purchasePrice, request.supplierPurchaseInfoId());
-        if (request.quantity() > 0) increaseTransit(request.skuId(), request.quantity(), purchaseNo);
+        insertManualItems(purchaseId, purchaseNo, items);
         return Map.of("purchaseId", purchaseId, "purchaseNo", purchaseNo, "status", "PENDING_SUPPLIER_PAYMENT");
     }
 
+    private List<ManualPurchaseLine> validateManualItems(ManualPurchaseRequest request) {
+        if (request == null || request.purchaseItems().isEmpty()) throw new IllegalArgumentException("至少添加一条采购明细");
+        List<ManualPurchaseLine> result = new ArrayList<>();
+        for (ManualPurchaseRequest.Item item : request.purchaseItems()) {
+            if (item == null || item.quantity() == 0) throw new IllegalArgumentException("采购数量不能为零；退货请填写负数");
+            List<Map<String, Object>> matches = jdbc.queryForList("""
+                    SELECT pi.id,pi.purchase_price,pi.moq,cfg.sku_id,cfg.supplier_id
+                    FROM sku_supplier_purchase_info pi
+                    JOIN sku_supplier_config cfg ON cfg.id=pi.supplier_product_config_id
+                    JOIN supplier sp ON sp.id=cfg.supplier_id
+                    JOIN sku s ON s.id=cfg.sku_id
+                    WHERE pi.id=? AND pi.enabled=TRUE AND cfg.enabled=TRUE
+                      AND sp.enabled=TRUE AND s.enabled=TRUE
+                      AND cfg.supplier_id=? AND cfg.sku_id=?
+                      AND pi.purchase_price IS NOT NULL
+                      AND pi.moq IS NOT NULL
+                      AND pi.lead_time_days IS NOT NULL
+                    """, item.supplierPurchaseInfoId(), request.supplierId(), item.skuId());
+            if (matches.isEmpty()) throw new IllegalArgumentException("所选采购信息不属于该供应商和产品，或已停用");
+            Map<String, Object> quote = matches.get(0);
+            int moq = (int) num(quote, "moq");
+            if (item.quantity() > 0 && item.quantity() < moq) throw new IllegalArgumentException("采购数量不能低于最小起订量 " + moq);
+            BigDecimal purchasePrice = (BigDecimal) val(quote, "purchase_price");
+            result.add(new ManualPurchaseLine(item.skuId(), item.supplierPurchaseInfoId(), item.quantity(), purchasePrice));
+        }
+        return result;
+    }
+
+    private BigDecimal manualTotal(List<ManualPurchaseLine> items) {
+        BigDecimal total = items.stream().map(item -> item.purchasePrice().multiply(BigDecimal.valueOf(item.quantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+        if (total.abs().compareTo(MAX_PURCHASE_TOTAL) > 0)
+            throw new IllegalArgumentException("采购总额超出数据库金额范围");
+        return total;
+    }
+
+    private void insertManualItems(long purchaseId, String purchaseNo, List<ManualPurchaseLine> items) {
+        int lineNo = 1;
+        for (ManualPurchaseLine item : items) {
+            jdbc.update("""
+                    INSERT INTO purchase_order_item(
+                        purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price,supplier_purchase_info_id)
+                    VALUES(?,?,?,?,?,?,?)
+                    """, purchaseId, lineNo++, item.skuId(), item.quantity(), Math.min(item.quantity(), 0), item.purchasePrice(), item.purchaseInfoId());
+            if (item.quantity() > 0) increaseTransit(item.skuId(), item.quantity(), purchaseNo);
+        }
+    }
+
+    private record ManualPurchaseLine(long skuId, long purchaseInfoId, int quantity, BigDecimal purchasePrice) {}
+
     @Transactional
     public Map<String, Object> updateManual(long purchaseId, ManualPurchaseRequest request) {
-        if (request.quantity() == 0) throw new IllegalArgumentException("采购数量不能为零；退货请填写负数");
         Map<String, Object> purchase = jdbc.queryForMap("""
                 SELECT purchase_no,manual_entry,status FROM purchase_order WHERE id=? FOR UPDATE
                 """, purchaseId);
@@ -464,42 +508,20 @@ public class ProcurementWorkflowService {
         List<Map<String, Object>> oldItems = jdbc.queryForList("""
                 SELECT id,sku_id,quantity FROM purchase_order_item WHERE purchase_order_id=? ORDER BY line_no FOR UPDATE
                 """, purchaseId);
-        if (oldItems.size() != 1) throw new IllegalStateException("仅支持修改单产品的手工采购单");
-
-        List<Map<String, Object>> matches = jdbc.queryForList("""
-                SELECT pi.purchase_price,pi.moq FROM sku_supplier_purchase_info pi
-                JOIN sku_supplier_config cfg ON cfg.id=pi.supplier_product_config_id
-                JOIN supplier sp ON sp.id=cfg.supplier_id
-                JOIN sku s ON s.id=cfg.sku_id
-                WHERE pi.id=? AND pi.enabled=TRUE AND cfg.enabled=TRUE AND sp.enabled=TRUE AND s.enabled=TRUE
-                  AND cfg.supplier_id=? AND cfg.sku_id=?
-                  AND pi.purchase_price IS NOT NULL AND pi.moq IS NOT NULL AND pi.lead_time_days IS NOT NULL
-                """, request.supplierPurchaseInfoId(), request.supplierId(), request.skuId());
-        if (matches.isEmpty()) throw new IllegalArgumentException("所选采购信息不属于该供应商和产品，或已停用");
-        Map<String, Object> quote = matches.get(0);
-        int moq = (int) num(quote, "moq");
-        if (request.quantity() > 0 && request.quantity() < moq) throw new IllegalArgumentException("采购数量不能低于最小起订量 " + moq);
-        BigDecimal price = (BigDecimal) val(quote, "purchase_price");
-        BigDecimal total = price.multiply(BigDecimal.valueOf(request.quantity())).setScale(2, RoundingMode.HALF_UP);
-        if (total.abs().compareTo(MAX_PURCHASE_TOTAL) > 0) throw new IllegalArgumentException("采购总额超出数据库金额范围");
-
-        Map<String, Object> oldItem = oldItems.get(0);
-        int oldQuantity = (int) num(oldItem, "quantity");
-        long oldSkuId = num(oldItem, "sku_id");
+        List<ManualPurchaseLine> items = validateManualItems(request);
+        BigDecimal total = manualTotal(items);
         String purchaseNo = str(purchase, "purchase_no");
-        if (oldQuantity > 0) increaseTransit(oldSkuId, -oldQuantity, purchaseNo);
+        for (var oldItem : oldItems) {
+            int oldQuantity = (int) num(oldItem, "quantity");
+            if (oldQuantity > 0) increaseTransit(num(oldItem, "sku_id"), -oldQuantity, purchaseNo);
+        }
         jdbc.update("""
                 UPDATE purchase_order
                 SET supplier_id=?,total_amount=?,expected_arrival_date=?,delivery_address=?,purchase_remark=?,version=version+1
                 WHERE id=?
                 """, request.supplierId(), total, request.expectedArrivalDate(), request.deliveryAddress(), request.remark(), purchaseId);
-        jdbc.update("""
-                UPDATE purchase_order_item
-                SET sku_id=?,quantity=?,received_quantity=?,purchase_price=?,supplier_purchase_info_id=?
-                WHERE id=?
-                """, request.skuId(), request.quantity(), request.quantity() < 0 ? request.quantity() : 0,
-                price, request.supplierPurchaseInfoId(), num(oldItem, "id"));
-        if (request.quantity() > 0) increaseTransit(request.skuId(), request.quantity(), purchaseNo);
+        jdbc.update("DELETE FROM purchase_order_item WHERE purchase_order_id=?", purchaseId);
+        insertManualItems(purchaseId, purchaseNo, items);
         return Map.of("purchaseId", purchaseId, "purchaseNo", purchaseNo, "status", val(purchase, "status"));
     }
 

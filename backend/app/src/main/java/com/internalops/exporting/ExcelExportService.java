@@ -36,11 +36,11 @@ public class ExcelExportService {
             + "账号：705570264475";
     private static final String PURCHASE_NOTICES = "1. 卖方接到订单后，请在24小时内确认，并回传至sha.tian@seagullgroup.cn；\n"
             + "2. 交期：确认交期，必须严格遵守，否则买方有权取消订单，其蒙受损失由卖方负责赔偿；\n"
-            + "3. 发货提前说明，送货单需随货一起到仓库并发起平台给货；\n"
+            + "3. 发货提前说明，送货单需随货一起给到仓库并发电子档给采购对接人；\n"
             + "4. 交货时内外包装均需贴物料标签，物料标签和送货单上面一定要注明我司订单号、SKU、物料名称、产品规格、送货数量、送货时间等信息，未注明的话仓库无法接收入库。\n"
             + "5. 货物需整齐码放在仓库指定栈板上。\n"
             + "6. 珠海厂区17:00之后不能进入，送货时请规划好时间，\n"
-            + "7. 货款结算方式：整勾全执行；\n"
+            + "7. 货款结算方式：按约定执行；\n"
             + "8. 此采购订单作为采购合同的附件。";
     private final WorkbenchQueryService workbench;
     private final SalesOrderCommandService salesOrders;
@@ -123,7 +123,7 @@ public class ExcelExportService {
                 SELECT '销售订单' AS business_type,o.order_no,o.order_date,o.status,c.customer_name,
                        s.product_code,s.customer_part_number,s.product_name,s.model,i.quantity,i.shipped_quantity,
                        i.sale_price,i.quantity*i.sale_price AS amount,DATE(o.shipped_at) AS delivery_date,
-                       o.salesperson AS salesperson,o.order_remark AS order_remark
+                       o.salesperson AS salesperson,COALESCE(i.item_remark,o.order_remark) AS order_remark
                 FROM sales_order o
                 JOIN customer c ON c.id=o.customer_id
                 JOIN sales_order_item i ON i.sales_order_id=o.id

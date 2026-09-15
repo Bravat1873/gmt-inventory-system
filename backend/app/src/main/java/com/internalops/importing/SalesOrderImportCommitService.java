@@ -160,7 +160,7 @@ public class SalesOrderImportCommitService {
         List<SalesOrderRequest.Item> items = rows.stream()
                 .map(row -> new SalesOrderRequest.Item(
                         row.rowNumber(), requiredLong(row.data(), "_skuId"),
-                        requiredInt(row.data(), "quantity"), requiredDecimal(row.data(), "salePrice")))
+                        requiredInt(row.data(), "quantity"), requiredDecimal(row.data(), "salePrice"), text(row.data(), "remark")))
                 .toList();
         String orderContactName = text(first, "orderContactName");
         String orderContactPhone = text(first, "orderContactPhone");
@@ -172,7 +172,7 @@ public class SalesOrderImportCommitService {
                 text(first, "businessContactName"), text(first, "businessContactPhone"),
                 orderContactName, orderContactPhone,
                 text(first, "financeContactName"), text(first, "financeContactPhone"),
-                text(first, "remark"), text(first, "deliveryAddress"),
+                null, text(first, "deliveryAddress"),
                 text(first, "deliveryContact"), text(first, "deliveryPhone"),
                 text(first, "shippingMethod"), version, items);
     }

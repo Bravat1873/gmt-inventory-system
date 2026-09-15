@@ -4,7 +4,7 @@ import { createOrder, loadContractPrice, loadOrderCustomers, loadOrderSkus, type
 import ChineseDatePicker from './ChineseDatePicker.vue'
 import FuzzyPicker, { type FuzzyPickerOption } from './FuzzyPicker.vue'
 
-interface Line { id?: number; lineNo?: number; skuId: number | null; quantity: number; salePrice: number; shippedQuantity?: number; remainingQuantity?: number }
+interface Line { id?: number; lineNo?: number; skuId: number | null; quantity: number; salePrice: number; shippedQuantity?: number; remainingQuantity?: number; remark?: string }
 const props = defineProps<{ row?: Record<string, unknown>; defaultSalesperson?: string }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
 const today = new Date().toISOString().slice(0, 10)
@@ -221,6 +221,7 @@ onMounted(async () => {
                 <div :class="{ negative: (skuFor(line)?.supplyDemandSurplus ?? 0) < 0 }"><span>供需余量</span><strong>{{ skuFor(line)?.supplyDemandSurplus ?? 0 }}</strong></div>
                 <div :class="{ negative: postOrderSupplyDemandSurplus(line, index) < 0 }"><span>下单后供需余量</span><strong>{{ postOrderSupplyDemandSurplus(line, index) }}</strong><small v-if="postOrderSupplyDemandSurplus(line, index) < 0">下单后采购缺口 {{ Math.abs(postOrderSupplyDemandSurplus(line, index)) }}</small></div>
               </div>
+              <label class="order-line-remark"><span>明细备注</span><textarea v-model="line.remark" :data-test="`order-line-remark-${index}`" maxlength="1000" :disabled="saving" placeholder="填写本条产品明细的备注"></textarea></label>
             </article>
           </div>
         </section>

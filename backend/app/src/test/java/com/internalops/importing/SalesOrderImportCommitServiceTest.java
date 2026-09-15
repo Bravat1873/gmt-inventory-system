@@ -31,6 +31,22 @@ import static org.mockito.Mockito.reset;
 @SpringBootTest
 @Sql(scripts = {"/import-schema.sql", "/sales-command-schema.sql", "/sales-order-import-commit-schema.sql"})
 class SalesOrderImportCommitServiceTest {
+    @Test
+    void savesDifferentRemarksOnTheirOwnLinesInsteadOfTheOrderHeader() {
+        var first = order("EXT-LINE-NOTES", "DRAFT", 1, 2, "12.50");
+        var second = order("EXT-LINE-NOTES", "DRAFT", 2, 3, "10.00");
+        first.put("remark", "第一条：先发货");
+        second.put("remark", "第二条：分批发货");
+        commitService.commit(batch("line-notes", List.of(row(2, first), row(3, second))));
+        assertEquals(1, count("sales_order"));
+        assertEquals(List.of("第一条：先发货", "第二条：分批发货"), jdbc.queryForList("SELECT item_remark FROM sales_order_item ORDER BY line_no", String.class));
+        assertEquals(null, jdbc.queryForObject("SELECT order_remark FROM sales_order", String.class));
+        long id = jdbc.queryForObject("SELECT id FROM sales_order", Long.class);
+        @SuppressWarnings("unchecked")
+        var items = (List<Map<String, Object>>) salesOrders.get(id).get("items");
+        assertEquals("第一条：先发货", items.get(0).get("remark"));
+        assertEquals("第二条：分批发货", items.get(1).get("remark"));
+    }
     @Autowired ImportBatchRepository repository;
     @Autowired ImportCommitService commitService;
     @Autowired SalesOrderImportCommitService orderCommitService;

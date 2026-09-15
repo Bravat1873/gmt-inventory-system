@@ -31,7 +31,7 @@ public class BusinessTraceService {
                 + "o.delivery_phone AS deliveryPhone, o.shipping_method AS shippingMethod, o.carrier, o.tracking_no AS trackingNo, "
                 + "o.order_remark AS remark, o.created_at AS createdAt, o.updated_at AS updatedAt FROM sales_order o JOIN customer c ON c.id=o.customer_id WHERE o.id=?", id);
         List<Map<String, Object>> details = jdbc.queryForList("SELECT i.line_no AS lineNo, i.sku_id AS skuId, s.product_code AS productCode, s.customer_part_number AS customerPartNumber, s.product_name AS productName, s.model, s.configuration, s.unit, "
-                + "i.quantity, i.shipped_quantity AS shippedQuantity, i.locked_quantity AS lockedQuantity, i.uncovered_quantity AS uncoveredQuantity, i.sale_price AS salePrice "
+                + "i.quantity, i.shipped_quantity AS shippedQuantity, i.locked_quantity AS lockedQuantity, i.uncovered_quantity AS uncoveredQuantity, i.sale_price AS salePrice, i.item_remark AS remark "
                 + "FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.sales_order_id=? ORDER BY i.line_no", id);
         enrichOrderDetails(details);
         List<Map<String, Object>> timeline = new ArrayList<>();

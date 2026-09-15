@@ -44,7 +44,7 @@ class ImportTemplateApiTest {
             var orderSheet = workbook.getSheetAt(0);
             var expectedHeaders = List.of(
                     "客户编码", "外部订单号", "订单日期", "订单类型", "产品编号", "客户料号", "型号",
-                    "数量", "含税单价", "收货地址", "收货联系人", "收货联系电话", "发货方式", "订单备注");
+                    "数量", "含税单价", "收货地址", "收货联系人", "收货联系电话", "发货方式", "明细备注");
             assertThat(orderSheet.getRow(0).getPhysicalNumberOfCells()).isEqualTo(expectedHeaders.size());
             for (int column = 0; column < expectedHeaders.size(); column++) {
                 assertThat(orderSheet.getRow(0).getCell(column).getStringCellValue())

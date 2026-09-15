@@ -53,12 +53,16 @@ it('shows the business order remark in its own section', () => {
   expect(wrapper.text()).toContain('客户要求分批发货，并提前一天通知。')
 })
 
-it('keeps the order remark section visible when the order has no remark', () => {
+it('hides the empty order-level remark and shows notes beside their own product', () => {
   const wrapper = mount(BusinessTraceDialog, {
-    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [], timeline: [] } }
+    props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ productCode: 'A', remark: '第一行先发' }, { productCode: 'B', remark: '第二行后发' }], timeline: [] } }
   })
 
-  expect(wrapper.text()).toContain('订单备注')
-  expect(wrapper.text()).toContain('暂无备注')
+  expect(wrapper.text()).not.toContain('订单备注')
+  const notes = wrapper.findAll('[data-test="trace-line-remark"]')
+  expect(notes).toHaveLength(2)
+  expect(notes[0].text()).toContain('第一行先发')
+  expect(notes[0].text()).not.toContain('第二行后发')
+  expect(notes[1].text()).toContain('第二行后发')
 })
 

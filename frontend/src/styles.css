@@ -528,7 +528,7 @@ thead .action-column-header { position:sticky; right:0; z-index:3; background:#f
 .allocation-product-identity span { color:#727980; font-size:12px; }
 .allocation-product-identity strong { overflow-wrap:anywhere; }
 .allocation-line-number { color:#727980; font-size:12px; white-space:nowrap; }
-.allocation-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); }
+.allocation-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
 .allocation-metrics>div { padding:14px; border-right:1px solid #e5e7e9; }
 .allocation-target-field { display:flex; flex-direction:column; justify-content:center; gap:6px; padding:14px 16px; background:#fff8e8; }
 .allocation-target-field>span { color:#8a4b08; font-size:12px; font-weight:700; }
@@ -578,3 +578,23 @@ thead .action-column-header { position:sticky; right:0; z-index:3; background:#f
 .product-identity-display.compact { gap:2px; }
 .product-identity-display.compact>div { grid-template-columns:64px minmax(0,1fr); gap:6px; }
 
+.manual-purchase-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.manual-purchase-scroll { min-height: 0; overflow-y: auto; padding-right: 4px; }
+.manual-purchase-dialog { max-height: calc(100vh - 32px); overflow: hidden; display: flex; flex-direction: column; }
+.manual-purchase-dialog > header, .manual-purchase-dialog footer { flex-shrink: 0; }
+.manual-purchase-dialog form { min-height: 0; display: flex; flex-direction: column; }
+.manual-purchase-entry-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.manual-purchase-line label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.manual-purchase-lines { margin-bottom: 18px; padding: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.manual-purchase-lines h3 { margin: 0 0 12px; font-size: 14px; }
+.manual-purchase-line { display: grid; grid-template-columns: minmax(0, 1fr) 100px auto; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid #e2e8f0; }
+.manual-purchase-line small { display: block; color: #64748b; margin-top: 4px; overflow-wrap: anywhere; }
+.manual-purchase-line input { width: 100%; min-width: 0; box-sizing: border-box; }
+.manual-purchase-total { text-align: right; font-weight: 600; }
+.order-line-remark { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.order-line-remark textarea { min-height: 64px; resize: vertical; }
+.trace-line-remark { padding: 12px 16px; border-top: 1px solid #e2e8f0; }
+.trace-line-remark > span { color: #64748b; font-size: 12px; }
+.trace-line-remark p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.order-preview-table .order-preview-remark { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 160px; max-width: 320px; }
+.procurement-zero-hint { margin: 12px 24px 0; color: #64748b; font-size: 13px; }

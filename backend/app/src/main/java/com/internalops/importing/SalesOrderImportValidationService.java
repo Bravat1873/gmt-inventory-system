@@ -21,7 +21,7 @@ public class SalesOrderImportValidationService {
             {"orderContactName", "订单联系人"}, {"orderContactPhone", "订单联系人电话"},
             {"financeContactName", "财务联系人"}, {"financeContactPhone", "财务联系人电话"},
             {"deliveryAddress", "收货地址"}, {"deliveryContact", "收货联系人"},
-            {"deliveryPhone", "收货联系电话"}, {"shippingMethod", "运输方式"}, {"remark", "备注"}
+            {"deliveryPhone", "收货联系电话"}, {"shippingMethod", "运输方式"}
     };
 
     private final JdbcTemplate jdbc;
@@ -121,6 +121,7 @@ public class SalesOrderImportValidationService {
         if (quantity <= 0) return error(row, data, "订单数量必须为正整数");
         try { price = new BigDecimal(text(data, "salePrice").replace(",", "")); } catch (NumberFormatException exception) { return error(row, data, "含税单价格式错误"); }
         if (price.signum() < 0) return error(row, data, "含税单价必须大于等于 0");
+        if (text(data, "remark").length() > 1000) return error(row, data, "明细备注不能超过1000个字符");
         List<Long> customers = jdbc.query("SELECT id FROM customer WHERE customer_code=? AND enabled=TRUE", (rs, index) -> rs.getLong(1), text(data, "customerCode"));
         if (customers.isEmpty()) return error(row, data, "客户编码不存在或未启用");
         if (customers.size() != 1) return error(row, data, "客户编码匹配不唯一");
