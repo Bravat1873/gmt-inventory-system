@@ -330,6 +330,12 @@ export function createManualPurchase(data: ManualPurchaseData) {
   })
 }
 
+export function reviewManualPurchase(id: number) {
+  return request<Record<string, unknown>>(`/api/procurement/purchases/${id}/review`, {
+    method: 'POST', body: JSON.stringify({})
+  })
+}
+
 export function updateManualPurchase(id: number, data: ManualPurchaseData) {
   return request<Record<string, unknown>>(`/api/procurement/purchases/${id}`, {
     method: 'PUT',

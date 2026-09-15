@@ -16,7 +16,7 @@ const api = vi.hoisted(() => ({
   loadInvoices: vi.fn(),
   saveInvoice: vi.fn(),
   deleteInvoice: vi.fn(),
-  createManualPurchase: vi.fn(),
+  createManualPurchase: vi.fn(), reviewManualPurchase: vi.fn(),
   createEntity: vi.fn(), updateEntity: vi.fn(), createOrder: vi.fn(), updateOrder: vi.fn(), getOrder: vi.fn(), reviewOrder: vi.fn(), deleteOrder: vi.fn(),
   loadSupplierOptions: vi.fn().mockResolvedValue([]), loadSupplierProducts: vi.fn().mockResolvedValue([]),
   loadOrderSkus: vi.fn().mockResolvedValue([]), createSupplier: vi.fn(), updateSupplier: vi.fn(), getSupplier: vi.fn(),
@@ -169,16 +169,30 @@ describe('连续导航和浏览器地址状态', () => {
     expect(wrapper.findComponent(EntityDialog).exists()).toBe(false)
   })
 
-  it('生成采购打开手工采购表单，不弹出浏览器确认框', async () => {
+  it('新增采购单打开草稿表单，不弹出浏览器确认框', async () => {
     history.replaceState(null, '', '/?module=purchase&page=1')
     const confirm = vi.spyOn(window, 'confirm')
     const wrapper = mount(App)
     await flushPromises()
     await wrapper.get('[data-test="primary-action"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[role="dialog"]').text()).toContain('手工采购')
+    expect(wrapper.get('[data-test="primary-action"]').text()).toBe('新增采购单')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('新增采购单')
     expect(confirm).not.toHaveBeenCalled()
     expect(api.postAction).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('confirms and forwards a manual purchase draft review', async () => {
+    history.replaceState(null, '', '/?module=purchase&page=1')
+    api.reviewManualPurchase.mockResolvedValueOnce({ status: 'PENDING_SUPPLIER_PAYMENT' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(App)
+    await flushPromises()
+    wrapper.getComponent(ModuleListPage).vm.$emit('reviewPurchase', { id: 7, purchaseNo: 'CG-007' })
+    await flushPromises()
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('复核后正数明细将计入在途库存'))
+    expect(api.reviewManualPurchase).toHaveBeenCalledWith(7)
     confirm.mockRestore()
   })
 

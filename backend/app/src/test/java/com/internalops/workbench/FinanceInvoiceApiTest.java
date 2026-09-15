@@ -78,6 +78,18 @@ class FinanceInvoiceApiTest {
     }
 
     @Test
+    void purchaseDraftCannotReceiveAnInvoiceBeforeReview() throws Exception {
+        jdbc.update("UPDATE purchase_order SET status='DRAFT' WHERE id=20");
+
+        mvc.perform(post("/api/finance/orders/PURCHASE/20/invoices").cookie(adminSession)
+                        .contentType("application/json")
+                        .content("{\"invoiceNo\":\"CG-F-DRAFT\",\"invoiceDate\":\"2026-08-12\",\"taxInclusiveAmount\":10.50}"))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM purchase_invoice WHERE invoice_no='CG-F-DRAFT'", Integer.class))
+                .isZero();
+    }
+
+    @Test
     void financeUserCannotReviewInvoice() throws Exception {
         mvc.perform(post("/api/finance/orders/SALES/invoices/31/review").cookie(session)
                         .contentType("application/json")

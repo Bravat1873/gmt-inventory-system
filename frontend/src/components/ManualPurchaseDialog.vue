@@ -156,14 +156,14 @@ function validate(currentOnly = false) {
   if (systemPurchase.value) return true
   if (initializationError.value) { errors.submit = initializationError.value; return false }
   if (!currentOnly) {
-    const invalid = addedLines.value.find(line => !Number.isInteger(Number(line.quantity)) || Number(line.quantity) === 0 || (line.quantity > 0 && line.quantity < line.purchaseInfo.moq))
-    if (invalid) errors.items = `${productSelectedLabel(invalid.product)}：数量须为非零整数，正数不能低于最小起订量 ${invalid.purchaseInfo.moq}`
+    const invalid = addedLines.value.find(line => !Number.isInteger(line.quantity) || (line.quantity > 0 && line.quantity < line.purchaseInfo.moq))
+    if (invalid) errors.items = `${productSelectedLabel(invalid.product)}：数量须为整数，可填写 0；正数不能低于最小起订量 ${invalid.purchaseInfo.moq}`
     if (addedLines.value.length && !hasCurrentLine.value) return !errors.items
   }
   if (!selectedProduct.value) errors.product = '请选择产品'
   if (!selectedSupplier.value) errors.supplier = selectedProduct.value ? '请选择该产品的供应商' : '请先选择产品'
-  const quantity = Number(form.quantity)
-  if (!Number.isInteger(quantity) || quantity === 0) errors.quantity = '采购数量不能为 0；退货请填写负数'
+  const quantity = form.quantity
+  if (!Number.isInteger(quantity)) errors.quantity = '采购数量须为整数，可填写 0；退货请填写负数'
   if (selectedPurchaseInfo.value && quantity > 0 && quantity < selectedPurchaseInfo.value.moq) errors.quantity = `采购数量不能低于最小起订量 ${selectedPurchaseInfo.value.moq}`
   if (!selectedPurchaseInfo.value) errors.purchaseInfo = '请选择供应商采购信息'
   return Object.keys(errors).length === 0
@@ -223,7 +223,8 @@ async function save() {
         ? await updateManualPurchase(props.purchase.id, data)
         : await createManualPurchase(data)
     }
-    emit('message', `采购单 ${String(result.purchaseNo ?? '')}${props.purchase ? ' 已修改' : ' 已创建'}`)
+    const draft = result.status === 'DRAFT'
+    emit('message', `采购单 ${String(result.purchaseNo ?? '')}${draft ? (props.purchase ? ' 草稿已修改，请在列表复核' : ' 已保存为草稿，请在列表复核') : (props.purchase ? ' 已修改' : ' 已创建')}`)
     emit('saved')
   } catch (cause) {
     errors.submit = cause instanceof Error ? cause.message : '创建采购单失败'
@@ -280,7 +281,7 @@ onMounted(async () => {
 <template>
   <div class="dialog-mask">
     <section class="dialog-card manual-purchase-dialog" role="dialog" aria-modal="true" aria-labelledby="manual-purchase-title">
-      <header><h2 id="manual-purchase-title">{{ systemPurchase ? '修改系统采购' : (purchase ? '修改采购' : '手工采购') }}</h2><button type="button" :disabled="saving" @click="requestClose">关闭</button></header>
+      <header><h2 id="manual-purchase-title">{{ systemPurchase ? '修改系统采购' : (purchase ? '修改采购' : '新增采购单') }}</h2><button type="button" :disabled="saving" @click="requestClose">关闭</button></header>
       <form novalidate @submit.prevent="save">
         <div class="manual-purchase-scroll"><fieldset :disabled="initializing || Boolean(initializationError)" class="manual-purchase-fields">
         <section v-if="!systemPurchase && addedLines.length" class="manual-purchase-lines" data-test="manual-purchase-lines">
@@ -292,7 +293,7 @@ onMounted(async () => {
           </div>
           <p v-if="errors.items" class="field-error" role="alert">{{ errors.items }}</p>
         </section>
-        <p v-if="!systemPurchase" class="field-hint">同一采购单可添加多个产品，供应商须相同。当前填写的产品也会一并保存。</p>
+        <p v-if="!systemPurchase" class="field-hint">同一采购单可添加多个产品，供应商须相同。数量可填 0，零数量不计金额或在途；新增采购单先保存为草稿，复核后才计入在途。</p>
         <p v-if="systemPurchase" class="field-hint system-purchase-hint">系统采购的产品、数量和供应商由采购建议锁定；可修改预计到货日期、交货地址和备注。</p>
         <div class="form-grid">
           <template v-if="!systemPurchase">

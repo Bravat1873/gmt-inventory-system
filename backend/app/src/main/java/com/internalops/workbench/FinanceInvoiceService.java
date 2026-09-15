@@ -71,6 +71,9 @@ public class FinanceInvoiceService {
     private void ensureBusiness(String type, long id) {
         String table = "SALES".equalsIgnoreCase(type) ? "sales_order" : "PURCHASE".equalsIgnoreCase(type) ? "purchase_order" : null;
         if (table == null || Boolean.FALSE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM " + table + " WHERE id=?)", Boolean.class, id))) throw new IllegalArgumentException("业务单据不存在");
+        if ("PURCHASE".equalsIgnoreCase(type)
+                && "DRAFT".equals(jdbc.queryForObject("SELECT status FROM purchase_order WHERE id=?", String.class, id)))
+            throw new IllegalStateException("请先复核采购单再维护发票");
     }
     private static String table(String type) { if ("SALES".equalsIgnoreCase(type)) return "sales_invoice"; if ("PURCHASE".equalsIgnoreCase(type)) return "purchase_invoice"; throw new IllegalArgumentException("不支持的业务类型"); }
     private static String foreignKey(String type) { return "SALES".equalsIgnoreCase(type) ? "sales_order_id" : "PURCHASE".equalsIgnoreCase(type) ? "purchase_order_id" : invalid(); }

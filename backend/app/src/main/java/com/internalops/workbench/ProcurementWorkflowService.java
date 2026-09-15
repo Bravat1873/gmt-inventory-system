@@ -439,9 +439,27 @@ public class ProcurementWorkflowService {
                 INSERT INTO purchase_order(
                     purchase_no,suggestion_id,manual_entry,supplier_id,status,total_amount,
                     expected_arrival_date,delivery_address,purchase_remark,created_by)
-                VALUES(?,NULL,TRUE,?,'PENDING_SUPPLIER_PAYMENT',?,?,?,?,1)
+                VALUES(?,NULL,TRUE,?,'DRAFT',?,?,?,?,1)
                 """, purchaseNo, request.supplierId(), total, request.expectedArrivalDate(), request.deliveryAddress(), request.remark());
-        insertManualItems(purchaseId, purchaseNo, items);
+        insertManualItems(purchaseId, purchaseNo, items, false);
+        return Map.of("purchaseId", purchaseId, "purchaseNo", purchaseNo, "status", "DRAFT");
+    }
+
+    @Transactional
+    public Map<String, Object> reviewManual(long purchaseId) {
+        Map<String, Object> purchase = jdbc.queryForMap("SELECT purchase_no,manual_entry,status FROM purchase_order WHERE id=? FOR UPDATE", purchaseId);
+        if (!Boolean.TRUE.equals(purchase.get("manual_entry"))) throw new IllegalStateException("仅手工采购单可在此复核");
+        if (!"DRAFT".equals(str(purchase, "status"))) throw new IllegalStateException("当前采购单已完成复核");
+        List<Map<String, Object>> items = jdbc.queryForList(
+                "SELECT sku_id,quantity FROM purchase_order_item WHERE purchase_order_id=? ORDER BY line_no FOR UPDATE", purchaseId);
+        if (items.stream().noneMatch(item -> num(item, "quantity") != 0))
+            throw new IllegalStateException("采购明细数量全部为 0，请先修改后再复核");
+        String purchaseNo = str(purchase, "purchase_no");
+        for (var item : items) {
+            int quantity = (int) num(item, "quantity");
+            if (quantity > 0) increaseTransit(num(item, "sku_id"), quantity, purchaseNo);
+        }
+        jdbc.update("UPDATE purchase_order SET status='PENDING_SUPPLIER_PAYMENT',version=version+1 WHERE id=?", purchaseId);
         return Map.of("purchaseId", purchaseId, "purchaseNo", purchaseNo, "status", "PENDING_SUPPLIER_PAYMENT");
     }
 
@@ -449,7 +467,7 @@ public class ProcurementWorkflowService {
         if (request == null || request.purchaseItems().isEmpty()) throw new IllegalArgumentException("至少添加一条采购明细");
         List<ManualPurchaseLine> result = new ArrayList<>();
         for (ManualPurchaseRequest.Item item : request.purchaseItems()) {
-            if (item == null || item.quantity() == 0) throw new IllegalArgumentException("采购数量不能为零；退货请填写负数");
+            if (item == null) throw new IllegalArgumentException("采购明细不能为空");
             List<Map<String, Object>> matches = jdbc.queryForList("""
                     SELECT pi.id,pi.purchase_price,pi.moq,cfg.sku_id,cfg.supplier_id
                     FROM sku_supplier_purchase_info pi
@@ -481,7 +499,7 @@ public class ProcurementWorkflowService {
         return total;
     }
 
-    private void insertManualItems(long purchaseId, String purchaseNo, List<ManualPurchaseLine> items) {
+    private void insertManualItems(long purchaseId, String purchaseNo, List<ManualPurchaseLine> items, boolean activateTransit) {
         int lineNo = 1;
         for (ManualPurchaseLine item : items) {
             jdbc.update("""
@@ -489,7 +507,7 @@ public class ProcurementWorkflowService {
                         purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price,supplier_purchase_info_id)
                     VALUES(?,?,?,?,?,?,?)
                     """, purchaseId, lineNo++, item.skuId(), item.quantity(), Math.min(item.quantity(), 0), item.purchasePrice(), item.purchaseInfoId());
-            if (item.quantity() > 0) increaseTransit(item.skuId(), item.quantity(), purchaseNo);
+            if (activateTransit && item.quantity() > 0) increaseTransit(item.skuId(), item.quantity(), purchaseNo);
         }
     }
 
@@ -511,9 +529,12 @@ public class ProcurementWorkflowService {
         List<ManualPurchaseLine> items = validateManualItems(request);
         BigDecimal total = manualTotal(items);
         String purchaseNo = str(purchase, "purchase_no");
-        for (var oldItem : oldItems) {
-            int oldQuantity = (int) num(oldItem, "quantity");
-            if (oldQuantity > 0) increaseTransit(num(oldItem, "sku_id"), -oldQuantity, purchaseNo);
+        boolean activateTransit = !"DRAFT".equals(str(purchase, "status"));
+        if (activateTransit) {
+            for (var oldItem : oldItems) {
+                int oldQuantity = (int) num(oldItem, "quantity");
+                if (oldQuantity > 0) increaseTransit(num(oldItem, "sku_id"), -oldQuantity, purchaseNo);
+            }
         }
         jdbc.update("""
                 UPDATE purchase_order
@@ -521,7 +542,7 @@ public class ProcurementWorkflowService {
                 WHERE id=?
                 """, request.supplierId(), total, request.expectedArrivalDate(), request.deliveryAddress(), request.remark(), purchaseId);
         jdbc.update("DELETE FROM purchase_order_item WHERE purchase_order_id=?", purchaseId);
-        insertManualItems(purchaseId, purchaseNo, items);
+        insertManualItems(purchaseId, purchaseNo, items, activateTransit);
         return Map.of("purchaseId", purchaseId, "purchaseNo", purchaseNo, "status", val(purchase, "status"));
     }
 
@@ -539,6 +560,7 @@ public class ProcurementWorkflowService {
     @Transactional
     public Map<String, Object> payment(long id, FinanceActionRequest request) {
         var purchase = jdbc.queryForMap("SELECT status,total_amount FROM purchase_order WHERE id=? FOR UPDATE", id);
+        if ("DRAFT".equals(str(purchase, "status"))) throw new IllegalStateException("请先复核采购单再登记付款");
         BigDecimal total = (BigDecimal) val(purchase, "total_amount");
         BigDecimal paid = jdbc.queryForObject(
                 "SELECT COALESCE(SUM(COALESCE(confirmed_amount,amount)),0) FROM supplier_payment WHERE purchase_order_id=? AND COALESCE(review_status, 'APPROVED')='APPROVED'",
@@ -579,6 +601,7 @@ public class ProcurementWorkflowService {
     @Transactional
     public Map<String, Object> receive(long id, PurchaseReceiptRequest request) {
         var purchase = jdbc.queryForMap("SELECT purchase_no,status FROM purchase_order WHERE id=? FOR UPDATE", id);
+        if ("DRAFT".equals(str(purchase, "status"))) throw new IllegalStateException("请先复核采购单再登记收货");
         if (request == null || request.items() == null || request.items().isEmpty())
             throw new IllegalArgumentException("本次至少填写一项实收数量");
         String purchaseNo = str(purchase, "purchase_no");

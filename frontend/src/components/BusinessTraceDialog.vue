@@ -19,7 +19,11 @@ function time(value: unknown) {
   return matched ? `${matched[1]}${matched[2] ? ` ${matched[2]}` : ''}` : '—'
 }
 const statuses: Record<string, string> = { DRAFT: '待确认建议', PENDING_CUSTOMER_PAYMENT: '待确认收款', PENDING_SALES_INVOICE: '待开销售发票', WAITING_STOCK: '等待齐货', READY_TO_SHIP: '等待发货', SHIPPED: '已发货', PENDING_SUPPLIER_PAYMENT: '待登记付款', EXECUTING: '采购执行中', RECEIVED: '已入库' }
-function header(key: string) { const raw = props.trace.header[key]; return key === 'status' ? (statuses[String(raw)] ?? value(raw)) : value(raw) }
+function header(key: string) {
+  const raw = props.trace.header[key]
+  if (key === 'status' && raw === 'DRAFT' && props.trace.type === 'purchase') return '草稿（待复核）'
+  return key === 'status' ? (statuses[String(raw)] ?? value(raw)) : value(raw)
+}
 </script>
 
 <template>

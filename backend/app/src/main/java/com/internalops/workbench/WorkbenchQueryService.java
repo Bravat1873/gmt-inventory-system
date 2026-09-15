@@ -549,7 +549,7 @@ public class WorkbenchQueryService {
                 + "COALESCE((SELECT SUM(COALESCE(spay.confirmed_amount,spay.amount)) FROM supplier_payment spay WHERE spay.purchase_order_id=p.id AND COALESCE(spay.review_status,'APPROVED')='APPROVED'),0), "
                 + "(SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(pi.confirmed_invoice_no,pi.invoice_no)), '')) FROM purchase_invoice pi WHERE pi.purchase_order_id=p.id AND COALESCE(pi.review_status,'APPROVED')='APPROVED'), "
                 + "((SELECT COUNT(*) FROM supplier_payment spay WHERE spay.purchase_order_id=p.id AND spay.review_status='PENDING') + (SELECT COUNT(*) FROM purchase_invoice pi WHERE pi.purchase_order_id=p.id AND pi.review_status='PENDING')), "
-                + "p.created_at, p.updated_at FROM purchase_order p JOIN supplier sp ON sp.id=p.supplier_id) f";
+                + "p.created_at, p.updated_at FROM purchase_order p JOIN supplier sp ON sp.id=p.supplier_id WHERE p.status<>'DRAFT') f";
         modules.put("finance", new ModuleSpec(
                 "SELECT f.id, f.cash_direction AS `cashDirection`, f.business_type AS `businessType`, f.business_no AS `businessNo`, f.counterparty, f.invoice_nos AS `invoiceNos`, f.pending_review_count AS `pendingReviewCount`, f.amount, f.settled_amount AS `settledAmount`, "
                         + "GREATEST(f.amount-f.settled_amount,0) AS `outstandingAmount`, "

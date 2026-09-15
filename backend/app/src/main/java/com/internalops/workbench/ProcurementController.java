@@ -41,6 +41,9 @@ public class ProcurementController {
     @PostMapping("/manual")
     public ApiResponse<Map<String, Object>> manual(@RequestBody ManualPurchaseRequest request) { return ApiResponse.ok(service.manual(request)); }
 
+    @PostMapping("/purchases/{id}/review")
+    public ApiResponse<Map<String, Object>> reviewManual(@PathVariable long id) { return ApiResponse.ok(service.reviewManual(id)); }
+
     @PutMapping("/purchases/{id}")
     public ApiResponse<Map<String, Object>> updateManual(@PathVariable long id, @RequestBody ManualPurchaseRequest request) {
         return ApiResponse.ok(service.updateManual(id, request));

@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest'
 import ManualPurchaseDialog from './ManualPurchaseDialog.vue'
 
 const api = vi.hoisted(() => ({
-  createManualPurchase: vi.fn().mockResolvedValue({ purchaseNo: 'PO-001' }),
+  createManualPurchase: vi.fn().mockResolvedValue({ purchaseNo: 'PO-001', status: 'DRAFT' }),
   updateManualPurchase: vi.fn().mockResolvedValue({ purchaseNo: 'CG-001' }),
   updatePurchaseHeader: vi.fn().mockResolvedValue({ purchaseNo: 'CG-001' }),
   loadOrderSkus: vi.fn().mockResolvedValue([
@@ -44,6 +44,40 @@ it('adds multiple products from one supplier and saves the pending product too',
   ] }))
 })
 
+it('allows zero quantity for a draft line and explains the required review', async () => {
+  vi.clearAllMocks()
+  const wrapper = mount(ManualPurchaseDialog)
+  await flushPromises()
+  expect(wrapper.get('#manual-purchase-title').text()).toBe('新增采购单')
+  await wrapper.get('[data-test="product-search"]').trigger('focus')
+  await wrapper.get('[data-test="product-option-101"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('[data-test="supplier-search"]').trigger('focus')
+  await wrapper.get('[data-test="supplier-option-201"]').trigger('click')
+  await wrapper.get('input[type="number"]').setValue('0')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.createManualPurchase).toHaveBeenCalledWith(expect.objectContaining({
+    items: [{ skuId: 101, supplierPurchaseInfoId: 12, quantity: 0 }]
+  }))
+  expect(wrapper.emitted('message')?.[0]?.[0]).toContain('已保存为草稿，请在列表复核')
+})
+
+it('does not treat an empty quantity input as zero', async () => {
+  vi.clearAllMocks()
+  const wrapper = mount(ManualPurchaseDialog)
+  await flushPromises()
+  await wrapper.get('[data-test="product-search"]').trigger('focus')
+  await wrapper.get('[data-test="product-option-101"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('[data-test="supplier-search"]').trigger('focus')
+  await wrapper.get('[data-test="supplier-option-201"]').trigger('click')
+  await wrapper.get('input[type="number"]').setValue('')
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.text()).toContain('采购数量须为整数')
+  expect(api.createManualPurchase).not.toHaveBeenCalled()
+})
+
 it('restores every product of an existing purchase without dropping lines on save', async () => {
   vi.clearAllMocks()
   const wrapper = mount(ManualPurchaseDialog, { props: { purchase: {
@@ -59,6 +93,23 @@ it('restores every product of an existing purchase without dropping lines on sav
   expect(payload.items).toEqual(expect.arrayContaining([
     { skuId: 101, supplierPurchaseInfoId: 12, quantity: 5 }, { skuId: 102, supplierPurchaseInfoId: 12, quantity: 10 }
   ]))
+})
+
+it('saves zero in an existing purchase line without dropping other lines', async () => {
+  vi.clearAllMocks()
+  const wrapper = mount(ManualPurchaseDialog, { props: { purchase: {
+    id: 91, supplierId: 201, purchaseNo: 'CG-001', supplierName: '贝朗供应商', status: 'DRAFT', totalAmount: 3300,
+    items: [{ id: 1, skuId: 101, supplierPurchaseInfoId: 12, quantity: 5, receivedQuantity: 0, remainingQuantity: 5 },
+      { id: 2, skuId: 102, supplierPurchaseInfoId: 12, quantity: 10, receivedQuantity: 0, remainingQuantity: 10 }]
+  } } })
+  await flushPromises()
+  await wrapper.get('[data-test="manual-line-quantity-0"]').setValue('0')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.updateManualPurchase).toHaveBeenCalledWith(91, expect.objectContaining({
+    items: [{ skuId: 101, supplierPurchaseInfoId: 12, quantity: 0 },
+      { skuId: 102, supplierPurchaseInfoId: 12, quantity: 10 }]
+  }))
 })
 
 it('shows searchable products with product code first', async () => {

@@ -243,6 +243,25 @@ it('shows review and delete actions for draft orders and delete for reviewed ord
   expect(actions[1].text()).toContain('删除')
 })
 
+it('shows manual purchase drafts for review but not payment, receipt or invoice', async () => {
+  loadModule.mockResolvedValue({ items: [{
+    id: 7, purchaseNo: 'CG-007', recordType: 'PURCHASE', manualEntry: true, status: 'DRAFT',
+    outstandingAmount: 100, remainingQuantity: 0
+  }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, {
+    props: { module: moduleDefinitions.find(item => item.key === 'purchase')!, currentUserRole: 'ADMIN' }
+  })
+  await flushPromises()
+  expect(wrapper.get('[data-test="primary-action"]').text()).toBe('新增采购单')
+  expect(wrapper.get('.order-shipment-status').text()).toContain('草稿')
+  expect(wrapper.get('.shipment-status-dot').classes()).toContain('incomplete')
+  expect(wrapper.find('[data-test="purchase-payment"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="purchase-receipt"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="invoice"]').exists()).toBe(false)
+  await wrapper.get('[data-test="review-manual-purchase"]').trigger('click')
+  expect(wrapper.emitted('reviewPurchase')?.[0]?.[0]).toMatchObject({ id: 7 })
+})
+
 it('shortens customer, order, after-sales and finance row action labels', async () => {
   loadModule.mockResolvedValueOnce({ items: [{ id: 1 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
 

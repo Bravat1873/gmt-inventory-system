@@ -48,6 +48,17 @@ class FinanceWorkbenchQueryApiTest {
     }
 
     @Test
+    void excludesUnreviewedPurchaseDraftsFromPayables() throws Exception {
+        jdbc.update("UPDATE purchase_order SET status='DRAFT' WHERE id=20");
+
+        mvc.perform(get("/api/workbench/finance").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].cashDirection").value("RECEIVABLE"))
+                .andExpect(jsonPath("$.data.items[0].businessNo").value("SO-F-001"));
+    }
+
+    @Test
     void reviewSummaryShowsMoneyInvoiceTotalsAndDifferences() throws Exception {
         jdbc.update("""
                 UPDATE supplier_payment

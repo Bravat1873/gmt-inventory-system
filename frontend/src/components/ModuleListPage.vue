@@ -7,7 +7,7 @@ import OverflowText from './OverflowText.vue'
 import ProcurementConfigurationAlert from './ProcurementConfigurationAlert.vue'
 
 const props = defineProps<{ module: ModuleDefinition; currentUserRole?: UserRole }>()
-const emit = defineEmits<{ action: []; import: []; exportDocument: [row: Record<string, unknown>]; exportSummary: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; funds: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; reviewOrder: [row: Record<string, unknown>]; deleteOrder: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; financeReview: [row: Record<string, unknown>]; invoice: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesRefund: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; navigateSupplier: []; message: [text: string, kind?: 'success' | 'error'] }>()
+const emit = defineEmits<{ action: []; import: []; exportDocument: [row: Record<string, unknown>]; exportSummary: []; manual: []; edit: [row: Record<string, unknown>]; gallery: [row: Record<string, unknown>]; funds: [row: Record<string, unknown>]; workflow: [row: Record<string, unknown>]; reviewOrder: [row: Record<string, unknown>]; reviewPurchase: [row: Record<string, unknown>]; deleteOrder: [row: Record<string, unknown>]; shipment: [row: Record<string, unknown>]; allocation: [row: Record<string, unknown>]; details: [row: Record<string, unknown>]; receipt: [row: Record<string, unknown>]; payment: [row: Record<string, unknown>]; financeReview: [row: Record<string, unknown>]; invoice: [row: Record<string, unknown>]; purchaseReceipt: [row: Record<string, unknown>]; afterSalesReceipt: [row: Record<string, unknown>]; afterSalesShipment: [row: Record<string, unknown>]; afterSalesRefund: [row: Record<string, unknown>]; afterSalesCancel: [row: Record<string, unknown>]; navigateSupplier: []; message: [text: string, kind?: 'success' | 'error'] }>()
 const keyword = ref('')
 const loading = ref(false)
 const data = ref<PageResult>({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
@@ -48,7 +48,7 @@ function supplierQuoteDetails(row: Record<string, unknown>) {
 }
 function shipmentCompleted(row: Record<string, unknown>) {
   return props.module.key === 'purchase'
-    ? Number(row.remainingQuantity ?? 1) <= 0 || ['RECEIVED', 'COMPLETED'].includes(String(row.status))
+    ? String(row.status) !== 'DRAFT' && (Number(row.remainingQuantity ?? 1) <= 0 || ['RECEIVED', 'COMPLETED'].includes(String(row.status)))
     : String(row.status) === 'SHIPPED'
 }
 function isReceivable(row: Record<string, unknown>) { return String(row.cashDirection) === 'RECEIVABLE' }
@@ -127,6 +127,7 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
                 <button v-if="module.exportDocumentActionLabel && (module.key !== 'purchase' || row.recordType === 'PURCHASE')" data-test="export-document-row" @click="emit('exportDocument', row)">{{ module.exportDocumentActionLabel }}</button>
                 <button v-if="module.key === 'order' && row.status !== 'DRAFT' && row.status !== 'SHIPPED'" @click="emit('receipt', row)">登记</button>
                 <button v-if="module.key === 'order' && row.status === 'DRAFT'" data-test="review-order" @click="emit('reviewOrder', row)">复核</button>
+                <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && Number(row.manualEntry ?? 0) === 1 && row.status === 'DRAFT'" data-test="review-manual-purchase" @click="emit('reviewPurchase', row)">复核</button>
                 <button v-if="module.key === 'order' && ['DRAFT', 'PENDING_CUSTOMER_PAYMENT', 'READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))" data-test="delete-order" class="danger-action" @click="emit('deleteOrder', row)">删除</button>
                 <button v-if="module.key === 'order' && ['READY_TO_SHIP', 'WAITING_STOCK'].includes(String(row.status))" data-test="order-allocation" @click="emit('allocation', row)">分配</button>
                 <button v-if="module.key === 'customer'" data-test="customer-funds" @click="emit('funds', row)">资金</button>
@@ -135,9 +136,9 @@ defineExpose({ reload: async () => { await load(data.value.page); await procurem
                 <button v-if="module.key === 'finance' && canWriteFinance && isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-receipt" @click="emit('receipt', row)">登记</button>
                 <button v-if="module.key === 'finance' && canWriteFinance && !isReceivable(row) && hasOutstandingAmount(row)" data-test="finance-payment" @click="emit('payment', row)">登记</button>
                 <button v-if="module.key === 'finance' && canWriteFinance && Number(row.pendingReviewCount ?? 0) > 0" @click="emit('financeReview', row)">复核</button>
-                <button v-if="(['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE')) && canMaintainInvoices" data-test="invoice" @click="emit('invoice', row)">发票</button>
-                <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && hasOutstandingAmount(row)" data-test="purchase-payment" @click="emit('payment', row)">登记</button>
-                <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && Number(row.remainingQuantity ?? 0) > 0" data-test="purchase-receipt" @click="emit('purchaseReceipt', row)">收货</button>
+                <button v-if="(['order', 'finance'].includes(module.key) || (module.key === 'purchase' && row.recordType === 'PURCHASE' && row.status !== 'DRAFT')) && canMaintainInvoices" data-test="invoice" @click="emit('invoice', row)">发票</button>
+                <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && row.status !== 'DRAFT' && hasOutstandingAmount(row)" data-test="purchase-payment" @click="emit('payment', row)">登记</button>
+                <button v-if="module.key === 'purchase' && row.recordType === 'PURCHASE' && row.status !== 'DRAFT' && Number(row.remainingQuantity ?? 0) > 0" data-test="purchase-receipt" @click="emit('purchaseReceipt', row)">收货</button>
                 <button v-if="module.key === 'purchase' && row.recordType === 'SUGGESTION'" data-test="review-procurement" @click="emit('workflow', row)">复核</button>
                 <button v-if="module.key === 'afterSales'" @click="emit('edit', row)">修改</button>
                 <button v-if="module.key === 'afterSales' && ['WAITING_RETURN','RETURN_RECEIVED'].includes(String(row.status))" @click="emit('afterSalesReceipt', row)">收货</button>

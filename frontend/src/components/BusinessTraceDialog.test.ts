@@ -53,6 +53,15 @@ it('shows the business order remark in its own section', () => {
   expect(wrapper.text()).toContain('客户要求分批发货，并提前一天通知。')
 })
 
+it('identifies a manual purchase draft as awaiting review', () => {
+  const wrapper = mount(BusinessTraceDialog, {
+    props: { trace: { type: 'purchase', title: '采购业务全景', header: { status: 'DRAFT' }, details: [], timeline: [] } }
+  })
+
+  expect(wrapper.text()).toContain('草稿（待复核）')
+  expect(wrapper.text()).not.toContain('待确认建议')
+})
+
 it('hides the empty order-level remark and shows notes beside their own product', () => {
   const wrapper = mount(BusinessTraceDialog, {
     props: { trace: { type: 'order', title: '订单业务全景', header: {}, details: [{ productCode: 'A', remark: '第一行先发' }, { productCode: 'B', remark: '第二行后发' }], timeline: [] } }
