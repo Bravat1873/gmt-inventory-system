@@ -59,7 +59,7 @@ public class BusinessTraceService {
                 + "FROM purchase_order_item poi JOIN sku s ON s.id=poi.sku_id WHERE poi.purchase_order_id=? ORDER BY poi.line_no", id);
         List<Map<String, Object>> timeline = new ArrayList<>();
         timeline.add(event(header.get("createdAt"), "采购单创建", "采购单 " + header.get("purchaseNo") + " 已创建", "purchase", id));
-        jdbc.queryForList("SELECT amount, payment_method AS paymentMethod, paid_at AS occurredAt FROM supplier_payment WHERE purchase_order_id=?", id)
+        jdbc.queryForList("SELECT COALESCE(confirmed_amount,amount) AS amount, payment_method AS paymentMethod, paid_at AS occurredAt FROM supplier_payment WHERE purchase_order_id=? AND COALESCE(review_status,'APPROVED')='APPROVED'", id)
                 .forEach(row -> timeline.add(event(row.get("occurredAt"), "供应商付款", "已登记付款 ¥" + row.get("amount") + "（" + row.get("paymentMethod") + "）", null, null)));
         jdbc.queryForList("SELECT receipt_no AS receiptNo, received_at AS occurredAt, status FROM goods_receipt WHERE purchase_order_id=?", id)
                 .forEach(row -> timeline.add(event(row.get("occurredAt"), "采购到货入库", "入库单 " + row.get("receiptNo") + "（" + status(row.get("status")) + "）", null, null)));

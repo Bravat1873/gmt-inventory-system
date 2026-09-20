@@ -31,6 +31,112 @@ class ProcurementWorkflowApiTest {
     @Autowired JdbcTemplate jdbc;
     private final ObjectMapper mapper = new ObjectMapper();
 
+    private String withVersion(long id, String json) throws Exception {
+        var body = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(json);
+        body.put("version", jdbc.queryForObject("SELECT version FROM purchase_order WHERE id=?", Integer.class, id));
+        return body.toString();
+    }
+
+    private String editBody(long id, long lineId, int quantity, long quote) throws Exception {
+        return withVersion(id, "{\"supplierId\":201,\"items\":[{\"id\":" + lineId + ",\"skuId\":101,\"supplierPurchaseInfoId\":" + quote + ",\"quantity\":" + quantity + "}]}");
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"true,DRAFT", "false,DRAFT", "true,PENDING_SUPPLIER_PAYMENT", "false,PENDING_SUPPLIER_PAYMENT", "true,EXECUTING", "false,EXECUTING", "true,RECEIVED", "false,RECEIVED", "true,COMPLETED", "false,COMPLETED"})
+    void editsBothOriginsInEveryStatusAndPreservesLineIdentity(boolean manual, String initialStatus) throws Exception {
+        Cookie session = login();
+        long id = createDraftManualPurchase(session, 10);
+        if (!initialStatus.equals("DRAFT")) mvc.perform(post("/api/procurement/purchases/{id}/review", id).cookie(session)).andExpect(status().isOk());
+        jdbc.update("UPDATE purchase_order SET manual_entry=?,status=? WHERE id=?", manual, initialStatus, id);
+        long line = jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?", Long.class, id);
+        String body = editBody(id, line, 20, 1);
+        mvc.perform(put("/api/procurement/purchases/{id}", id).cookie(session).contentType("application/json").content(body))
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?", Long.class, id)).isEqualTo(line);
+        assertThat(jdbc.queryForObject("SELECT quantity FROM purchase_order_item WHERE id=?", Integer.class, line)).isEqualTo(20);
+        assertThat(jdbc.queryForObject("SELECT manual_entry FROM purchase_order WHERE id=?", Boolean.class, id)).isEqualTo(manual);
+        assertThat(jdbc.queryForObject("SELECT COALESCE(SUM(in_transit_quantity),0) FROM inventory_balance", Integer.class)).isEqualTo(initialStatus.equals("DRAFT") ? 0 : 20);
+        mvc.perform(put("/api/procurement/purchases/{id}", id).cookie(session).contentType("application/json").content(body))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void editsPartiallyReceivedPaidPurchaseWithoutRewritingPhysicalOrFinancialHistory() throws Exception {
+        Cookie session = login();
+        long id = createManualPurchase(session, 10);
+        long line = jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?", Long.class, id);
+        mvc.perform(post("/api/procurement/purchases/{id}/receive", id).cookie(session).contentType("application/json")
+                .content("{\"items\":[{\"purchaseOrderItemId\":" + line + ",\"receivedQuantity\":4}]}"))
+                .andExpect(status().isOk());
+        jdbc.update("INSERT INTO supplier_payment(purchase_order_id,amount,confirmed_amount,review_status) VALUES(?,100,90,'APPROVED')", id);
+        jdbc.update("INSERT INTO purchase_invoice(purchase_order_id) VALUES(?)", id);
+        jdbc.update("ALTER TABLE goods_receipt_item ADD CONSTRAINT fk_edit_receipt FOREIGN KEY(purchase_order_item_id) REFERENCES purchase_order_item(id)");
+        jdbc.update("INSERT INTO sku_supplier_purchase_info(id,supplier_product_config_id,purchase_price,moq,lead_time_days,enabled) VALUES(3,1,12,1,3,TRUE)");
+        mvc.perform(put("/api/procurement/purchases/{id}", id).cookie(session).contentType("application/json").content(editBody(id, line, 6, 3)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("EXECUTING"));
+        assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance WHERE sku_id=101", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance WHERE sku_id=101", Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT received_quantity FROM purchase_order_item WHERE id=?", Integer.class, line)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT purchase_order_item_id FROM goods_receipt_item", Long.class)).isEqualTo(line);
+        assertThat(jdbc.queryForObject("SELECT current_cost FROM sku WHERE id=101", java.math.BigDecimal.class)).isEqualByComparingTo("10");
+        assertThat(jdbc.queryForObject("SELECT total_amount FROM purchase_order WHERE id=?", java.math.BigDecimal.class,id)).isEqualByComparingTo("72");
+        mvc.perform(get("/api/procurement/purchases/{id}",id).cookie(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paidAmount").value(90)).andExpect(jsonPath("$.data.supplierLocked").value(true));
+        assertThat(jdbc.queryForObject("SELECT confirmed_amount FROM supplier_payment", java.math.BigDecimal.class)).isEqualByComparingTo("90");
+        // Complete the remaining receipt, then reopen by increasing the ordered quantity.
+        mvc.perform(post("/api/procurement/purchases/{id}/receive",id).cookie(session).contentType("application/json")
+                .content("{\"items\":[{\"purchaseOrderItemId\":"+line+",\"receivedQuantity\":2}]}"))
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT status FROM purchase_order WHERE id=?",String.class,id)).isEqualTo("COMPLETED");
+        mvc.perform(put("/api/procurement/purchases/{id}",id).cookie(session).contentType("application/json").content(editBody(id,line,10,3)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("EXECUTING"));
+        assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance WHERE sku_id=101", Integer.class)).isEqualTo(4);
+    }
+
+    @Test
+    void rejectsChangesThatWouldInvalidateReceiptsAndRollsBackAllBalances() throws Exception {
+        Cookie session=login(); long id=createManualPurchase(session,10);
+        long line=jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?",Long.class,id);
+        mvc.perform(post("/api/procurement/purchases/{id}/receive",id).cookie(session).contentType("application/json")
+                .content("{\"items\":[{\"purchaseOrderItemId\":"+line+",\"receivedQuantity\":4}]}")) .andExpect(status().isOk());
+        for(String body:java.util.List.of(editBody(id,line,3,1),editBody(id,line,10,1).replace("\"skuId\":101","\"skuId\":102"),
+                editBody(id,line,10,1).replace("\"id\":"+line+",",""), editBody(id,line,10,1).replace("\"id\":"+line+",","\"id\":99999,"))) {
+            mvc.perform(put("/api/procurement/purchases/{id}",id).cookie(session).contentType("application/json").content(body)) .andExpect(status().isBadRequest());
+        }
+        mvc.perform(put("/api/procurement/purchases/{id}",id).cookie(session).contentType("application/json")
+                .content(editBody(id,line,10,1).replace("\"supplierId\":201","\"supplierId\":202"))) .andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance WHERE sku_id=101",Integer.class)).isEqualTo(6);
+        assertThat(jdbc.queryForObject("SELECT quantity FROM purchase_order_item WHERE id=?",Integer.class,line)).isEqualTo(10);
+    }
+
+    @Test
+    void preservesHistoricalPriceAndAllowsExplicitRepricingWithSameQuotation() throws Exception {
+        Cookie session=login();long id=createManualPurchase(session,10);
+        long line=jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?",Long.class,id);
+        jdbc.update("UPDATE sku_supplier_purchase_info SET purchase_price=15,enabled=FALSE WHERE id=1");
+        mvc.perform(put("/api/procurement/purchases/{id}",id).cookie(session).contentType("application/json").content(editBody(id,line,12,1))) .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT total_amount FROM purchase_order WHERE id=?",java.math.BigDecimal.class,id)).isEqualByComparingTo("120");
+        jdbc.update("UPDATE sku_supplier_purchase_info SET enabled=TRUE WHERE id=1");
+        mvc.perform(put("/api/procurement/purchases/{id}",id).cookie(session).contentType("application/json").content(editBody(id,line,12,1).replace("\"skuId\":101","\"skuId\":101,\"retainPrice\":false"))) .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT total_amount FROM purchase_order WHERE id=?",java.math.BigDecimal.class,id)).isEqualByComparingTo("180");
+        jdbc.update("UPDATE purchase_order_item SET supplier_purchase_info_id=NULL WHERE id=?",line);
+        mvc.perform(put("/api/procurement/purchases/{id}",id).cookie(session).contentType("application/json").content(editBody(id,line,11,0))) .andExpect(status().isOk());
+    }
+
+    @Test
+    void reducedSystemPurchaseReleasesCoverageAndRegeneratesMissingSupply() throws Exception {
+        Cookie session=login();
+        mvc.perform(post("/api/procurement/generate").cookie(session)).andExpect(status().isOk());
+        long suggestion=jdbc.queryForObject("SELECT id FROM procurement_suggestion WHERE status='DRAFT'",Long.class);
+        mvc.perform(post("/api/procurement/suggestions/{id}/confirm",suggestion).cookie(session).contentType("application/json").content("{}")) .andExpect(status().isOk());
+        long id=jdbc.queryForObject("SELECT id FROM purchase_order WHERE suggestion_id=?",Long.class,suggestion);
+        long line=jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?",Long.class,id);
+        mvc.perform(put("/api/procurement/purchases/{id}",id).cookie(session).contentType("application/json").content(editBody(id,line,1,1))) .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT SUM(c.covered_quantity) FROM shortage_coverage c JOIN procurement_suggestion_item i ON i.id=c.suggestion_item_id WHERE i.suggestion_id=? AND c.active=TRUE",Integer.class,suggestion)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion WHERE status='DRAFT'",Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT SUM(c.covered_quantity) FROM shortage_coverage c JOIN procurement_suggestion_item i ON i.id=c.suggestion_item_id JOIN procurement_suggestion s ON s.id=i.suggestion_id WHERE s.status='DRAFT' AND c.active=TRUE",Integer.class)).isEqualTo(2);
+    }
+
     private void configureSecondProduct() {
         jdbc.update("INSERT INTO sku_supplier_config(id,sku_id,supplier_id,enabled) VALUES(2,102,201,TRUE)");
         jdbc.update("INSERT INTO sku_supplier_purchase_info(id,supplier_product_config_id,purchase_price,moq,lead_time_days,enabled) VALUES(2,2,20,5,3,TRUE)");
@@ -52,7 +158,7 @@ class ProcurementWorkflowApiTest {
         assertThat(jdbc.queryForObject("SELECT total_amount FROM purchase_order", java.math.BigDecimal.class)).isEqualByComparingTo("200");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_transaction", Integer.class)).isZero();
         mvc.perform(put("/api/procurement/purchases/{id}", id).cookie(session).contentType("application/json")
-                        .content(json.replace("\"quantity\":10", "\"quantity\":20")))
+                        .content(withVersion(id, json.replace("\"quantity\":10", "\"quantity\":20"))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DRAFT"));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_transaction", Integer.class)).isZero();
         mvc.perform(post("/api/procurement/purchases/{id}/review", id).cookie(session)
@@ -78,7 +184,7 @@ class ProcurementWorkflowApiTest {
                         .contentType("application/json").content("{}"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.message").value("采购明细数量全部为 0，请先修改后再复核"));
         mvc.perform(put("/api/procurement/purchases/{id}", id).cookie(session).contentType("application/json")
-                        .content("{\"supplierId\":201,\"skuId\":101,\"supplierPurchaseInfoId\":1,\"quantity\":10}"))
+                        .content(withVersion(id, "{\"supplierId\":201,\"skuId\":101,\"supplierPurchaseInfoId\":1,\"quantity\":10}")))
                 .andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_transaction", Integer.class)).isZero();
         mvc.perform(post("/api/procurement/purchases/{id}/review", id).cookie(session)
@@ -650,10 +756,10 @@ class ProcurementWorkflowApiTest {
 
         mvc.perform(put("/api/procurement/purchases/{id}", purchaseId).cookie(session)
                         .contentType("application/json")
-                        .content("""
+                        .content(withVersion(purchaseId, """
                                 {"supplierId":201,"skuId":101,"supplierPurchaseInfoId":1,"quantity":15,
                                  "expectedArrivalDate":"2026-08-25","deliveryAddress":"珠海市香洲区交货地址","remark":"修改后的采购备注"}
-                                """))
+                                """)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.purchaseId").value(purchaseId));
 
@@ -672,7 +778,7 @@ class ProcurementWorkflowApiTest {
         long purchaseId = createManualPurchase(session, 10);
         mvc.perform(put("/api/procurement/purchases/{id}", purchaseId).cookie(session)
                         .contentType("application/json")
-                        .content("{\"supplierId\":201,\"skuId\":101,\"supplierPurchaseInfoId\":1,\"quantity\":0}"))
+                        .content(withVersion(purchaseId, "{\"supplierId\":201,\"skuId\":101,\"supplierPurchaseInfoId\":1,\"quantity\":0}")))
                 .andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT quantity FROM purchase_order_item WHERE purchase_order_id=?", Integer.class, purchaseId))
                 .isZero();

@@ -213,11 +213,14 @@ export function postAction<T = Record<string, unknown>>(path: string, data: Reco
 }
 
 export interface ManualPurchaseItem {
+  id?: number
+  retainPrice?: boolean
   skuId: number
   supplierPurchaseInfoId: number
   quantity: number
 }
 export interface ManualPurchaseData {
+  version?: number
   supplierId: number
   items: ManualPurchaseItem[]
   expectedArrivalDate?: string
@@ -433,6 +436,7 @@ export function deleteInvoice(type: 'SALES' | 'PURCHASE', id: number, invoiceId:
 }
 
 export interface PurchaseReceiptItem {
+  purchasePrice?: number
   productCode?: string
   model?: string
   id: number
@@ -446,6 +450,10 @@ export interface PurchaseReceiptItem {
 }
 
 export interface PurchaseDetail {
+  version?: number
+  status?: string
+  supplierLocked?: boolean
+  paidAmount?: number
   id: number
   purchaseNo: string
   supplierId?: number

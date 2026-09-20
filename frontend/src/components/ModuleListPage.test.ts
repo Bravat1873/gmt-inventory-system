@@ -456,3 +456,12 @@ it('allows editing a fully shipped order without exposing deletion or repeat shi
   expect(wrapper.emitted('edit')?.[0]?.[0]).toMatchObject({ id: 700 })
   wrapper.unmount()
 })
+
+it.each([0, 1].flatMap(manualEntry => ['DRAFT', 'PENDING_SUPPLIER_PAYMENT', 'EXECUTING', 'RECEIVED', 'COMPLETED'].map(status => ({ manualEntry, status }))))('opens full editing for purchase $manualEntry / $status', async ({ manualEntry, status }) => {
+  loadModule.mockResolvedValue({ items: [{ id: 700, recordType: 'PURCHASE', manualEntry, status, paidAmount: 100, receivedQuantity: 10 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')!, currentUserRole: 'ADMIN' } })
+  await flushPromises()
+  await wrapper.findAll('button').find(button => button.text() === '修改')!.trigger('click')
+  expect(wrapper.emitted('edit')?.[0]?.[0]).toMatchObject({ id: 700 })
+  wrapper.unmount()
+})

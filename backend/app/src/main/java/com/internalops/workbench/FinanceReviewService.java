@@ -29,7 +29,10 @@ public class FinanceReviewService {
         approveMoney("customer_receipt",id,confirmedAmount,r.reviewRemark());return Map.of("id",id,"reviewStatus","APPROVED","confirmedAmount",confirmedAmount);
     }
     @Transactional public Map<String,Object> reviewPayment(long id,FinanceReviewRequest r) {
-        requireReviewer();Map<String,Object> row=jdbc.queryForMap("SELECT * FROM supplier_payment WHERE id=? FOR UPDATE",id);ensurePending(row);if(!r.approved())return reject("supplier_payment",id,r.reviewRemark());BigDecimal confirmedAmount=confirmedAmount(decimal(row.get("amount")),r.confirmedAmount());approveMoney("supplier_payment",id,confirmedAmount,r.reviewRemark());procurement.updatePurchaseProgressStatus(num(row.get("purchase_order_id")));return Map.of("id",id,"reviewStatus","APPROVED","confirmedAmount",confirmedAmount);
+        requireReviewer();
+        // Serialize approval with purchase editing so progress is derived from the latest amount and quantities.
+        jdbc.queryForMap("SELECT p.id FROM purchase_order p JOIN supplier_payment pay ON pay.purchase_order_id=p.id WHERE pay.id=? FOR UPDATE",id);
+        Map<String,Object> row=jdbc.queryForMap("SELECT * FROM supplier_payment WHERE id=? FOR UPDATE",id);ensurePending(row);if(!r.approved())return reject("supplier_payment",id,r.reviewRemark());BigDecimal confirmedAmount=confirmedAmount(decimal(row.get("amount")),r.confirmedAmount());approveMoney("supplier_payment",id,confirmedAmount,r.reviewRemark());procurement.updatePurchaseProgressStatus(num(row.get("purchase_order_id")));return Map.of("id",id,"reviewStatus","APPROVED","confirmedAmount",confirmedAmount);
     }
     @Transactional public Map<String,Object> reviewInvoice(String type,long id,FinanceReviewRequest r) {
         requireReviewer();String table=invoiceTable(type);Map<String,Object> row=findInvoiceForUpdate(table,id);ensurePending(row);if(!r.approved())return reject(table,id,r.reviewRemark());

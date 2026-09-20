@@ -5,6 +5,8 @@ import com.internalops.numbering.DocumentNumberService;
 import com.internalops.numbering.DocumentType;
 import com.internalops.procurement.ProcurementRecommendationService;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.ApplicationEventPublisher;
+import com.internalops.procurement.AutoProcurementSuggestionService;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,16 +29,24 @@ public class ProcurementWorkflowService {
     private static final BigDecimal MAX_PURCHASE_PRICE = new BigDecimal("99999999999999.9999");
     private static final BigDecimal MAX_PURCHASE_TOTAL = new BigDecimal("9999999999999999.99");
 
+    private final ApplicationEventPublisher events;
     private final JdbcTemplate jdbc;
     private final InventoryAllocationService allocation;
     private final DocumentNumberService documentNumbers;
     private final ProcurementRecommendationService recommendations;
 
-    public ProcurementWorkflowService(JdbcTemplate jdbc, InventoryAllocationService allocation, DocumentNumberService documentNumbers, ProcurementRecommendationService recommendations) {
+    public ProcurementWorkflowService(JdbcTemplate jdbc, InventoryAllocationService allocation, DocumentNumberService documentNumbers, ProcurementRecommendationService recommendations, ApplicationEventPublisher events) {
+        this.events = events;
         this.jdbc = jdbc;
         this.allocation = allocation;
         this.documentNumbers = documentNumbers;
         this.recommendations = recommendations;
+    }
+
+    // After-commit listeners need a separate transaction to persist regenerated suggestions.
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void regenerateAfterCommit() {
+        generate();
     }
 
     @Transactional
@@ -513,37 +523,116 @@ public class ProcurementWorkflowService {
 
     private record ManualPurchaseLine(long skuId, long purchaseInfoId, int quantity, BigDecimal purchasePrice) {}
 
+    /** Full editing for both origins; receipts and payments remain immutable business evidence. */
     @Transactional
     public Map<String, Object> updateManual(long purchaseId, ManualPurchaseRequest request) {
-        Map<String, Object> purchase = jdbc.queryForMap("""
-                SELECT purchase_no,manual_entry,status FROM purchase_order WHERE id=? FOR UPDATE
-                """, purchaseId);
-        if (!Boolean.TRUE.equals(purchase.get("manual_entry"))) throw new IllegalStateException("系统生成的采购单不能手工修改");
-        if (jdbc.queryForObject("SELECT COUNT(*) FROM supplier_payment WHERE purchase_order_id=?", Integer.class, purchaseId) > 0)
-            throw new IllegalStateException("已登记付款的采购单不能修改");
-        if (jdbc.queryForObject("SELECT COUNT(*) FROM goods_receipt WHERE purchase_order_id=?", Integer.class, purchaseId) > 0)
-            throw new IllegalStateException("已登记收货的采购单不能修改");
-        List<Map<String, Object>> oldItems = jdbc.queryForList("""
-                SELECT id,sku_id,quantity FROM purchase_order_item WHERE purchase_order_id=? ORDER BY line_no FOR UPDATE
-                """, purchaseId);
-        List<ManualPurchaseLine> items = validateManualItems(request);
-        BigDecimal total = manualTotal(items);
-        String purchaseNo = str(purchase, "purchase_no");
-        boolean activateTransit = !"DRAFT".equals(str(purchase, "status"));
-        if (activateTransit) {
-            for (var oldItem : oldItems) {
-                int oldQuantity = (int) num(oldItem, "quantity");
-                if (oldQuantity > 0) increaseTransit(num(oldItem, "sku_id"), -oldQuantity, purchaseNo);
+        Map<String, Object> purchase = jdbc.queryForMap("SELECT * FROM purchase_order WHERE id=? FOR UPDATE", purchaseId);
+        if (request == null || request.version() == null || request.version() != num(purchase, "version"))
+            throw new IllegalStateException("采购单已更新或缺少版本，请刷新后重新修改");
+        if (request.purchaseItems().isEmpty()) throw new IllegalArgumentException("至少添加一条采购明细");
+        boolean sameSupplier = request.supplierId() == num(purchase, "supplier_id");
+        if (!sameSupplier && purchaseSupplierLocked(purchaseId))
+            throw new IllegalStateException("已有付款、收货或发票记录，不能更换供应商");
+        var oldItems = jdbc.queryForList("SELECT * FROM purchase_order_item WHERE purchase_order_id=? ORDER BY line_no FOR UPDATE", purchaseId);
+        Map<Long, Map<String, Object>> oldById = new LinkedHashMap<>();
+        Map<Long, Long> transitDelta = new java.util.TreeMap<>();
+        int nextLineNo = 1;
+        for (var old : oldItems) {
+            oldById.put(num(old, "id"), old);
+            transitDelta.merge(num(old, "sku_id"), -Math.max(0, num(old, "quantity") - num(old, "received_quantity")), Long::sum);
+            nextLineNo = Math.max(nextLineNo, (int) num(old, "line_no") + 1);
+        }
+        var retainedIds = new LinkedHashSet<Long>();
+        List<EditedPurchaseLine> edited = new ArrayList<>();
+        List<ManualPurchaseLine> priced = new ArrayList<>();
+        for (var item : request.purchaseItems()) {
+            if (item == null) throw new IllegalArgumentException("采购明细不能为空");
+            var old = item.id() == null ? null : oldById.get(item.id());
+            if (item.id() != null && (old == null || !retainedIds.add(item.id())))
+                throw new IllegalArgumentException("采购明细不存在、不属于当前采购单或重复提交");
+            int received = old == null ? 0 : Math.max(0, (int) num(old, "received_quantity"));
+            boolean receiptLinked = old != null && hasReceiptItem(item.id());
+            if ((received > 0 || receiptLinked) && (item.skuId() != num(old, "sku_id") || item.quantity() < received))
+                throw new IllegalArgumentException("已收货明细不能更换产品，采购数量不能小于已收货数量");
+            // Retain the transaction price even when its old catalogue quotation is disabled or changed.
+            boolean keepSnapshot = !Boolean.FALSE.equals(item.retainPrice()) && old != null && sameSupplier && item.skuId() == num(old, "sku_id")
+                    && item.supplierPurchaseInfoId() == Objects.requireNonNullElse(nullableNum(old, "supplier_purchase_info_id"), 0L);
+            ManualPurchaseLine line;
+            if (keepSnapshot) {
+                line = new ManualPurchaseLine(item.skuId(), item.supplierPurchaseInfoId(), item.quantity(), (BigDecimal) old.get("purchase_price"));
+            } else {
+                line = validateManualItems(new ManualPurchaseRequest(request.supplierId(), item.skuId(), item.supplierPurchaseInfoId(), item.quantity(), null, null, null)).get(0);
             }
+            int resultingReceived = received > 0 ? received : Math.min(item.quantity(), 0);
+            edited.add(new EditedPurchaseLine(item.id(), line, resultingReceived));
+            priced.add(line);
+            transitDelta.merge(item.skuId(), Math.max(0L, (long)item.quantity() - resultingReceived), Long::sum);
+        }
+        for (var old : oldItems) {
+            if (!retainedIds.contains(num(old, "id")) && (num(old, "received_quantity") > 0 || hasReceiptItem(num(old, "id"))))
+                throw new IllegalArgumentException("已收货明细不能移除，请保留原明细");
+        }
+        BigDecimal total = manualTotal(priced);
+        String purchaseNo = str(purchase, "purchase_no");
+        boolean reviewed = !"DRAFT".equals(str(purchase, "status"));
+        if (reviewed) for (var delta : transitDelta.entrySet()) {
+            if (delta.getValue() != 0) increaseTransit(delta.getKey(), Math.toIntExact(delta.getValue()), purchaseNo);
+        }
+        for (var old : oldItems) if (!retainedIds.contains(num(old, "id")))
+            jdbc.update("DELETE FROM purchase_order_item WHERE id=?", num(old, "id"));
+        for (var item : edited) {
+            var line = item.line();
+            Long quoteId = line.purchaseInfoId() == 0 ? null : line.purchaseInfoId();
+            if (item.id() == null) jdbc.update("""
+                    INSERT INTO purchase_order_item(purchase_order_id,line_no,sku_id,quantity,received_quantity,purchase_price,supplier_purchase_info_id)
+                    VALUES(?,?,?,?,?,?,?)
+                    """, purchaseId, nextLineNo++, line.skuId(), line.quantity(), item.received(), line.purchasePrice(), quoteId);
+            else jdbc.update("""
+                    UPDATE purchase_order_item SET sku_id=?,quantity=?,received_quantity=?,purchase_price=?,supplier_purchase_info_id=? WHERE id=?
+                    """, line.skuId(), line.quantity(), item.received(), line.purchasePrice(), quoteId, item.id());
         }
         jdbc.update("""
-                UPDATE purchase_order
-                SET supplier_id=?,total_amount=?,expected_arrival_date=?,delivery_address=?,purchase_remark=?,version=version+1
-                WHERE id=?
+                UPDATE purchase_order SET supplier_id=?,total_amount=?,expected_arrival_date=?,delivery_address=?,purchase_remark=?,version=version+1 WHERE id=?
                 """, request.supplierId(), total, request.expectedArrivalDate(), request.deliveryAddress(), request.remark(), purchaseId);
-        jdbc.update("DELETE FROM purchase_order_item WHERE purchase_order_id=?", purchaseId);
-        insertManualItems(purchaseId, purchaseNo, items, activateTransit);
-        return Map.of("purchaseId", purchaseId, "purchaseNo", purchaseNo, "status", val(purchase, "status"));
+        if (reviewed) {
+            updatePurchaseProgressStatus(purchaseId);
+            if (nullableNum(purchase, "suggestion_id") != null) reconcilePurchaseCoverage(num(purchase, "suggestion_id"), purchaseId);
+            events.publishEvent(new AutoProcurementSuggestionService.RecalculationRequested());
+        }
+        return Map.of("purchaseId", purchaseId, "purchaseNo", purchaseNo,
+                "status", jdbc.queryForObject("SELECT status FROM purchase_order WHERE id=?", String.class, purchaseId));
+    }
+
+    private record EditedPurchaseLine(Long id, ManualPurchaseLine line, int received) {}
+
+    private boolean hasReceiptItem(long itemId) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM goods_receipt_item WHERE purchase_order_item_id=?", Integer.class, itemId) > 0;
+    }
+
+    private boolean purchaseSupplierLocked(long purchaseId) {
+        return jdbc.queryForObject("""
+                SELECT (SELECT COUNT(*) FROM supplier_payment WHERE purchase_order_id=?)
+                     + (SELECT COUNT(*) FROM goods_receipt WHERE purchase_order_id=?)
+                     + (SELECT COUNT(*) FROM purchase_invoice WHERE purchase_order_id=?)
+                """, Integer.class, purchaseId, purchaseId, purchaseId) > 0;
+    }
+
+    /** Release excess coverage without erasing the historical link to the confirmed suggestion. */
+    private void reconcilePurchaseCoverage(long suggestionId, long purchaseId) {
+        Map<Long, Long> remaining = new LinkedHashMap<>();
+        for (var row : jdbc.queryForList("SELECT sku_id,SUM(GREATEST(quantity-received_quantity,0)) remaining FROM purchase_order_item WHERE purchase_order_id=? GROUP BY sku_id", purchaseId))
+            remaining.put(num(row, "sku_id"), num(row, "remaining"));
+        for (var row : jdbc.queryForList("""
+                SELECT c.id,c.covered_quantity,i.sku_id FROM shortage_coverage c
+                JOIN procurement_suggestion_item i ON i.id=c.suggestion_item_id
+                WHERE i.suggestion_id=? AND c.active=TRUE ORDER BY c.id FOR UPDATE
+                """, suggestionId)) {
+            long skuId = num(row, "sku_id");
+            long kept = Math.min(num(row, "covered_quantity"), remaining.getOrDefault(skuId, 0L));
+            if (kept == 0) jdbc.update("UPDATE shortage_coverage SET active=FALSE WHERE id=?", num(row, "id"));
+            else if (kept < num(row, "covered_quantity")) jdbc.update("UPDATE shortage_coverage SET covered_quantity=? WHERE id=?", kept, num(row, "id"));
+            remaining.put(skuId, remaining.getOrDefault(skuId, 0L) - kept);
+        }
     }
 
     @Transactional
@@ -670,7 +759,7 @@ public class ProcurementWorkflowService {
 
     public Map<String, Object> purchase(long id) {
         List<Map<String, Object>> headers = jdbc.queryForList("""
-                SELECT po.id,po.purchase_no,po.supplier_id,po.manual_entry,po.total_amount,po.status,DATE(po.created_at) AS order_date,
+                SELECT po.id,po.version,po.purchase_no,po.supplier_id,po.manual_entry,po.total_amount,po.status,DATE(po.created_at) AS order_date,
                        po.expected_arrival_date,po.delivery_address,po.purchase_remark,sp.supplier_name
                 FROM purchase_order po JOIN supplier sp ON sp.id=po.supplier_id WHERE po.id=?
                 """, id);
@@ -681,6 +770,10 @@ public class ProcurementWorkflowService {
         result.put("purchaseNo", val(source, "purchase_no"));
         result.put("supplierId", num(source, "supplier_id"));
         result.put("manualEntry", source.get("manual_entry"));
+        result.put("version", num(source, "version"));
+        result.put("supplierLocked", purchaseSupplierLocked(id));
+        BigDecimal paid = jdbc.queryForObject("SELECT COALESCE(SUM(COALESCE(confirmed_amount,amount)),0) FROM supplier_payment WHERE purchase_order_id=? AND COALESCE(review_status,'APPROVED')='APPROVED'", BigDecimal.class, id);
+        result.put("paidAmount", paid);
         result.put("supplierName", val(source, "supplier_name"));
         result.put("totalAmount", val(source, "total_amount"));
         result.put("status", val(source, "status"));
@@ -729,6 +822,8 @@ public class ProcurementWorkflowService {
         boolean paidInFull = paid.compareTo(total) >= 0;
         boolean receivedInFull = num(quantities, "ordered_quantity") == num(quantities, "received_quantity");
         String status = paidInFull && receivedInFull ? "COMPLETED" : "EXECUTING";
+        if (!receivedInFull && paid.signum() == 0 && jdbc.queryForObject("SELECT COUNT(*) FROM goods_receipt WHERE purchase_order_id=?", Integer.class, id) == 0)
+            status = "PENDING_SUPPLIER_PAYMENT";
         jdbc.update("UPDATE purchase_order SET status=?,version=version+1 WHERE id=?", status, id);
     }
 

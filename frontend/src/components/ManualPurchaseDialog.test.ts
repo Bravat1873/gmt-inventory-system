@@ -91,7 +91,7 @@ it('restores every product of an existing purchase without dropping lines on sav
   const payload = api.updateManualPurchase.mock.calls[0][1]
   expect(payload.items).toHaveLength(2)
   expect(payload.items).toEqual(expect.arrayContaining([
-    { skuId: 101, supplierPurchaseInfoId: 12, quantity: 5 }, { skuId: 102, supplierPurchaseInfoId: 12, quantity: 10 }
+    { id: 1, retainPrice: true, skuId: 101, supplierPurchaseInfoId: 12, quantity: 5 }, { id: 2, retainPrice: true, skuId: 102, supplierPurchaseInfoId: 12, quantity: 10 }
   ]))
 })
 
@@ -107,8 +107,8 @@ it('saves zero in an existing purchase line without dropping other lines', async
   await wrapper.get('form').trigger('submit')
   await flushPromises()
   expect(api.updateManualPurchase).toHaveBeenCalledWith(91, expect.objectContaining({
-    items: [{ skuId: 101, supplierPurchaseInfoId: 12, quantity: 0 },
-      { skuId: 102, supplierPurchaseInfoId: 12, quantity: 10 }]
+    items: [{ id: 1, retainPrice: true, skuId: 101, supplierPurchaseInfoId: 12, quantity: 0 },
+      { id: 2, retainPrice: true, skuId: 102, supplierPurchaseInfoId: 12, quantity: 10 }]
   }))
 })
 
@@ -218,44 +218,79 @@ it('updates an existing manual purchase instead of creating another purchase', a
   await flushPromises()
 
   expect(api.updateManualPurchase).toHaveBeenCalledWith(91, expect.objectContaining({
-    items: [{ skuId: 101, supplierPurchaseInfoId: 12, quantity: 5 }],
+    items: [{ id: 1, retainPrice: true, skuId: 101, supplierPurchaseInfoId: 12, quantity: 5 }],
     deliveryAddress: '珠海市香洲区交货地址',
     remark: '原备注'
   }))
   expect(api.createManualPurchase).not.toHaveBeenCalled()
 })
 
-it('only updates delivery fields for a system purchase', async () => {
+it('fully edits a system purchase with historical quote and version', async () => {
   vi.clearAllMocks()
-  const wrapper = mount(ManualPurchaseDialog, {
-    props: {
-      purchase: {
-        id: 92,
-        purchaseNo: 'CG20260800001',
-        supplierName: '贝朗供应商',
-        totalAmount: 1100,
-        manualEntry: false,
-        expectedArrivalDate: '2026-08-25',
-        deliveryAddress: '原交货地址',
-        remark: '原备注',
-        items: [{ id: 1, skuId: 101, quantity: 10, receivedQuantity: 0, remainingQuantity: 10 }]
-      }
-    }
-  })
+  const wrapper = mount(ManualPurchaseDialog, { props: { purchase: {
+    id: 92, version: 7, purchaseNo: 'CG20260800001', supplierId: 201, supplierName: '贝朗供应商',
+    totalAmount: 1100, manualEntry: false, status: 'EXECUTING', supplierLocked: true, paidAmount: 800,
+    expectedArrivalDate: '2026-08-25', deliveryAddress: '原交货地址', remark: '原备注',
+    items: [{ id: 1, skuId: 101, purchasePrice: 110, quantity: 10, receivedQuantity: 4, remainingQuantity: 6 }]
+  } } })
   await flushPromises()
-
-  expect(wrapper.text()).toContain('产品、数量和供应商由采购建议锁定')
-  expect(wrapper.find('[data-test="product-search"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="product-search"]').exists()).toBe(true)
+  expect(wrapper.get('[data-test="product-search"]').attributes('disabled')).toBeDefined()
+  expect(wrapper.get('[data-test="supplier-search"]').attributes('disabled')).toBeDefined()
+  await wrapper.get('input[type="number"]').setValue('6')
+  expect(wrapper.get('[data-test="manual-purchase-total"]').text()).toContain('660.00')
+  expect(wrapper.get('[data-test="purchase-overpaid"]').text()).toContain('140.00')
   await wrapper.get('textarea[placeholder="填写供应商送货地址"]').setValue('新交货地址')
-  await wrapper.findAll('textarea')[1].setValue('新备注')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
-
-  expect(api.updatePurchaseHeader).toHaveBeenCalledWith(92, {
-    expectedArrivalDate: '2026-08-25',
-    deliveryAddress: '新交货地址',
-    remark: '新备注'
-  })
-  expect(api.updateManualPurchase).not.toHaveBeenCalled()
+  expect(api.updateManualPurchase).toHaveBeenCalledWith(92, expect.objectContaining({
+    version: 7, supplierId: 201, deliveryAddress: '新交货地址', expectedArrivalDate: '2026-08-25',
+    items: [{ id: 1, retainPrice: true, skuId: 101, supplierPurchaseInfoId: 0, quantity: 6 }]
+  }))
+  expect(api.updatePurchaseHeader).not.toHaveBeenCalled()
 })
 
+it('blocks quantity below receipts and preserves a received line while editing another line', async () => {
+  vi.clearAllMocks()
+  const wrapper = mount(ManualPurchaseDialog, { props: { purchase: {
+    id: 92, version: 3, purchaseNo: 'CG-001', supplierId: 201, supplierName: '贝朗供应商', totalAmount: 3300,
+    status: 'COMPLETED', supplierLocked: true,
+    items: [{ id: 1, skuId: 101, supplierPurchaseInfoId: 12, purchasePrice: 220, quantity: 5, receivedQuantity: 5, remainingQuantity: 0 },
+      { id: 2, skuId: 102, supplierPurchaseInfoId: 12, purchasePrice: 220, quantity: 10, receivedQuantity: 10, remainingQuantity: 0 }]
+  } } })
+  await flushPromises()
+  expect(wrapper.get('[data-test="remove-manual-line-0"]').attributes('disabled')).toBeDefined()
+  await wrapper.get('[data-test="edit-manual-line-0"]').trigger('click')
+  await wrapper.findAll('input[type="number"]')[1].setValue('4')
+  await wrapper.get('form').trigger('submit')
+  expect(api.updateManualPurchase).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('不能小于已收货数量 5')
+  await wrapper.findAll('input[type="number"]')[1].setValue('6')
+  await wrapper.get('[data-test="edit-manual-line-0"]').trigger('click')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.updateManualPurchase.mock.calls[0][1].items).toEqual(expect.arrayContaining([
+    { id: 1, retainPrice: true, skuId: 101, supplierPurchaseInfoId: 12, quantity: 6 },
+    { id: 2, retainPrice: true, skuId: 102, supplierPurchaseInfoId: 12, quantity: 10 }
+  ]))
+})
+
+it('restores disabled products and retains the original price when the catalogue price changes', async () => {
+  vi.clearAllMocks()
+  api.loadOrderSkus.mockResolvedValueOnce([])
+  const wrapper = mount(ManualPurchaseDialog, { props: { purchase: {
+    id: 92, version: 2, purchaseNo: 'CG-001', supplierId: 201, supplierName: '贝朗供应商', totalAmount: 100,
+    items: [{ id: 1, skuId: 101, productCode: 'OLD-101', supplierPurchaseInfoId: 12, purchasePrice: 10, quantity: 10, receivedQuantity: 0, remainingQuantity: 10 }]
+  } } })
+  await flushPromises()
+  expect((wrapper.get('[data-test="product-search"]').element as HTMLInputElement).value).toBe('OLD-101')
+  expect(wrapper.get('[data-test="manual-purchase-total"]').text()).toContain('100.00')
+  const select = wrapper.get('[data-test="purchase-price"]')
+  const element = select.element as HTMLSelectElement
+  element.selectedIndex = 2 // First current catalogue quote after original snapshot and empty option.
+  await select.trigger('change')
+  expect(wrapper.get('[data-test="manual-purchase-total"]').text()).toContain('2200.00')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(api.updateManualPurchase.mock.calls[0][1].items[0].retainPrice).toBe(false)
+})

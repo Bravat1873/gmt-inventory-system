@@ -26,7 +26,7 @@ public class AutoProcurementSuggestionService {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void recalculateAfterCommit(RecalculationRequested ignored) {
         try {
-            workflow.generate();
+            workflow.regenerateAfterCommit();
         } catch (IllegalStateException exception) {
             if (!"当前没有需要采购的缺口".equals(exception.getMessage())) {
                 log.warn("自动维护待确认采购建议失败，将保留已完成的业务操作: {}", exception.getMessage());

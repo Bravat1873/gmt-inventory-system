@@ -98,7 +98,7 @@ public class ExcelExportService {
                     WHERE o.status<>'DRAFT'
                     UNION ALL
                     SELECT p.purchase_no,'采购订单','PAYABLE',sp.supplier_name,p.total_amount,
-                           COALESCE((SELECT SUM(pay.amount) FROM supplier_payment pay WHERE pay.purchase_order_id=p.id),0),
+                           COALESCE((SELECT SUM(COALESCE(pay.confirmed_amount,pay.amount)) FROM supplier_payment pay WHERE pay.purchase_order_id=p.id AND COALESCE(pay.review_status, 'APPROVED')='APPROVED'),0),
                            (SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(pay.invoice_no), '')) FROM supplier_payment pay WHERE pay.purchase_order_id=p.id),
                            p.created_at,p.updated_at
                     FROM purchase_order p
