@@ -174,7 +174,7 @@ public class SalesOrderImportCommitService {
                 text(first, "financeContactName"), text(first, "financeContactPhone"),
                 null, text(first, "deliveryAddress"),
                 text(first, "deliveryContact"), text(first, "deliveryPhone"),
-                text(first, "shippingMethod"), version, items);
+                text(first, "shippingMethod"), version, items, null);
     }
 
     private String text(Map<String, Object> data, String key) {

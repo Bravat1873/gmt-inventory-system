@@ -442,3 +442,17 @@ it('keeps supplier quotes on one line and exposes all quotes in the title', asyn
 })
 
 
+
+
+it('allows editing a fully shipped order without exposing deletion or repeat shipping', async () => {
+  loadModule.mockResolvedValue({ items: [{ id: 700, orderNo: 'DD700', status: 'SHIPPED' }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'order')!, currentUserRole: 'ADMIN' } })
+  await flushPromises()
+  const edit = wrapper.findAll('button').find(button => button.text() === '修改')!
+  expect(edit).toBeDefined()
+  expect(wrapper.find('[data-test="delete-order"]').exists()).toBe(false)
+  expect(wrapper.findAll('button').some(button => button.text() === '发货')).toBe(false)
+  await edit.trigger('click')
+  expect(wrapper.emitted('edit')?.[0]?.[0]).toMatchObject({ id: 700 })
+  wrapper.unmount()
+})

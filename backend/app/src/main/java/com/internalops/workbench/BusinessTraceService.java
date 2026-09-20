@@ -36,15 +36,15 @@ public class BusinessTraceService {
         enrichOrderDetails(details);
         List<Map<String, Object>> timeline = new ArrayList<>();
         timeline.add(event(header.get("createdAt"), "订单创建", "销售订单 " + header.get("orderNo") + " 已创建", "order", id));
-        jdbc.queryForList("SELECT amount, payment_method AS paymentMethod, received_at AS occurredAt FROM customer_receipt WHERE sales_order_id=?", id)
-                .forEach(row -> timeline.add(event(row.get("occurredAt"), "客户收款", "已确认收款 ¥" + row.get("amount") + "（" + row.get("paymentMethod") + "）", null, null)));
+        jdbc.queryForList("SELECT COALESCE(confirmed_amount,amount) AS amount, payment_method AS paymentMethod, review_remark AS reason, received_at AS occurredAt FROM customer_receipt WHERE sales_order_id=? AND COALESCE(review_status,'APPROVED')='APPROVED'", id)
+                .forEach(row -> timeline.add(event(row.get("occurredAt"), "客户收款", "已确认收款 ¥" + row.get("amount") + "（" + row.get("paymentMethod") + "）" + (row.get("reason") == null ? "" : "；原因：" + row.get("reason")), null, null)));
         jdbc.queryForList("SELECT invoice_no AS invoiceNo, invoice_date AS occurredAt, tax_inclusive_amount AS amount FROM sales_invoice WHERE sales_order_id=?", id)
                 .forEach(row -> timeline.add(event(row.get("occurredAt"), "销售发票", "发票号 " + row.get("invoiceNo") + "，金额 ¥" + row.get("amount"), null, null)));
         inventoryEvents(timeline, "SALES_ORDER", String.valueOf(id), "ALLOCATE", "库存锁定");
         inventoryEvents(timeline, "SALES_SHIPMENT", String.valueOf(id), "SALES_SHIPMENT", "订单发货出库");
         jdbc.queryForList("SELECT DISTINCT po.id, po.purchase_no AS purchaseNo, po.status, po.created_at AS occurredAt FROM shortage_coverage sc "
                         + "JOIN sales_order_item soi ON soi.id=sc.sales_order_item_id JOIN procurement_suggestion_item psi ON psi.id=sc.suggestion_item_id "
-                        + "JOIN purchase_order po ON po.suggestion_id=psi.suggestion_id WHERE soi.sales_order_id=? AND sc.active=TRUE", id)
+                        + "JOIN purchase_order po ON po.suggestion_id=psi.suggestion_id WHERE soi.sales_order_id=?", id)
                 .forEach(row -> timeline.add(event(row.get("occurredAt"), "关联采购", "采购单 " + row.get("purchaseNo") + "（" + status(row.get("status")) + "）", "purchase", number(row.get("id")))));
         sort(timeline);
         return result("order", "订单业务全景", header, details, timeline);
@@ -67,7 +67,7 @@ public class BusinessTraceService {
         inventoryEvents(timeline, "PURCHASE_ORDER", String.valueOf(header.get("purchaseNo")), "PURCHASE_RECEIPT", "采购入库");
         jdbc.queryForList("SELECT DISTINCT o.id, o.order_no AS orderNo, o.status, o.created_at AS occurredAt FROM purchase_order po "
                         + "JOIN procurement_suggestion_item psi ON psi.suggestion_id=po.suggestion_id JOIN shortage_coverage sc ON sc.suggestion_item_id=psi.id "
-                        + "JOIN sales_order_item soi ON soi.id=sc.sales_order_item_id JOIN sales_order o ON o.id=soi.sales_order_id WHERE po.id=? AND sc.active=TRUE", id)
+                        + "JOIN sales_order_item soi ON soi.id=sc.sales_order_item_id JOIN sales_order o ON o.id=soi.sales_order_id WHERE po.id=?", id)
                 .forEach(row -> timeline.add(event(row.get("occurredAt"), "关联销售订单", "订单 " + row.get("orderNo") + "（" + status(row.get("status")) + "）", "order", number(row.get("id")))));
         sort(timeline);
         return result("purchase", "采购业务全景", header, details, timeline);

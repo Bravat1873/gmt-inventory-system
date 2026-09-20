@@ -139,6 +139,8 @@ it('saves edited order contacts in both snapshot and compatibility payload field
   await wrapper.get('[data-test="order-customer-phone"]').setValue('302')
   await wrapper.get('[data-test="finance-contact-phone"]').setValue('303')
   await wrapper.get('form').trigger('submit')
+  expect(wrapper.find('[data-test="receipt-confirm-dialog"]').exists()).toBe(true)
+  await wrapper.get('[data-test="confirm-order-save"]').trigger('click')
   expect(updateOrder).toHaveBeenCalledWith(100, expect.objectContaining({ businessContactName: 'Business', businessContactPhone: '201', orderContactName: 'Edited order', orderContactPhone: '302', financeContactName: 'Finance', financeContactPhone: '303', customerContact: 'Edited order', customerPhone: '302' }))
   wrapper.unmount()
 })
@@ -294,3 +296,87 @@ it('restores the original remainder before previewing an edited order', async ()
 })
 
 
+
+
+it('requires a reason before atomically saving a shipped order and receipt adjustment', async () => {
+  updateOrder.mockClear()
+  loadOrderSkus.mockResolvedValue([sku(1)])
+  loadOrderCustomers.mockResolvedValue([{ id: 1, customerName: '测试客户', fundBalance: 500 }])
+  const wrapper = mount(OrderDialog, { props: { currentUserRole: 'ADMIN', row: { ...validOrder(), id: 501, version: 3, status: 'SHIPPED', receivedAmount: 1, items: [{ id: 31, lineNo: 10000, skuId: 1, quantity: 2, shippedQuantity: 2, salePrice: 5, remark: '保留备注' }] } } })
+  await flushPromises()
+  expect(wrapper.get('[data-test="remove-order-line-0"]').attributes('disabled')).toBeDefined()
+  expect(wrapper.get('[data-test="order-sku-picker-0"] input').attributes('disabled')).toBeDefined()
+  await wrapper.get('form').trigger('submit')
+  expect(updateOrder).not.toHaveBeenCalled()
+  await wrapper.get('[data-test="adjust-receipt"]').setValue()
+  await wrapper.get('[data-test="adjusted-received-amount"]').setValue(8)
+  await wrapper.get('[data-test="confirm-order-save"]').trigger('click')
+  expect(updateOrder).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('请填写已收金额调整原因')
+  await wrapper.get('[data-test="receipt-adjustment-reason"]').setValue('补记实际结算金额')
+  await wrapper.get('[data-test="confirm-order-save"]').trigger('click')
+  await flushPromises()
+  expect(updateOrder).toHaveBeenCalledWith(501, expect.objectContaining({
+    receiptConfirmation: { originalAmount: 1, amount: 8, reason: '补记实际结算金额' },
+    items: [{ lineNo: 10000, skuId: 1, quantity: 2, salePrice: 5, remark: '保留备注' }]
+  }))
+  expect(wrapper.emitted('saved')).toHaveLength(1)
+  wrapper.unmount()
+})
+
+it('lets ordinary users confirm an unchanged receipt and retains the dialog on failure', async () => {
+  updateOrder.mockClear().mockRejectedValueOnce(new Error('已收金额已变化，请重新打开订单确认'))
+  loadOrderSkus.mockResolvedValue([sku(1)])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { props: { currentUserRole: 'USER', row: { ...validOrder(), id: 502, version: 1, status: 'SHIPPED', receivedAmount: 1 } } })
+  await flushPromises()
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.find('[data-test="adjust-receipt"]').exists()).toBe(false)
+  await wrapper.get('[data-test="confirm-order-save"]').trigger('click')
+  await flushPromises()
+  expect(updateOrder).toHaveBeenCalledWith(502, expect.objectContaining({ receiptConfirmation: { originalAmount: 1, amount: 1, reason: undefined } }))
+  expect(wrapper.find('[data-test="receipt-confirm-dialog"]').exists()).toBe(true)
+  expect(wrapper.emitted('saved')).toBeUndefined()
+  expect(wrapper.text()).toContain('已收金额已变化')
+  wrapper.unmount()
+})
+
+it('rejects quantities below shipped units and gives new lines unique numbers after deletion', async () => {
+  updateOrder.mockClear()
+  loadOrderSkus.mockResolvedValue([sku(1)])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { props: { row: { ...validOrder(), id: 503, status: 'READY_TO_SHIP', items: [
+    { lineNo: 10000, skuId: 1, quantity: 2, shippedQuantity: 2, salePrice: 5 },
+    { lineNo: 20000, skuId: 1, quantity: 1, shippedQuantity: 0, salePrice: 5 }
+  ] } } })
+  await flushPromises()
+  await wrapper.findAll('input[type="number"]')[0].setValue(1)
+  await wrapper.get('form').trigger('submit')
+  expect(wrapper.find('[data-test="receipt-confirm-dialog"]').exists()).toBe(false)
+  expect(updateOrder).not.toHaveBeenCalled()
+  expect(wrapper.emitted('message')?.at(-1)?.[0]).toContain('不能小于已发货数量')
+  await wrapper.findAll('input[type="number"]')[0].setValue(2)
+  await wrapper.get('[data-test="remove-order-line-1"]').trigger('click')
+  await wrapper.get('[data-test="add-order-line"]').trigger('click')
+  await choose(wrapper, '[data-test="order-sku-picker-1"]', 'SKU-1', 1)
+  await wrapper.get('form').trigger('submit')
+  await wrapper.get('[data-test="confirm-order-save"]').trigger('click')
+  expect(updateOrder.mock.calls.at(-1)?.[1].items.map((item: { lineNo: number }) => item.lineNo)).toEqual([10000, 30000])
+  wrapper.unmount()
+})
+
+
+it('aggregates duplicate product lines in the post-edit supply preview', async () => {
+  loadOrderSkus.mockResolvedValue([{ ...sku(1), supplyDemandSurplus: 7 }])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { props: { row: { id: 504, ...validOrder(), items: [
+    { id: 61, lineNo: 10000, skuId: 1, quantity: 10, shippedQuantity: 10, salePrice: 1 },
+    { id: 62, lineNo: 20000, skuId: 1, quantity: 4, shippedQuantity: 0, salePrice: 1 }
+  ] } } })
+  await flushPromises()
+  await wrapper.findAll('input[type="number"]')[0].setValue(12)
+  await wrapper.findAll('input[type="number"]')[2].setValue(6)
+  expect(wrapper.get('[data-test="order-inventory-0"]').text()).toContain('下单后供需余量3')
+  expect(wrapper.get('[data-test="order-inventory-1"]').text()).toContain('下单后供需余量3')
+  wrapper.unmount()
+})

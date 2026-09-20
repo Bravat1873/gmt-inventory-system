@@ -226,3 +226,5 @@ ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;
 DROP TABLE IF EXISTS document_number_sequence;
 CREATE TABLE document_number_sequence (document_type VARCHAR(32) NOT NULL, year_month CHAR(6) NOT NULL, current_value INT NOT NULL, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(document_type,year_month), CONSTRAINT ck_document_number_value CHECK(current_value BETWEEN 0 AND 99999));
 
+
+ALTER TABLE sales_order_item ADD COLUMN IF NOT EXISTS shipped_quantity INT NOT NULL DEFAULT 0;

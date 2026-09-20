@@ -24,7 +24,27 @@ class FinanceWorkbenchQueryApiTest {
     @Autowired
     JdbcTemplate jdbc;
 
+    @Autowired com.internalops.exporting.ExcelExportService exports;
+
     private final Cookie session = new Cookie("OPS_SESSION", "finance-test-token");
+
+    @Test
+    void receiptAdjustmentsUseConfirmedNetAmountsInFinanceListAndExcel() throws Exception {
+        jdbc.update("UPDATE customer_receipt SET confirmed_amount=25,review_status='APPROVED' WHERE id=12");
+        jdbc.update("INSERT INTO customer_receipt(id,sales_order_id,amount,confirmed_amount,review_status) VALUES(90,10,-5,-5,'APPROVED')");
+        jdbc.update("INSERT INTO customer_receipt(id,sales_order_id,amount,review_status) VALUES(91,10,99,'PENDING')");
+        mvc.perform(get("/api/workbench/finance").param("keyword","SO-F-001").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].settledAmount").value(20))
+                .andExpect(jsonPath("$.data.items[0].outstandingAmount").value(80));
+        try (var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(exports.summary("finance")))) {
+            var sheet = workbook.getSheetAt(0);
+            var sales = java.util.stream.IntStream.rangeClosed(1,sheet.getLastRowNum()).mapToObj(sheet::getRow)
+                    .filter(row -> "SO-F-001".equals(row.getCell(0).getStringCellValue())).findFirst().orElseThrow();
+            org.assertj.core.api.Assertions.assertThat(new java.math.BigDecimal(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(sales.getCell(6)))).isEqualByComparingTo("20");
+            org.assertj.core.api.Assertions.assertThat(new java.math.BigDecimal(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(sales.getCell(7)))).isEqualByComparingTo("80");
+        }
+    }
 
     @Test
     void listsAutomaticallyLinkedReceivablesAndPayablesWithBalances() throws Exception {

@@ -18,7 +18,7 @@ public class CustomerFundQueryService {
     public Map<String,Object> overview(long customerId) {
         BigDecimal balance = amount("SELECT COALESCE(balance,0) FROM customer_fund_account WHERE customer_id=?", customerId);
         BigDecimal receivable = amount("SELECT COALESCE(SUM(i.quantity*i.sale_price),0) FROM sales_order_item i JOIN sales_order o ON o.id=i.sales_order_id WHERE o.customer_id=? AND o.status<>'DRAFT'", customerId);
-        BigDecimal received = amount("SELECT COALESCE(SUM(r.amount),0) FROM customer_receipt r JOIN sales_order o ON o.id=r.sales_order_id WHERE o.customer_id=? AND o.status<>'DRAFT'", customerId);
+        BigDecimal received = amount("SELECT COALESCE(SUM(COALESCE(r.confirmed_amount,r.amount)),0) FROM customer_receipt r JOIN sales_order o ON o.id=r.sales_order_id WHERE o.customer_id=? AND o.status<>'DRAFT' AND COALESCE(r.review_status,'APPROVED')='APPROVED'", customerId);
         BigDecimal outstanding = receivable.subtract(received).max(BigDecimal.ZERO);
         BigDecimal pending = amount("SELECT COALESCE(SUM(amount),0) FROM customer_fund_request WHERE customer_id=? AND status='PENDING'", customerId);
         BigDecimal coverage = outstanding.signum() == 0 ? new BigDecimal("100") : balance.multiply(new BigDecimal("100")).divide(outstanding, 2, RoundingMode.HALF_UP);
@@ -86,7 +86,7 @@ public class CustomerFundQueryService {
     private static final class Accumulator {
         BigDecimal deposit=BigDecimal.ZERO,receipt=BigDecimal.ZERO,refund=BigDecimal.ZERO,reversal=BigDecimal.ZERO,opening,closing;
         Accumulator(BigDecimal opening){this.opening=opening;this.closing=opening;}
-        void add(Map<String,Object> row){BigDecimal value=decimal(row.get("amount"));String type=String.valueOf(row.get("entry_type"));String direction=String.valueOf(row.get("direction"));switch(type){case "CUSTOMER_DEPOSIT"->deposit=deposit.add(value);case "ORDER_RECEIPT"->receipt=receipt.add(value);case "AFTER_SALES_REFUND"->refund=refund.add(value);case "REVERSAL"->reversal=reversal.add("IN".equals(direction)?value:value.negate());default->{}}closing=decimal(row.get("balance_after"));}
+        void add(Map<String,Object> row){BigDecimal value=decimal(row.get("amount"));String type=String.valueOf(row.get("entry_type"));String direction=String.valueOf(row.get("direction"));switch(type){case "CUSTOMER_DEPOSIT"->deposit=deposit.add(value);case "ORDER_RECEIPT"->receipt=receipt.add(value);case "ORDER_REFUND"->receipt=receipt.subtract(value);case "AFTER_SALES_REFUND"->refund=refund.add(value);case "REVERSAL"->reversal=reversal.add("IN".equals(direction)?value:value.negate());default->{}}closing=decimal(row.get("balance_after"));}
         Map<String,Object> view(String period){Map<String,Object> v=new LinkedHashMap<>();v.put("period",period);v.put("depositAmount",deposit);v.put("receiptAmount",receipt);v.put("refundAmount",refund);v.put("reversalAmount",reversal);v.put("netChange",closing.subtract(opening));v.put("openingBalance",opening);v.put("closingBalance",closing);return v;}
     }
 }

@@ -63,7 +63,7 @@ public class FinanceWorkflowService {
 
     private BigDecimal receivedAmount(long id) {
         BigDecimal result = jdbc.queryForObject("""
-                SELECT COALESCE(SUM(amount), 0)
+                SELECT COALESCE(SUM(COALESCE(confirmed_amount,amount)), 0)
                 FROM customer_receipt
                 WHERE sales_order_id=? AND COALESCE(review_status, 'APPROVED')='APPROVED'
                 """, BigDecimal.class, id);

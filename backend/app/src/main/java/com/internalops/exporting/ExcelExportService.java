@@ -90,7 +90,7 @@ public class ExcelExportService {
                 FROM (
                     SELECT o.order_no AS business_no,'销售订单' AS business_type,'RECEIVABLE' AS cash_direction,c.customer_name AS counterparty,
                            COALESCE((SELECT SUM(i.quantity*i.sale_price) FROM sales_order_item i WHERE i.sales_order_id=o.id),0) AS amount,
-                           COALESCE((SELECT SUM(cr.amount) FROM customer_receipt cr WHERE cr.sales_order_id=o.id),0) AS settled_amount,
+                           COALESCE((SELECT SUM(COALESCE(cr.confirmed_amount,cr.amount)) FROM customer_receipt cr WHERE cr.sales_order_id=o.id AND COALESCE(cr.review_status,'APPROVED')='APPROVED'),0) AS settled_amount,
                            (SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(cr.invoice_no), '')) FROM customer_receipt cr WHERE cr.sales_order_id=o.id) AS invoice_nos,
                            o.created_at,o.updated_at
                     FROM sales_order o

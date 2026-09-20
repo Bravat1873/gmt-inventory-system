@@ -1,7 +1,7 @@
 import type { UserRole } from './auth'
 export interface FundOverview { customerId:number; balance:number; orderOutstandingAmount:number; coverageRatio:number; pendingAmount:number; insufficient:boolean }
 export interface FundRequest { id:number; requestType:string; status:string; amount:number; submittedAt?:string }
-export interface FundLedger { id:number; entryType:string; direction:'IN'|'OUT'; amount:number; balanceAfter:number; sourceNo?:string; operatedAt?:string }
+export interface FundLedger { id:number; entryType:string; direction:'IN'|'OUT'; amount:number; balanceAfter:number; sourceNo?:string; reason?:string; operatedAt?:string }
 export interface FundSummary { period:string; depositAmount:number; receiptAmount:number; refundAmount:number; reversalAmount:number; netChange:number; openingBalance:number; closingBalance:number }
 export interface FundOrderOption { id:number; orderNo:string; status:string; orderDate?:string }
 export interface DepositCommand { amount:number; paymentDate:string; paymentMethod:string; referenceNo?:string; remark?:string; orderId?:number }

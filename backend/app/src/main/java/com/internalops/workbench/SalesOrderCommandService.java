@@ -1,6 +1,9 @@
 package com.internalops.workbench;
 
 import com.internalops.numbering.DocumentNumberService;
+import com.internalops.auth.CurrentUser;
+import com.internalops.auth.UserRole;
+import com.internalops.customerfund.CustomerFundService;
 import com.internalops.numbering.DocumentType;
 import com.internalops.procurement.AutoProcurementSuggestionService;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,7 +24,7 @@ import java.util.Set;
 @Service
 public class SalesOrderCommandService {
     // 发货、库存锁定和开票状态必须由对应的业务动作推进，避免手工改状态绕过出入库流水。
-    private static final Set<String> EDITABLE_STATUSES = Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT", "READY_TO_SHIP", "WAITING_STOCK");
+    private static final Set<String> EDITABLE_STATUSES = Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT", "READY_TO_SHIP", "WAITING_STOCK", "SHIPPED");
     private static final Set<String> DELETABLE_STATUSES = Set.of("DRAFT", "PENDING_CUSTOMER_PAYMENT", "READY_TO_SHIP", "WAITING_STOCK");
     private static final Set<String> ORDER_TYPES = Set.of("\u5de5\u7a0b\u8ba2\u5355", "\u96f6\u552e\u8ba2\u5355", "\u524d\u7f6e\u8ba2\u5355");
     private final JdbcTemplate jdbc;
@@ -29,13 +32,15 @@ public class SalesOrderCommandService {
     private final SupplyDemandQueryService supplyDemand;
     private final DocumentNumberService documentNumbers;
     private final AutoProcurementSuggestionService autoProcurement;
+    private final CustomerFundService customerFunds;
     public SalesOrderCommandService(JdbcTemplate jdbc, InventoryAllocationService allocation,
-                                    SupplyDemandQueryService supplyDemand, DocumentNumberService documentNumbers, AutoProcurementSuggestionService autoProcurement) {
+                                    SupplyDemandQueryService supplyDemand, DocumentNumberService documentNumbers, AutoProcurementSuggestionService autoProcurement, CustomerFundService customerFunds) {
         this.jdbc = jdbc;
         this.allocation = allocation;
         this.supplyDemand = supplyDemand;
         this.documentNumbers = documentNumbers;
         this.autoProcurement = autoProcurement;
+        this.customerFunds = customerFunds;
     }
 
     @Transactional
@@ -81,7 +86,7 @@ public class SalesOrderCommandService {
         BigDecimal receivableAmount = items.stream()
                 .map(item -> BigDecimal.valueOf(((Number) item.get("quantity")).longValue()).multiply((BigDecimal) item.get("salePrice")))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal receivedAmount = jdbc.queryForObject("SELECT COALESCE(SUM(amount), 0) FROM customer_receipt WHERE sales_order_id=? AND COALESCE(review_status,'APPROVED')='APPROVED'", BigDecimal.class, id);
+        BigDecimal receivedAmount = jdbc.queryForObject("SELECT COALESCE(SUM(COALESCE(confirmed_amount,amount)), 0) FROM customer_receipt WHERE sales_order_id=? AND COALESCE(review_status,'APPROVED')='APPROVED'", BigDecimal.class, id);
         String defaultShipmentAddress = blankToNull(Objects.toString(value(order, "delivery_address"), null));
         if (defaultShipmentAddress == null) {
             defaultShipmentAddress = blankToNull(jdbc.queryForObject("SELECT address FROM customer WHERE id=?", String.class, value(order, "customer_id")));
@@ -238,6 +243,13 @@ public class SalesOrderCommandService {
         if (request.version() == null) throw new IllegalArgumentException("缺少数据版本，请重新打开后再试");
         String currentStatus = jdbc.queryForObject("SELECT status FROM sales_order WHERE id=? FOR UPDATE", String.class, id);
         if (!EDITABLE_STATUSES.contains(currentStatus)) throw new IllegalStateException("确认收款后不可直接修改，只能走异常处理");
+        int version = jdbc.queryForObject("SELECT version FROM sales_order WHERE id=?", Integer.class, id);
+        if (version != request.version()) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
+        long customerId = jdbc.queryForObject("SELECT customer_id FROM sales_order WHERE id=?", Long.class, id);
+        if (!"DRAFT".equals(currentStatus) && customerId != request.customerId()) throw new IllegalArgumentException("正式订单不能更换客户，请保留原客户以确保发货和资金归属一致");
+        if (!"DRAFT".equals(currentStatus) && "DRAFT".equals(request.status())) throw new IllegalArgumentException("正式订单不能改回草稿");
+        int shipped = jdbc.queryForObject("SELECT COALESCE(SUM(shipped_quantity),0) FROM sales_order_item WHERE sales_order_id=?", Integer.class, id);
+        if ((shipped > 0 || "SHIPPED".equals(currentStatus)) && request.receiptConfirmation() == null) throw new IllegalArgumentException("请再次确认已收金额是否需要修改");
         if (!"DRAFT".equals(currentStatus)) allocation.releaseAll(id, "ORDER_EDIT_RELEASE");
         String orderContactName = firstNonBlank(request.orderContactName(), request.customerContact());
         String orderContactPhone = firstNonBlank(request.orderContactPhone(), request.customerPhone());
@@ -246,14 +258,94 @@ public class SalesOrderCommandService {
                 blankToNull(request.businessContactName()), blankToNull(request.businessContactPhone()), orderContactName, orderContactPhone, blankToNull(request.financeContactName()), blankToNull(request.financeContactPhone()),
                 blankToNull(request.remark()), blankToNull(request.deliveryAddress()), blankToNull(request.deliveryContact()), blankToNull(request.deliveryPhone()), blankToNull(request.shippingMethod()), id, request.version());
         if (changed == 0) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
-        deleteShortageCoverage(id);
-        jdbc.update("DELETE FROM sales_order_item WHERE sales_order_id=?", id);
-        insertItems(id, request.items());
+        updateItems(id, request.items());
+        confirmReceipt(id, request.receiptConfirmation());
         if (!"DRAFT".equals(requestedStatusOrCurrent(request, currentStatus))) {
             allocation.allocate(id);
+            reconcileCoverage(id);
             autoProcurement.requestRecalculation();
         }
         return get(id);
+    }
+
+    // Keep line IDs so shipment batches, after-sales and confirmed procurement remain traceable.
+    private void updateItems(long orderId, List<SalesOrderRequest.Item> items) {
+        Map<Integer, Map<String, Object>> existing = new HashMap<>();
+        for (var row : jdbc.queryForList("SELECT id,line_no,sku_id,quantity,shipped_quantity FROM sales_order_item WHERE sales_order_id=? FOR UPDATE", orderId)) {
+            existing.put(((Number)value(row,"line_no")).intValue(), row);
+        }
+        Set<Integer> used = new java.util.HashSet<>();
+        int nextLine = 10000;
+        for (var item : items) {
+            int line = item.lineNo() == null ? nextLine : item.lineNo();
+            nextLine = Math.max(nextLine, line + 10000);
+            if (line <= 0 || !used.add(line)) throw new IllegalArgumentException("订单明细行号必须为不重复的正数");
+            var old = existing.remove(line);
+            if (old == null) {
+                insertItems(orderId, List.of(new SalesOrderRequest.Item(line,item.skuId(),item.quantity(),item.salePrice(),item.remark())));
+                continue;
+            }
+            long itemId = ((Number)value(old,"id")).longValue();
+            int shipped = ((Number)value(old,"shipped_quantity")).intValue();
+            boolean skuChanged = ((Number)value(old,"sku_id")).longValue() != item.skuId();
+            if (shipped > 0 && (skuChanged || item.quantity() < shipped)) throw new IllegalArgumentException("已发货明细不能更换产品，订单数量不能小于已发货数量");
+            if (skuChanged) {
+                clearUnconfirmedCoverage(itemId);
+                jdbc.update("UPDATE sales_order_item SET cost_snapshot=(SELECT current_cost FROM sku WHERE id=?) WHERE id=?", item.skuId(), itemId);
+            }
+            jdbc.update("UPDATE sales_order_item SET sku_id=?,quantity=?,sale_price=?,item_remark=?,version=version+1 WHERE id=?",
+                    item.skuId(),item.quantity(),item.salePrice(),blankToNull(item.remark()),itemId);
+        }
+        for (var old : existing.values()) {
+            if (((Number)value(old,"shipped_quantity")).intValue() > 0) throw new IllegalArgumentException("已发货明细不能删除");
+            long itemId = ((Number)value(old,"id")).longValue();
+            clearUnconfirmedCoverage(itemId);
+            jdbc.update("DELETE FROM sales_order_item WHERE id=?", itemId);
+        }
+    }
+
+    private void reconcileCoverage(long orderId) {
+        for (var item : jdbc.queryForList("SELECT id,uncovered_quantity FROM sales_order_item WHERE sales_order_id=?",orderId)) {
+            int remaining = ((Number)value(item,"uncovered_quantity")).intValue();
+            var coverages = jdbc.queryForList("SELECT sc.id,sc.covered_quantity FROM shortage_coverage sc JOIN procurement_suggestion_item psi ON psi.id=sc.suggestion_item_id JOIN procurement_suggestion ps ON ps.id=psi.suggestion_id WHERE sc.sales_order_item_id=? AND sc.active=TRUE ORDER BY CASE WHEN ps.status='CONFIRMED' THEN 0 ELSE 1 END,sc.id FOR UPDATE",value(item,"id"));
+            for (var coverage : coverages) {
+                int quantity = Math.min(remaining,((Number)value(coverage,"covered_quantity")).intValue());
+                if (quantity == 0) jdbc.update("UPDATE shortage_coverage SET active=FALSE WHERE id=?",value(coverage,"id"));
+                else jdbc.update("UPDATE shortage_coverage SET covered_quantity=? WHERE id=?",quantity,value(coverage,"id"));
+                remaining -= quantity;
+            }
+        }
+    }
+
+    private void clearUnconfirmedCoverage(long itemId) {
+        int confirmed = jdbc.queryForObject("SELECT COUNT(*) FROM shortage_coverage sc JOIN procurement_suggestion_item psi ON psi.id=sc.suggestion_item_id JOIN procurement_suggestion ps ON ps.id=psi.suggestion_id WHERE sc.sales_order_item_id=? AND ps.status='CONFIRMED'",Integer.class,itemId);
+        if (confirmed > 0) throw new IllegalArgumentException("已关联采购单的明细不能删除或更换产品，可调整数量和价格");
+        jdbc.update("DELETE FROM shortage_coverage WHERE sales_order_item_id=?",itemId);
+    }
+
+    private void confirmReceipt(long orderId, SalesOrderRequest.ReceiptConfirmation confirmation) {
+        if (confirmation == null) return;
+        BigDecimal current = jdbc.queryForObject("SELECT COALESCE(SUM(COALESCE(confirmed_amount,amount)),0) FROM customer_receipt WHERE sales_order_id=? AND COALESCE(review_status,'APPROVED')='APPROVED'",BigDecimal.class,orderId);
+        if (confirmation.originalAmount() == null || confirmation.originalAmount().compareTo(current) != 0) throw new IllegalStateException("已收金额已变化，请重新打开订单确认");
+        BigDecimal target = confirmation.amount();
+        if (target == null || target.signum() < 0 || target.stripTrailingZeros().scale() > 2 || target.precision()-target.scale() > 16) throw new IllegalArgumentException("已收金额必须为非负数，最多两位小数");
+        BigDecimal delta = target.subtract(current);
+        if (delta.signum() == 0) return;
+        CurrentUser user = CurrentUser.required();
+        if (user.role() != UserRole.ADMIN && user.role() != UserRole.FINANCE) throw new IllegalStateException("仅管理员或财务可调整已收金额");
+        String reason = blankToNull(confirmation.reason());
+        if (reason == null || reason.length() > 500) throw new IllegalArgumentException("请填写已收金额调整原因，最多500字");
+        String status = jdbc.queryForObject("SELECT status FROM sales_order WHERE id=?",String.class,orderId);
+        if ("DRAFT".equals(status)) throw new IllegalArgumentException("草稿订单不能调整已收金额");
+        BigDecimal total = jdbc.queryForObject("SELECT total_amount FROM sales_order WHERE id=?",BigDecimal.class,orderId);
+        if (delta.signum() > 0 && target.compareTo(total.max(BigDecimal.ZERO)) > 0) throw new IllegalArgumentException("调整后的已收金额不能超过订单金额");
+        String auditReason = "订单修改：已收金额 " + current.toPlainString() + " → " + target.toPlainString() + "；" + reason;
+        // Append the signed difference; never overwrite previously reviewed receipts.
+        if (delta.signum() > 0) customerFunds.debitForOrder(orderId,delta,auditReason);
+        else customerFunds.creditForOrder(orderId,delta.abs(),auditReason);
+        jdbc.update("INSERT INTO customer_receipt(sales_order_id,amount,confirmed_amount,payment_method,payment_remark,received_at,confirmed_by,review_status,reviewed_by,reviewed_at,review_remark) VALUES(?,?,?,'订单调整',?,CURRENT_TIMESTAMP,?,'APPROVED',?,CURRENT_TIMESTAMP,?)",
+                orderId,delta,delta,reason,user.id(),user.id(),reason);
+        jdbc.update("UPDATE sales_order SET receipt_confirmed_at=CASE WHEN ?>0 THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id=?",target,orderId);
     }
 
     @Transactional

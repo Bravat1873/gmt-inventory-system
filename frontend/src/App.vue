@@ -374,7 +374,7 @@ async function saved(closeDialog = true) {
     <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <CustomerFundsDialog v-if="customerFundsRow" :customer="customerFundsRow" :current-user-role="user.role" @close="customerFundsRow=undefined" @changed="list?.reload()" @message="showMessage" />
     <SupplierDialog v-if="supplierOpen" :row="editRow" @close="supplierOpen=false" @saved="saved" @message="showMessage" />
-    <OrderDialog v-if="orderOpen" :row="editRow" :default-salesperson="user?.displayName" @close="orderOpen=false" @saved="saved" @message="showMessage" />
+    <OrderDialog v-if="orderOpen" :row="editRow" :current-user-role="user.role" :default-salesperson="user?.displayName" @close="orderOpen=false" @saved="saved" @message="showMessage" />
     <ManualPurchaseDialog v-if="manualPurchaseOpen" :purchase="editingPurchase" @close="manualPurchaseOpen=false; editingPurchase=undefined" @saved="saved" @message="showMessage" />
     <PaymentDialog v-if="paymentOpen && paymentRow" :purchase="paymentRow" @close="paymentOpen=false; paymentRow=undefined" @saved="saved" @message="showMessage" />
     <PurchaseReceiptDialog v-if="purchaseReceiptOpen && purchaseReceiptOrder" :purchase="purchaseReceiptOrder" @close="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined" @saved="purchaseReceiptOpen=false; purchaseReceiptOrder=undefined; saved()" @message="showMessage" />

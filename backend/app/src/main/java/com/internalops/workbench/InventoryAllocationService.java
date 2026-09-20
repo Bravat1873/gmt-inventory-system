@@ -8,8 +8,8 @@ public class InventoryAllocationService {
  private final JdbcTemplate jdbc; public InventoryAllocationService(JdbcTemplate jdbc){this.jdbc=jdbc;}
  public String allocate(long orderId){
   long warehouse=Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1",Long.class));
-  var items=jdbc.queryForList("SELECT id,sku_id,quantity,locked_quantity FROM sales_order_item WHERE sales_order_id=? ORDER BY line_no",orderId);boolean ready=true;
-  for(var item:items){long itemId=num(item,"id"),sku=num(item,"sku_id");int qty=(int)num(item,"quantity"),already=(int)num(item,"locked_quantity");int need=Math.max(0,qty-already);
+  var items=jdbc.queryForList("SELECT id,sku_id,quantity,shipped_quantity,locked_quantity FROM sales_order_item WHERE sales_order_id=? ORDER BY line_no",orderId);boolean ready=true;
+  for(var item:items){long itemId=num(item,"id"),sku=num(item,"sku_id");int qty=Math.max(0,(int)num(item,"quantity")-(int)num(item,"shipped_quantity")),already=(int)num(item,"locked_quantity");int need=Math.max(0,qty-already);
    if(qty<=0){jdbc.update("UPDATE sales_order_item SET locked_quantity=0,uncovered_quantity=0,version=version+1 WHERE id=?",itemId);continue;}
    jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity) VALUES(?,?,0,0,0) ON DUPLICATE KEY UPDATE sku_id=VALUES(sku_id)",warehouse,sku);
    var bal=jdbc.queryForMap("SELECT id,actual_quantity,locked_quantity,in_transit_quantity FROM inventory_balance WHERE warehouse_id=? AND sku_id=? FOR UPDATE",warehouse,sku);int actual=(int)num(bal,"actual_quantity"),locked=(int)num(bal,"locked_quantity");int take=Math.min(need,Math.max(0,actual-locked));
@@ -17,14 +17,16 @@ public class InventoryAllocationService {
    else jdbc.update("UPDATE sales_order_item SET uncovered_quantity=?,version=version+1 WHERE id=?",need,itemId);
    if(need-take>0)ready=false;
   }
-  String status=ready?"READY_TO_SHIP":"WAITING_STOCK";jdbc.update("UPDATE sales_order SET status=?,version=version+1 WHERE id=?",status,orderId);return status;
+  int remaining=jdbc.queryForObject("SELECT COALESCE(SUM(GREATEST(quantity-shipped_quantity,0)),0) FROM sales_order_item WHERE sales_order_id=?",Integer.class,orderId);
+  int shipped=jdbc.queryForObject("SELECT COALESCE(SUM(shipped_quantity),0) FROM sales_order_item WHERE sales_order_id=?",Integer.class,orderId);
+  String status=remaining==0&&shipped>0?"SHIPPED":ready?"READY_TO_SHIP":"WAITING_STOCK";jdbc.update("UPDATE sales_order SET status=?,version=version+1 WHERE id=?",status,orderId);return status;
  }
  public void releaseAll(long orderId,String transactionType){
   long warehouse=Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1",Long.class));
   var items=jdbc.queryForList("SELECT id,sku_id,quantity,shipped_quantity,locked_quantity FROM sales_order_item WHERE sales_order_id=? ORDER BY line_no FOR UPDATE",orderId);
   for(var item:items){
    int shipped=(int)num(item,"shipped_quantity"),lockedByOrder=(int)num(item,"locked_quantity");
-   if(shipped>0)throw new IllegalStateException("已发货订单不可修改");
+   if(shipped>0 && !"ORDER_EDIT_RELEASE".equals(transactionType))throw new IllegalStateException("已发货订单不可删除");
    if(lockedByOrder<=0)continue;
    long sku=num(item,"sku_id");
    var bal=jdbc.queryForMap("SELECT id,actual_quantity,locked_quantity,in_transit_quantity FROM inventory_balance WHERE warehouse_id=? AND sku_id=? FOR UPDATE",warehouse,sku);
