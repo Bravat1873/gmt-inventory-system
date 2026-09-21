@@ -465,3 +465,37 @@ it.each([0, 1].flatMap(manualEntry => ['DRAFT', 'PENDING_SUPPLIER_PAYMENT', 'EXE
   expect(wrapper.emitted('edit')?.[0]?.[0]).toMatchObject({ id: 700 })
   wrapper.unmount()
 })
+
+
+it.each([
+  ['PURCHASE', 'DRAFT', true], ['PURCHASE', 'PENDING_SUPPLIER_PAYMENT', false],
+  ['PURCHASE', 'EXECUTING', false], ['PURCHASE', 'RECEIVED', false], ['PURCHASE', 'COMPLETED', false],
+  ['SUGGESTION', 'DRAFT', false]
+])('only draft purchase rows expose deletion: %s / %s', async (recordType, status, visible) => {
+  history.replaceState(null, '', '/?module=purchase&page=1')
+  const row = { id: 7, version: 2, recordType, status }
+  loadModule.mockResolvedValue({ items: [row], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
+  await flushPromises()
+  expect(wrapper.find('[data-test="delete-purchase"]').exists()).toBe(visible)
+  if (visible) {
+    await wrapper.get('[data-test="delete-purchase"]').trigger('click')
+    expect(wrapper.emitted('deletePurchase')?.[0]?.[0]).toMatchObject(row)
+  }
+  wrapper.unmount()
+})
+
+it('returns to the last valid page after deleting its final purchase row', async () => {
+  vi.clearAllMocks()
+  history.replaceState(null, '', '/?module=purchase&page=2')
+  loadModule.mockResolvedValueOnce({ items: [{ id: 11, recordType: 'PURCHASE', status: 'DRAFT' }], total: 11, page: 2, pageSize: 10, totalPages: 2 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'purchase')! } })
+  await flushPromises()
+  loadModule.mockResolvedValueOnce({ items: [], total: 10, page: 2, pageSize: 10, totalPages: 1 })
+    .mockResolvedValueOnce({ items: [{ id: 1, purchaseNo: 'CG-REMAINING' }], total: 10, page: 1, pageSize: 10, totalPages: 1 })
+  await (wrapper.vm as unknown as { reload: () => Promise<void> }).reload()
+  expect(location.search).toContain('page=1')
+  expect(wrapper.text()).toContain('CG-REMAINING')
+  expect(loadModule.mock.calls.map(call => call[1].get('page'))).toEqual(['2', '2', '1'])
+  wrapper.unmount()
+})

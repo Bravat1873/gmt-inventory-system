@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { deleteOrder, reviewOrder, updateShipmentQuantities } from './workbench'
+import { deleteDraftPurchase, deleteOrder, reviewOrder, updateShipmentQuantities } from './workbench'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -24,4 +24,11 @@ it('sends dedicated review and delete requests for orders', async () => {
 
   expect(fetch).toHaveBeenNthCalledWith(1, '/api/orders/4/review', expect.objectContaining({ method: 'POST' }))
   expect(fetch).toHaveBeenNthCalledWith(2, '/api/orders/4', expect.objectContaining({ method: 'DELETE' }))
+})
+
+it('deletes a purchase draft with its displayed version', async () => {
+  const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: {} }) })
+  vi.stubGlobal('fetch', fetch)
+  await deleteDraftPurchase(92, 3)
+  expect(fetch).toHaveBeenCalledWith('/api/procurement/purchases/92?version=3', expect.objectContaining({ method: 'DELETE' }))
 })

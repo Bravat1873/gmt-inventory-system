@@ -103,6 +103,7 @@ public class ExcelExportService {
                            p.created_at,p.updated_at
                     FROM purchase_order p
                     JOIN supplier sp ON sp.id=p.supplier_id
+                    WHERE p.status<>'DRAFT'
                 ) f
                 ORDER BY f.updated_at DESC,f.business_no
                 """);
@@ -164,7 +165,7 @@ public class ExcelExportService {
     private byte[] purchaseSummaryWorkbook() {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT po.purchase_no,sp.supplier_name,po.status,s.product_code,s.customer_part_number,s.product_name,s.model,
-                       poi.quantity,poi.received_quantity,GREATEST(poi.quantity-poi.received_quantity,0) AS in_transit_quantity,
+                       poi.quantity,poi.received_quantity,CASE WHEN po.status='DRAFT' THEN 0 ELSE GREATEST(poi.quantity-poi.received_quantity,0) END AS in_transit_quantity,
                        poi.purchase_price,poi.quantity*poi.purchase_price AS amount,po.expected_arrival_date,
                        DATE(po.created_at) AS order_date,po.purchase_remark
                 FROM purchase_order po

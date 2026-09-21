@@ -16,6 +16,7 @@ import jakarta.servlet.http.Cookie;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -135,6 +136,102 @@ class ProcurementWorkflowApiTest {
         assertThat(jdbc.queryForObject("SELECT SUM(c.covered_quantity) FROM shortage_coverage c JOIN procurement_suggestion_item i ON i.id=c.suggestion_item_id WHERE i.suggestion_id=? AND c.active=TRUE",Integer.class,suggestion)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM procurement_suggestion WHERE status='DRAFT'",Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT SUM(c.covered_quantity) FROM shortage_coverage c JOIN procurement_suggestion_item i ON i.id=c.suggestion_item_id JOIN procurement_suggestion s ON s.id=i.suggestion_id WHERE s.status='DRAFT' AND c.active=TRUE",Integer.class)).isEqualTo(2);
+    }
+
+    @Autowired com.internalops.exporting.ExcelExportService exports;
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 10, -2})
+    void deletesDraftAndItsLinesWithoutChangingInventoryDemandOrNumberSequence(int quantity) throws Exception {
+        Cookie session = login();
+        long id = createDraftManualPurchase(session, quantity);
+        long other = createManualPurchase(session, 10);
+        mvc.perform(post("/api/procurement/generate").cookie(session));
+        var inventory = jdbc.queryForList("SELECT * FROM inventory_balance");
+        var transactions = jdbc.queryForList("SELECT * FROM inventory_transaction");
+        var coverage = jdbc.queryForList("SELECT * FROM shortage_coverage");
+        var suggestions = jdbc.queryForList("SELECT * FROM procurement_suggestion");
+        var sales = jdbc.queryForList("SELECT * FROM sales_order_item");
+        var sequence = jdbc.queryForList("SELECT * FROM document_number_sequence");
+        jdbc.update("ALTER TABLE purchase_order_item ADD CONSTRAINT fk_delete_draft_parent FOREIGN KEY(purchase_order_id) REFERENCES purchase_order(id)");
+        String no = jdbc.queryForObject("SELECT purchase_no FROM purchase_order WHERE id=?", String.class,id);
+        mvc.perform(delete("/api/procurement/purchases/{id}",id).param("version","0").cookie(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.purchaseId").value(id));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM purchase_order WHERE id=?",Integer.class,id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM purchase_order_item WHERE purchase_order_id=?",Integer.class,id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM purchase_order WHERE id=?",Integer.class,other)).isEqualTo(1);
+        assertThat(jdbc.queryForList("SELECT * FROM inventory_balance")).isEqualTo(inventory);
+        assertThat(jdbc.queryForList("SELECT * FROM inventory_transaction")).isEqualTo(transactions);
+        assertThat(jdbc.queryForList("SELECT * FROM shortage_coverage")).isEqualTo(coverage);
+        assertThat(jdbc.queryForList("SELECT * FROM procurement_suggestion")).isEqualTo(suggestions);
+        assertThat(jdbc.queryForList("SELECT * FROM sales_order_item")).isEqualTo(sales);
+        assertThat(jdbc.queryForList("SELECT * FROM document_number_sequence")).isEqualTo(sequence);
+        mvc.perform(get("/api/workbench/purchase").param("keyword",no).cookie(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        mvc.perform(get("/api/procurement/purchases/{id}",id).cookie(session)).andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/procurement/purchases/{id}",id).param("version","0").cookie(session)).andExpect(status().isBadRequest());
+        try (var book = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(exports.summary("purchase")))) {
+            var sheet=book.getSheetAt(0);
+            for (int i=1;i<=sheet.getLastRowNum();i++) assertThat(sheet.getRow(i).getCell(0).getStringCellValue()).isNotEqualTo(no);
+        }
+    }
+
+    @Test
+    void draftExportDoesNotPretendUnreviewedQuantityIsInTransit() throws Exception {
+        Cookie session=login();long id=createDraftManualPurchase(session,10);
+        try (var book = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(exports.summary("purchase")))) {
+            var row=book.getSheetAt(0).getRow(1);
+            assertThat(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(row.getCell(9))).isEqualTo("0");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING_SUPPLIER_PAYMENT", "EXECUTING", "RECEIVED", "COMPLETED"})
+    void deletionCannotBypassReviewedPurchaseStatus(String state) throws Exception {
+        Cookie session=login();long id=createManualPurchase(session,10);
+        jdbc.update("UPDATE purchase_order SET status=? WHERE id=?",state,id);
+        int version=jdbc.queryForObject("SELECT version FROM purchase_order WHERE id=?",Integer.class,id);
+        mvc.perform(delete("/api/procurement/purchases/{id}",id).param("version",String.valueOf(version)).cookie(session))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM purchase_order_item WHERE purchase_order_id=?",Integer.class,id)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT in_transit_quantity FROM inventory_balance WHERE sku_id=101",Integer.class)).isEqualTo(10);
+    }
+
+    @Test
+    void requiresLoginVersionAndFreshDraftBeforeDeletion() throws Exception {
+        Cookie session=login();long id=createDraftManualPurchase(session,10);
+        mvc.perform(delete("/api/procurement/purchases/{id}",id).param("version","0")).andExpect(status().isUnauthorized());
+        mvc.perform(delete("/api/procurement/purchases/{id}",id).cookie(session)).andExpect(status().isBadRequest());
+        mvc.perform(put("/api/procurement/purchases/{id}",id).cookie(session).contentType("application/json")
+                .content(withVersion(id,"{\"supplierId\":201,\"skuId\":101,\"supplierPurchaseInfoId\":1,\"quantity\":20}")))
+                .andExpect(status().isOk());
+        mvc.perform(delete("/api/procurement/purchases/{id}",id).param("version","0").cookie(session)).andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT quantity FROM purchase_order_item WHERE purchase_order_id=?",Integer.class,id)).isEqualTo(20);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"payment","invoice","receipt","receivedQuantity","receiptItem","inventory","suggestion"})
+    void refusesDraftDeletionWhenBusinessHistoryOrSuggestionLinksExist(String history) throws Exception {
+        Cookie session=login();long id=createDraftManualPurchase(session,10);
+        long line=jdbc.queryForObject("SELECT id FROM purchase_order_item WHERE purchase_order_id=?",Long.class,id);
+        switch(history) {
+            case "payment" -> jdbc.update("INSERT INTO supplier_payment(purchase_order_id,amount,review_status) VALUES(?,5,'PENDING')",id);
+            case "invoice" -> jdbc.update("INSERT INTO purchase_invoice(purchase_order_id) VALUES(?)",id);
+            case "receipt" -> jdbc.update("INSERT INTO goods_receipt(receipt_no,purchase_order_id,status) VALUES('GR-GUARD',?,'COMPLETED')",id);
+            case "receivedQuantity" -> jdbc.update("UPDATE purchase_order_item SET received_quantity=1 WHERE id=?",line);
+            case "receiptItem" -> jdbc.update("INSERT INTO goods_receipt_item(goods_receipt_id,purchase_order_item_id,accepted_quantity) VALUES(999,?,1)",line);
+            case "inventory" -> {
+                String no=jdbc.queryForObject("SELECT purchase_no FROM purchase_order WHERE id=?",String.class,id);
+                jdbc.update("INSERT INTO inventory_transaction(warehouse_id,sku_id,transaction_type,business_type,business_no,actual_delta,locked_delta,transit_delta,actual_before,actual_after,locked_before,locked_after,transit_before,transit_after) VALUES(1,101,'PURCHASE_TRANSIT','PURCHASE_ORDER',?,0,0,10,0,0,0,0,0,10)",no);
+            }
+            case "suggestion" -> {
+                jdbc.update("INSERT INTO procurement_suggestion(id,suggestion_no,status) VALUES(900,'PS-GUARD','CONFIRMED')");
+                jdbc.update("UPDATE purchase_order SET suggestion_id=900 WHERE id=?",id);
+            }
+        }
+        mvc.perform(delete("/api/procurement/purchases/{id}",id).param("version","0").cookie(session)).andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM purchase_order WHERE id=?",Integer.class,id)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM purchase_order_item WHERE id=?",Integer.class,line)).isEqualTo(1);
     }
 
     private void configureSecondProduct() {

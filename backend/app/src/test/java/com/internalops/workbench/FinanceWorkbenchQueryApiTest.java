@@ -29,6 +29,16 @@ class FinanceWorkbenchQueryApiTest {
     private final Cookie session = new Cookie("OPS_SESSION", "finance-test-token");
 
     @Test
+    void unreviewedPurchaseDraftsAreAlsoExcludedFromFinanceExport() throws Exception {
+        jdbc.update("UPDATE purchase_order SET status='DRAFT' WHERE id=20");
+        String no=jdbc.queryForObject("SELECT purchase_no FROM purchase_order WHERE id=20",String.class);
+        try (var book = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(exports.summary("finance")))) {
+            var sheet=book.getSheetAt(0);
+            for(int i=1;i<=sheet.getLastRowNum();i++) org.assertj.core.api.Assertions.assertThat(sheet.getRow(i).getCell(0).getStringCellValue()).isNotEqualTo(no);
+        }
+    }
+
+    @Test
     void receiptAdjustmentsUseConfirmedNetAmountsInFinanceListAndExcel() throws Exception {
         jdbc.update("UPDATE customer_receipt SET confirmed_amount=25,review_status='APPROVED' WHERE id=12");
         jdbc.update("INSERT INTO customer_receipt(id,sales_order_id,amount,confirmed_amount,review_status) VALUES(90,10,-5,-5,'APPROVED')");

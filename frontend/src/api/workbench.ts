@@ -339,6 +339,10 @@ export function reviewManualPurchase(id: number) {
   })
 }
 
+export function deleteDraftPurchase(id: number, version: number) {
+  return request<Record<string, unknown>>(`/api/procurement/purchases/${id}?version=${version}`, { method: 'DELETE' })
+}
+
 export function updateManualPurchase(id: number, data: ManualPurchaseData) {
   return request<Record<string, unknown>>(`/api/procurement/purchases/${id}`, {
     method: 'PUT',

@@ -9,6 +9,8 @@ import ProductCodeRulesDialog from './components/ProductCodeRulesDialog.vue'
 const api = vi.hoisted(() => ({
   loadModule: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 }),
   postAction: vi.fn(),
+  deleteDraftPurchase: vi.fn(),
+  loadUnconfiguredProcurementShortages: vi.fn().mockResolvedValue([]),
   loadFinanceRecords: vi.fn(),
   loadFinanceReviewSummary: vi.fn(),
   reviewFinanceRecord: vi.fn(),
@@ -363,5 +365,61 @@ describe('连续导航和浏览器地址状态', () => {
     wrapper.unmount()
     host.remove()
     confirm.mockRestore()
+  })
+})
+
+
+describe('删除草稿采购', () => {
+  const row = { id: 92, version: 3, purchaseNo: 'CG-DRAFT-92', recordType: 'PURCHASE', status: 'DRAFT', manualEntry: 1 }
+  beforeEach(() => {
+    vi.clearAllMocks()
+    history.replaceState(null, '', '/?module=purchase&page=1')
+    auth.currentUser.mockResolvedValue({ id: 1, username: 'admin', displayName: '管理员', role: 'ADMIN' })
+    api.loadModule.mockResolvedValue({ items: [row], total: 1, page: 1, pageSize: 10, totalPages: 1 })
+    api.deleteDraftPurchase.mockReset()
+  })
+
+  it('取消确认时不发送删除请求', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mount(App)
+    await flushPromises()
+    await wrapper.get('[data-test="delete-purchase"]').trigger('click')
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('CG-DRAFT-92'))
+    expect(api.deleteDraftPurchase).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('CG-DRAFT-92')
+    wrapper.unmount(); confirm.mockRestore()
+  })
+
+  it('确认后只提交一次并携带版本，成功后刷新列表', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let finish!: () => void
+    api.deleteDraftPurchase.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
+    const wrapper = mount(App)
+    await flushPromises()
+    await wrapper.get('[data-test="delete-purchase"]').trigger('click')
+    expect(api.deleteDraftPurchase).toHaveBeenCalledWith(92, 3)
+    expect(wrapper.get('[data-test="delete-purchase"]').attributes('disabled')).toBeDefined()
+    wrapper.getComponent(ModuleListPage).vm.$emit('deletePurchase', row)
+    expect(api.deleteDraftPurchase).toHaveBeenCalledTimes(1)
+    api.loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+    finish(); await flushPromises()
+    expect(wrapper.text()).toContain('草稿采购单已删除')
+    expect(wrapper.find('[data-test="delete-purchase"]').exists()).toBe(false)
+    expect(api.loadModule).toHaveBeenCalledTimes(2)
+    wrapper.unmount(); confirm.mockRestore()
+  })
+
+  it('后端拒绝时保留单据并显示具体原因', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    api.deleteDraftPurchase.mockRejectedValue(new Error('只有草稿采购单可以删除，请刷新列表'))
+    const wrapper = mount(App)
+    await flushPromises()
+    await wrapper.get('[data-test="delete-purchase"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('只有草稿采购单可以删除，请刷新列表')
+    expect(wrapper.text()).toContain('CG-DRAFT-92')
+    expect(wrapper.get('[data-test="delete-purchase"]').attributes('disabled')).toBeUndefined()
+    expect(api.loadModule).toHaveBeenCalledTimes(1)
+    wrapper.unmount(); confirm.mockRestore()
   })
 })

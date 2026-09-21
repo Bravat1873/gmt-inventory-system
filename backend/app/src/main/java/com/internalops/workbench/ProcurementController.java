@@ -44,6 +44,11 @@ public class ProcurementController {
     @PostMapping("/purchases/{id}/review")
     public ApiResponse<Map<String, Object>> reviewManual(@PathVariable long id) { return ApiResponse.ok(service.reviewManual(id)); }
 
+    @DeleteMapping("/purchases/{id}")
+    public ApiResponse<Map<String, Object>> deleteDraft(@PathVariable long id, @RequestParam int version) {
+        return ApiResponse.ok(service.deleteDraft(id, version));
+    }
+
     @PutMapping("/purchases/{id}")
     public ApiResponse<Map<String, Object>> updateManual(@PathVariable long id, @RequestBody ManualPurchaseRequest request) {
         return ApiResponse.ok(service.updateManual(id, request));

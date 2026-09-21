@@ -456,6 +456,31 @@ public class ProcurementWorkflowService {
     }
 
     @Transactional
+    public Map<String, Object> deleteDraft(long purchaseId, int version) {
+        var rows = jdbc.queryForList("SELECT id,purchase_no,status,version,suggestion_id FROM purchase_order WHERE id=? FOR UPDATE", purchaseId);
+        if (rows.isEmpty()) throw new IllegalArgumentException("采购单不存在或已删除");
+        var purchase = rows.get(0);
+        if (!"DRAFT".equals(str(purchase, "status"))) throw new IllegalStateException("只有草稿采购单可以删除，请刷新列表");
+        if (version != num(purchase, "version")) throw new IllegalStateException("采购单已被修改，请刷新后再删除");
+        // Suggestions are reviewed/rejected separately. A linked purchase is already part of that workflow.
+        if (nullableNum(purchase, "suggestion_id") != null)
+            throw new IllegalStateException("采购单已关联采购建议，不能按独立草稿删除，请核对单据状态");
+        if (purchaseSupplierLocked(purchaseId)) throw new IllegalStateException("采购单已有付款、收货或发票记录，不能删除");
+        if (jdbc.queryForObject("""
+                SELECT COUNT(*) FROM purchase_order_item i WHERE i.purchase_order_id=?
+                  AND (i.received_quantity>0 OR EXISTS(SELECT 1 FROM goods_receipt_item r WHERE r.purchase_order_item_id=i.id))
+                """, Integer.class, purchaseId) > 0)
+            throw new IllegalStateException("采购单已有收货明细，不能删除");
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM inventory_transaction WHERE business_type='PURCHASE_ORDER' AND business_no=?",
+                Integer.class, str(purchase, "purchase_no")) > 0)
+            throw new IllegalStateException("采购单已有库存流水，不能删除");
+        // Drafts never activate transit or settle funds; deleting them must not adjust either ledger.
+        jdbc.update("DELETE FROM purchase_order_item WHERE purchase_order_id=?", purchaseId);
+        jdbc.update("DELETE FROM purchase_order WHERE id=?", purchaseId);
+        return Map.of("purchaseId", purchaseId, "purchaseNo", str(purchase, "purchase_no"));
+    }
+
+    @Transactional
     public Map<String, Object> reviewManual(long purchaseId) {
         Map<String, Object> purchase = jdbc.queryForMap("SELECT purchase_no,manual_entry,status FROM purchase_order WHERE id=? FOR UPDATE", purchaseId);
         if (!Boolean.TRUE.equals(purchase.get("manual_entry"))) throw new IllegalStateException("仅手工采购单可在此复核");
