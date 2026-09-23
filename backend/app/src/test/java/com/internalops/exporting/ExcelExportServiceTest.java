@@ -236,7 +236,7 @@ class ExcelExportServiceTest {
                 Map.entry("status", "待收货"), Map.entry("issueDescription", "门锁异常"), Map.entry("contactName", "张三"),
                 Map.entry("contactPhone", "13800000000"), Map.entry("remark", "处理备注"),
                 Map.entry("returnLines", List.of(Map.of("productCode", "SKU-001", "customerPartNumber", "CP-001", "productType", "SMART_LOCK",
-                        "configuration", "BRAVAT / D51 / 宇宙黑 / 6068 / 西班牙语", "productConfiguration", "半自动锁体", "requestedQuantity", 2, "receivedQuantity", 0)))));
+                        "configuration", "BRAVAT / D51 / 宇宙黑 / 6068 / 西班牙语", "productConfiguration", "半自动锁体", "requestedQuantity", 2, "receivedQuantity", 2, "returnUnitPrice", -12.5)))));
         ExcelExportService service = new ExcelExportService(null, null, null, afterSales, null);
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.document("afterSales", 3L)))) {
@@ -246,6 +246,10 @@ class ExcelExportServiceTest {
             assertEquals("产品分类", sheet.getRow(10).getCell(2).getStringCellValue());
             assertEquals("物料规格", sheet.getRow(10).getCell(4).getStringCellValue());
             assertEquals("产品配置", sheet.getRow(10).getCell(5).getStringCellValue());
+            assertEquals("退回单价", sheet.getRow(10).getCell(8).getStringCellValue());
+            assertEquals("退回总价", sheet.getRow(10).getCell(9).getStringCellValue());
+            assertEquals(-12.5, sheet.getRow(11).getCell(8).getNumericCellValue());
+            assertEquals(-25, sheet.getRow(11).getCell(9).getNumericCellValue());
             assertEquals("SKU-001", sheet.getRow(11).getCell(1).getStringCellValue());
             assertEquals("半自动锁体", sheet.getRow(11).getCell(5).getStringCellValue());
             assertEquals("处理备注：处理备注", sheet.getRow(12).getCell(0).getStringCellValue());

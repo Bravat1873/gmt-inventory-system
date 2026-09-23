@@ -32,5 +32,8 @@ class AfterSalesRefundApiTest {
         long requestId = funds.submitAfterSalesRefund(20,new BigDecimal("70"),new BigDecimal("60"),"额外补偿");
         assertThat(jdbc.queryForObject("SELECT status FROM customer_fund_request WHERE id=?",String.class,requestId)).isEqualTo("PENDING");
         assertThat(funds.balance(1)).isZero();
+
+        jdbc.update("UPDATE after_sales_return_line SET return_unit_price=? WHERE id=21", new BigDecimal("-5"));
+        assertThat(queries.refundSuggestion(20).get("suggestedAmount")).isEqualTo(new BigDecimal("-15.0000"));
     }
 }

@@ -13,6 +13,7 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.*;
 
 @Service
@@ -33,11 +34,11 @@ public class AfterSalesCommandService {
         Map<Long,Long> returnIds=new HashMap<>();
         for (AfterSalesRequest.ReturnLine line:request.returnLines()) {
             if(line.requestedQuantity()<=0) throw new IllegalArgumentException("退回数量必须大于零");
-            Map<String,Object> item=one("SELECT i.id,i.sku_id,i.shipped_quantity,s.customer_part_number,s.product_name,s.model,s.configuration,s.unit FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.id=? AND i.sales_order_id=? FOR UPDATE",line.salesOrderItemId(),request.orderId());
+            Map<String,Object> item=one("SELECT i.id,i.sku_id,i.shipped_quantity,i.sale_price,s.customer_part_number,s.product_name,s.model,s.configuration,s.unit FROM sales_order_item i JOIN sku s ON s.id=i.sku_id WHERE i.id=? AND i.sales_order_id=? FOR UPDATE",line.salesOrderItemId(),request.orderId());
             Integer used=jdbc.queryForObject("SELECT COALESCE(SUM(r.requested_quantity),0) FROM after_sales_return_line r JOIN after_sales_order a ON a.id=r.after_sales_order_id WHERE r.sales_order_item_id=? AND a.status<>'CANCELLED'",Integer.class,line.salesOrderItemId());
             if(line.requestedQuantity()>((int)num(item,"shipped_quantity")-Objects.requireNonNullElse(used,0))) throw new IllegalArgumentException("退回数量超过该订单明细可退数量");
             GeneratedKeyHolder lineKey=new GeneratedKeyHolder();
-            jdbc.update(c->{PreparedStatement s=c.prepareStatement("INSERT INTO after_sales_return_line(after_sales_order_id,sales_order_item_id,sku_id,customer_part_number,product_name,model,configuration,unit,requested_quantity) VALUES(?,?,?,?,?,?,?,?,?)",Statement.RETURN_GENERATED_KEYS);s.setLong(1,id);s.setLong(2,line.salesOrderItemId());s.setLong(3,num(item,"sku_id"));s.setString(4,str(item,"customer_part_number"));s.setString(5,str(item,"product_name"));s.setString(6,str(item,"model"));s.setString(7,str(item,"configuration"));s.setString(8,str(item,"unit"));s.setInt(9,line.requestedQuantity());return s;},lineKey);
+            jdbc.update(c->{PreparedStatement s=c.prepareStatement("INSERT INTO after_sales_return_line(after_sales_order_id,sales_order_item_id,sku_id,customer_part_number,product_name,model,configuration,unit,requested_quantity,return_unit_price) VALUES(?,?,?,?,?,?,?,?,?,?)",Statement.RETURN_GENERATED_KEYS);s.setLong(1,id);s.setLong(2,line.salesOrderItemId());s.setLong(3,num(item,"sku_id"));s.setString(4,str(item,"customer_part_number"));s.setString(5,str(item,"product_name"));s.setString(6,str(item,"model"));s.setString(7,str(item,"configuration"));s.setString(8,str(item,"unit"));s.setInt(9,line.requestedQuantity());s.setBigDecimal(10,price(line.returnUnitPrice(),item.get("sale_price")));return s;},lineKey);
             returnIds.put(line.salesOrderItemId(),Objects.requireNonNull(lineKey.getKey()).longValue());
         }
         if(request.replacementLines()!=null) for(var line:request.replacementLines()) {
@@ -55,6 +56,10 @@ public class AfterSalesCommandService {
         if(!"WAITING_RETURN".equals(str(head,"status"))) throw new IllegalStateException("售后已开始办理，不可修改基础信息");
         if(r.version()==null||r.version()!=num(head,"version")) throw new IllegalStateException("数据已被修改，请刷新后重试");
         jdbc.update("UPDATE after_sales_order SET issue_description=?,application_date=?,contact_name=?,contact_phone=?,delivery_address=?,remark=?,updated_by=?,version=version+1 WHERE id=?",r.issueDescription(),r.applicationDate(),r.contactName(),r.contactPhone(),r.deliveryAddress(),r.remark(),userId(),id);
+        if (r.returnLines() != null) for (AfterSalesRequest.ReturnLine line : r.returnLines()) {
+            Map<String,Object> existing=one("SELECT r.id,i.sale_price FROM after_sales_return_line r JOIN sales_order_item i ON i.id=r.sales_order_item_id WHERE r.after_sales_order_id=? AND r.sales_order_item_id=? FOR UPDATE",id,line.salesOrderItemId());
+            jdbc.update("UPDATE after_sales_return_line SET return_unit_price=?,version=version+1 WHERE id=?",price(line.returnUnitPrice(),existing.get("sale_price")),num(existing,"id"));
+        }
         event(id,"UPDATED","修改售后信息"); return Map.of("id",id,"status","WAITING_RETURN","version",r.version()+1);
     }
 
@@ -76,6 +81,11 @@ public class AfterSalesCommandService {
     private long defaultWarehouse(){return Objects.requireNonNull(jdbc.queryForObject("SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1",Long.class));}
     private void event(long id,String type,String desc){jdbc.update("INSERT INTO after_sales_event(after_sales_order_id,event_type,description,operated_by) VALUES(?,?,?,?)",id,type,desc,userId());}
     private void validateHeader(AfterSalesRequest r){if(r.issueDescription()==null||r.issueDescription().isBlank())throw new IllegalArgumentException("问题描述不能为空");}
+    private BigDecimal price(BigDecimal requested, Object original){
+        BigDecimal value=requested==null?(BigDecimal)original:requested;
+        if(value==null || value.precision()-value.scale()>15 || value.scale()>4) throw new IllegalArgumentException("退回单价超出允许范围");
+        return value;
+    }
     private void writable(){CurrentUser u=CurrentUser.get();if(u!=null&&u.role()==UserRole.FINANCE)throw new IllegalStateException("财务用户仅可查看售后记录");}
     private Long userId(){return CurrentUser.get()==null?null:CurrentUser.get().id();}
     private Map<String,Object> one(String sql,Object...args){List<Map<String,Object>> rows=jdbc.queryForList(sql,args);if(rows.isEmpty())throw new IllegalArgumentException("记录不存在");return rows.get(0);}

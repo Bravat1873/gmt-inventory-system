@@ -26,7 +26,7 @@ public class CustomerFundService {
 
     @Transactional
     public long submitDeposit(long customerId, CustomerFundRequestCommand command) {
-        requirePositive(command == null ? null : command.amount());
+        if (command == null || command.amount() == null || command.amount().signum() == 0) throw new IllegalArgumentException("打款金额不能为 0");
         ensureCustomer(customerId);
         String sourceType = null;
         Long sourceId = null;
@@ -69,7 +69,8 @@ public class CustomerFundService {
         if (changed != 1) throw new IllegalStateException("资金申请已处理");
         if (!command.approved()) return;
         String type = String.valueOf(request.get("request_type"));
-        post(number(request, "customer_id"), type, "IN", decimal(request.get("amount")), requestId,
+        BigDecimal requestedAmount = decimal(request.get("amount"));
+        post(number(request, "customer_id"), type, requestedAmount.signum() < 0 ? "OUT" : "IN", requestedAmount.abs(), requestId,
                 string(request.get("source_type")), nullableLong(request.get("source_id")), sourceNo(request), null,
                 clean(command.comment()));
     }

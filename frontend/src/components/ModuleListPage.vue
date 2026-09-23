@@ -82,8 +82,28 @@ const actionColumnWidth = computed(() => {
   if (props.module.key === 'finance') return 280
   return 110
 })
-const tableMinWidth = computed(() => Math.max(1050, props.module.fields.reduce((width, field) => width + columnWidth(field), 0) + actionColumnWidth.value))
-watch(() => props.module.key, () => { keyword.value = ''; sort.value = 'updatedAt'; direction.value = 'desc'; load(1) })
+const resizedColumns = ref<Record<string, number>>({})
+function readColumnWidths() {
+  try { resizedColumns.value = JSON.parse(localStorage.getItem(`gmt-column-widths-${props.module.key}`) || '{}') as Record<string, number> }
+  catch { resizedColumns.value = {} }
+}
+function widthAt(index: number) {
+  const saved = resizedColumns.value[String(index)]
+  return Number.isFinite(saved) && saved >= 60 && saved <= 1200 ? saved : index === props.module.fields.length ? actionColumnWidth.value : columnWidth(props.module.fields[index])
+}
+const tableMinWidth = computed(() => Math.max(1050, props.module.fields.reduce((width, _, index) => width + widthAt(index), 0) + widthAt(props.module.fields.length)))
+function startResize(event: PointerEvent, index: number) {
+  event.preventDefault(); event.stopPropagation()
+  const startX = event.clientX, startWidth = widthAt(index)
+  function move(pointer: PointerEvent) { resizedColumns.value = { ...resizedColumns.value, [index]: Math.max(60, Math.min(1200, startWidth + pointer.clientX - startX)) } }
+  function stop() {
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop)
+    try { localStorage.setItem(`gmt-column-widths-${props.module.key}`, JSON.stringify(resizedColumns.value)) } catch { /* storage may be disabled */ }
+  }
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop, { once: true })
+}
+readColumnWidths()
+watch(() => props.module.key, () => { readColumnWidths(); keyword.value = ''; sort.value = 'updatedAt'; direction.value = 'desc'; load(1) })
 onMounted(() => load())
 defineExpose({ reload: async () => {
   await load(data.value.page)
@@ -101,8 +121,8 @@ defineExpose({ reload: async () => {
       <ProcurementConfigurationAlert v-if="module.key === 'purchase'" ref="procurementAlert" @navigate-supplier="emit('navigateSupplier')" @message="(text, kind) => emit('message', text, kind)" />
       <div class="table-wrap">
         <table :style="{ minWidth: `${tableMinWidth}px` }">
-          <colgroup><col v-for="field in module.fields" :key="field" :style="{ width: `${columnWidth(field)}px` }"><col :style="{ width: `${actionColumnWidth}px` }"></colgroup>
-          <thead><tr><th v-for="(column, index) in module.columns" :key="column" :class="{ sortable: module.sortable[index] }" @click="orderBy(module.sortable[index])">{{ column }}<span v-if="module.sortable[index] && sort === module.sortable[index]">{{ direction === 'asc' ? ' ↑' : ' ↓' }}</span></th><th class="action-column-header">操作</th></tr></thead>
+          <colgroup><col v-for="(field, index) in module.fields" :key="field" :style="{ width: `${widthAt(index)}px` }"><col :style="{ width: `${widthAt(module.fields.length)}px` }"></colgroup>
+          <thead><tr><th v-for="(column, index) in module.columns" :key="column" :class="{ sortable: module.sortable[index] }" @click="orderBy(module.sortable[index])">{{ column }}<span v-if="module.sortable[index] && sort === module.sortable[index]">{{ direction === 'asc' ? ' ↑' : ' ↓' }}</span><span class="column-resize-handle" role="separator" :aria-label="`调整${column}列宽`" @pointerdown="startResize($event,index)" @click.stop /></th><th class="action-column-header">操作<span class="column-resize-handle" role="separator" aria-label="调整操作列宽" @pointerdown="startResize($event,module.fields.length)" @click.stop /></th></tr></thead>
           <tbody>
             <tr v-if="loading"><td :colspan="module.columns.length + 1" class="empty-state">正在读取</td></tr>
             <tr v-else-if="!data.items.length"><td :colspan="module.columns.length + 1" class="empty-state">暂无数据</td></tr>

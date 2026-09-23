@@ -48,6 +48,17 @@ it('allows a prepayment without selecting an order', async () => {
   expect(api.submitCustomerDeposit).toHaveBeenCalledWith(7, expect.objectContaining({ amount: 50, orderId: undefined }))
 })
 
+it('submits a negative customer payment for review', async () => {
+  vi.mocked(api.submitCustomerDeposit).mockClear()
+  vi.mocked(api.submitCustomerDeposit).mockResolvedValueOnce(12)
+  const wrapper = mount(CustomerFundsDialog, { props: { customer: { id: 7, customerName: '测试客户' }, currentUserRole: 'FINANCE' } })
+  await flushPromises()
+  await wrapper.get('.fund-deposit input[type="number"]').setValue('-25.50')
+  await wrapper.get('.fund-deposit').trigger('submit')
+  await flushPromises()
+  expect(api.submitCustomerDeposit).toHaveBeenCalledWith(7, expect.objectContaining({ amount: -25.5 }))
+})
+
 it('labels the linked document and displays operation time to seconds', async () => {
   const wrapper = mount(CustomerFundsDialog, { props: { customer: { id: 7, customerName: '测试客户' }, currentUserRole: 'FINANCE' } })
   await flushPromises()

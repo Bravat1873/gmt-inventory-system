@@ -622,3 +622,11 @@ thead .action-column-header { position:sticky; right:0; z-index:3; background:#f
 .receipt-adjust-fields p { margin: 4px 0; color: #475569; }
 .receipt-confirm-dialog > footer { display: flex; justify-content: flex-end; gap: 10px; padding: 20px 24px; }
 .receipt-confirm-dialog > footer button { padding: 10px 16px; }
+.after-sales-lines{min-width:1100px}
+.after-sales-line-head,.after-sales-line{grid-template-columns:60px minmax(220px,1.4fr) 100px 110px 110px minmax(240px,1.5fr) 110px}
+.after-sales-select-all{display:flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer}
+.after-sales-select-all input{width:auto}
+.module-page .table-wrap th{position:relative}
+.module-page .full-identifier-cell{min-width:0}
+.module-page .column-resize-handle{position:absolute;right:0;top:0;bottom:0;width:9px;cursor:col-resize;touch-action:none;z-index:2}
+.module-page .column-resize-handle:hover,.module-page .column-resize-handle:focus{background:rgba(35,82,140,.18)}

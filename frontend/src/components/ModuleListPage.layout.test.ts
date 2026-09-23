@@ -24,6 +24,21 @@ it('reserves enough width for all after-sales action buttons', async () => {
 
   expect(wrapper.get('colgroup col:last-child').attributes('style')).toContain('300px')
 })
+it('resizes and remembers a module table column without sorting', async () => {
+  localStorage.removeItem('gmt-column-widths-supplier')
+  loadModule.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })
+  const wrapper = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'supplier')! } })
+  await flushPromises()
+  const original = parseInt(wrapper.get('colgroup col').attributes('style')!.match(/\d+/)![0])
+  await wrapper.get('.column-resize-handle').trigger('pointerdown', { clientX: 100 })
+  window.dispatchEvent(new MouseEvent('pointermove', { clientX: 150 }))
+  window.dispatchEvent(new MouseEvent('pointerup', { clientX: 150 }))
+  await wrapper.vm.$nextTick()
+  expect(wrapper.get('colgroup col').attributes('style')).toContain(`${original + 50}px`)
+  expect(JSON.parse(localStorage.getItem('gmt-column-widths-supplier')!)).toMatchObject({ 0: original + 50 })
+  wrapper.unmount()
+  localStorage.removeItem('gmt-column-widths-supplier')
+})
 it.each([
   ['product', 'productCode'],
   ['order', 'orderNo'],

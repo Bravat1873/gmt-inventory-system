@@ -581,28 +581,32 @@ public class ExcelExportService {
             Sheet sheet = workbook.createSheet("售后订单单据"); sheet.setDisplayGridlines(false);
             CellStyle cell = style(workbook, false, HorizontalAlignment.LEFT); CellStyle center = style(workbook, false, HorizontalAlignment.CENTER); CellStyle header = style(workbook, true, HorizontalAlignment.CENTER);
             CellStyle titleStyle = style(workbook, true, HorizontalAlignment.CENTER); Font titleFont = workbook.createFont(); titleFont.setFontName("宋体"); titleFont.setFontHeightInPoints((short) 18); titleFont.setBold(true); titleStyle.setFont(titleFont);
-            int[] widths = {6,18,12,18,28,30,11,11,12,14,14,20}; for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
-            mergedRow(sheet,0,0,11,"珠海吉门第售后服务单",titleStyle,34);
-            mergedRow(sheet,1,0,11,COMPANY_ADDRESS_AND_PHONE,center,20);
+            int[] widths = {6,18,12,18,28,30,11,11,13,14,12,14,14,20}; for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
+            mergedRow(sheet,0,0,13,"珠海吉门第售后服务单",titleStyle,34);
+            mergedRow(sheet,1,0,13,COMPANY_ADDRESS_AND_PHONE,center,20);
             String contact = string(record.get("contactName")); String phone = string(record.get("contactPhone"));
             String[] meta = {"售后单号：" + string(record.get("afterSalesNo")), "申请日期：" + string(record.get("applicationDate")), "关联订单：" + string(record.get("orderNo")),
                     "客户：" + string(record.get("customerName")), "售后类型：" + displayAfterSalesType(record.get("afterSalesType")), "收货联系人及电话：" + (contact.isBlank() && phone.isBlank() ? "" : contact + " / " + phone),
                     "问题描述：" + string(record.get("issueDescription"))};
-            for (int index = 0; index < meta.length; index++) mergedRow(sheet,index + 2,0,11,meta[index],cell,index == 6 ? 32 : 23);
+            for (int index = 0; index < meta.length; index++) mergedRow(sheet,index + 2,0,13,meta[index],cell,index == 6 ? 32 : 23);
             sheet.createRow(9).setHeightInPoints(8);
-            String[] headings = {"序号", "产品编号", "产品分类", "客户料号", "物料规格", "产品配置", "申请数量", "已处理数量", "处理方式", "物流单号", "处理状态", "备注"};
+            String[] headings = {"序号", "产品编号", "产品分类", "客户料号", "物料规格", "产品配置", "申请数量", "已处理数量", "退回单价", "退回总价", "处理方式", "物流单号", "处理状态", "备注"};
             for (int column = 0; column < headings.length; column++) set(sheet,10,column,headings[column],header); sheet.getRow(10).setHeightInPoints(28);
             List<Map<String, Object>> items = detailLines("afterSales", record); int detailRows = Math.max(1, items.size()); int row = 11;
             for (int index = 0; index < detailRows; index++) {
                 Map<String, Object> item = index < items.size() ? items.get(index) : Map.of(); boolean hasItem = index < items.size();
                 set(sheet,row,0,index+1,center); set(sheet,row,1,string(item.get("productCode")),cell); set(sheet,row,2,displayProductType(item.get("productType")),cell);
                 set(sheet,row,3,string(item.get("customerPartNumber")),cell); set(sheet,row,4,string(item.get("configuration")),cell); set(sheet,row,5,string(item.get("productConfiguration")),cell); set(sheet,row,6,hasItem ? item.get("requestedQuantity") : "",center);
-                set(sheet,row,7,hasItem ? item.get("receivedQuantity") : "",center); set(sheet,row,8,displayAfterSalesType(record.get("afterSalesType")),center); set(sheet,row,9,"",cell);
-                set(sheet,row,10,displayStatus(record.get("status")),center); set(sheet,row,11,string(item.get("remark")),cell); sheet.getRow(row).setHeightInPoints(44);
+                Object unitPrice = item.get("returnUnitPrice");
+                set(sheet,row,7,hasItem ? item.get("receivedQuantity") : "",center);
+                set(sheet,row,8,hasItem && unitPrice != null ? unitPrice : "",center);
+                set(sheet,row,9,hasItem && unitPrice instanceof Number price ? java.math.BigDecimal.valueOf(price.doubleValue()).multiply(java.math.BigDecimal.valueOf(number(item.get("receivedQuantity")))) : "",center);
+                set(sheet,row,10,displayAfterSalesType(record.get("afterSalesType")),center); set(sheet,row,11,"",cell);
+                set(sheet,row,12,displayStatus(record.get("status")),center); set(sheet,row,13,string(item.get("remark")),cell); sheet.getRow(row).setHeightInPoints(44);
                 row++;
             }
-            int noteRow = row; mergedRow(sheet,noteRow,0,11,"处理备注：" + string(record.get("remark")),cell,40); sheet.createRow(noteRow + 1).setHeightInPoints(8);
-            int approvalRow = noteRow + 2; for (String label : List.of("申请人确认", "售后负责人确认", "客户确认")) { approvalBlock(sheet, approvalRow, label, 11, 8, 9, cell, header); approvalRow += 2; }
+            int noteRow = row; mergedRow(sheet,noteRow,0,13,"处理备注：" + string(record.get("remark")),cell,40); sheet.createRow(noteRow + 1).setHeightInPoints(8);
+            int approvalRow = noteRow + 2; for (String label : List.of("申请人确认", "售后负责人确认", "客户确认")) { approvalBlock(sheet, approvalRow, label, 13, 10, 11, cell, header); approvalRow += 2; }
             sheet.setFitToPage(true); sheet.getPrintSetup().setLandscape(true); workbook.write(output); return output.toByteArray();
         } catch (IOException exception) { throw new IllegalStateException("售后订单单据模板生成失败", exception); }
     }

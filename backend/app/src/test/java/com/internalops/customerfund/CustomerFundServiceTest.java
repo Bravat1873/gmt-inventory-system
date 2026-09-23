@@ -63,6 +63,23 @@ class CustomerFundServiceTest {
     }
 
     @Test
+    void negativeDepositReducesBalanceOnlyAfterApprovalAndCanBeReversed() {
+        approveDeposit("500");
+        long requestId = service.submitDeposit(1, new CustomerFundRequestCommand(
+                new BigDecimal("-120"), LocalDate.now(), "银行转账", "ADJUST-1", "退回客户打款"));
+        assertThat(service.balance(1)).isEqualByComparingTo("500");
+
+        service.review(requestId, new CustomerFundReviewCommand(true, "确认退回"));
+        assertThat(service.balance(1)).isEqualByComparingTo("380");
+        assertThat(jdbc.queryForMap("SELECT direction,amount FROM customer_fund_ledger WHERE request_id=?", requestId))
+                .containsEntry("direction", "OUT").containsEntry("amount", new BigDecimal("120.0000"));
+
+        long ledgerId = jdbc.queryForObject("SELECT id FROM customer_fund_ledger WHERE request_id=?", Long.class, requestId);
+        service.reverse(ledgerId, new CustomerFundReversalCommand("金额填写错误"));
+        assertThat(service.balance(1)).isEqualByComparingTo("500");
+    }
+
+    @Test
     void approvedRefundCanDifferFromSuggestionWhenReasonIsRecordedAndCanBeReversed() {
         long requestId = service.submitAfterSalesRefund(20, new BigDecimal("90"), new BigDecimal("75"), "特殊补偿");
         service.review(requestId, new CustomerFundReviewCommand(true, "同意补偿"));
