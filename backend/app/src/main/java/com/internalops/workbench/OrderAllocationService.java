@@ -1,5 +1,6 @@
 package com.internalops.workbench;
 
+import com.internalops.procurement.AutoProcurementSuggestionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,10 +13,13 @@ import java.util.stream.Collectors;
 public class OrderAllocationService {
     private final JdbcTemplate jdbc;
     private final InventoryAllocationService allocation;
+    private final AutoProcurementSuggestionService autoProcurement;
 
-    public OrderAllocationService(JdbcTemplate jdbc, InventoryAllocationService allocation) {
+    public OrderAllocationService(JdbcTemplate jdbc, InventoryAllocationService allocation,
+                                  AutoProcurementSuggestionService autoProcurement) {
         this.jdbc = jdbc;
         this.allocation = allocation;
+        this.autoProcurement = autoProcurement;
     }
 
     public Map<String, Object> view(long orderId) {
@@ -46,7 +50,7 @@ public class OrderAllocationService {
         if (request == null || request.version() == null || request.items() == null) throw new IllegalArgumentException("缺少库存分配数据");
         Map<String, Object> order = jdbc.queryForMap("SELECT id,status,version FROM sales_order WHERE id=? FOR UPDATE", orderId);
         if (number(order, "version") != request.version()) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
-        List<Map<String, Object>> lines = jdbc.queryForList("SELECT id,line_no,sku_id,quantity,shipped_quantity,locked_quantity FROM sales_order_item WHERE sales_order_id=? ORDER BY line_no FOR UPDATE", orderId);
+        List<Map<String, Object>> lines = jdbc.queryForList("SELECT id,line_no,sku_id,quantity,shipped_quantity,locked_quantity,uncovered_quantity FROM sales_order_item WHERE sales_order_id=? ORDER BY line_no FOR UPDATE", orderId);
         Map<Integer, OrderAllocationRequest.Item> targets;
         try {
             targets = request.items().stream().collect(Collectors.toMap(OrderAllocationRequest.Item::lineNo, Function.identity()));
@@ -57,6 +61,7 @@ public class OrderAllocationService {
         if (!targets.keySet().equals(lineNumbers)) throw new IllegalArgumentException("库存分配明细与订单不一致");
         long warehouseId = defaultWarehouse();
         boolean ready = true;
+        boolean demandChanged = false;
         for (Map<String, Object> line : lines) {
             int lineNo = (int) number(line, "line_no");
             int quantity = (int) number(line, "quantity");
@@ -79,10 +84,13 @@ public class OrderAllocationService {
                         actual, actual, balanceLocked, balanceLocked + delta, transit, transit);
             }
             int uncovered = quantity - shipped - requestedTarget;
+            if (delta != 0 || uncovered != number(line, "uncovered_quantity")) demandChanged = true;
             jdbc.update("UPDATE sales_order_item SET locked_quantity=?,uncovered_quantity=?,version=version+1 WHERE id=?", requestedTarget, uncovered, number(line, "id"));
             if (uncovered > 0) ready = false;
         }
-        jdbc.update("UPDATE sales_order SET status=?,version=version+1 WHERE id=?", ready ? "READY_TO_SHIP" : "WAITING_STOCK", orderId);
+        String nextStatus = ready ? "READY_TO_SHIP" : "WAITING_STOCK";
+        jdbc.update("UPDATE sales_order SET status=?,version=version+1 WHERE id=?", nextStatus, orderId);
+        if (demandChanged || !nextStatus.equals(value(order, "status"))) autoProcurement.requestRecalculation();
         return view(orderId);
     }
 

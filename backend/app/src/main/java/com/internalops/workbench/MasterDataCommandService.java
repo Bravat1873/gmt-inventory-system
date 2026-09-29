@@ -2,6 +2,7 @@ package com.internalops.workbench;
 
 import com.internalops.auth.CurrentUser;
 import com.internalops.auth.UserRole;
+import com.internalops.procurement.AutoProcurementSuggestionService;
 import com.internalops.productcode.ProductCodeGenerator;
 import com.internalops.productcode.ProductUniqueId;
 import com.internalops.productcode.ProductCodeSelection;
@@ -30,10 +31,15 @@ import java.util.UUID;
 public class MasterDataCommandService {
     private final JdbcTemplate jdbc;
     private final ProductCodeGenerator productCodeGenerator;
+    private final InventoryAllocationService allocation;
+    private final AutoProcurementSuggestionService autoProcurement;
 
-    public MasterDataCommandService(JdbcTemplate jdbc, ProductCodeGenerator productCodeGenerator) {
+    public MasterDataCommandService(JdbcTemplate jdbc, ProductCodeGenerator productCodeGenerator,
+                                    InventoryAllocationService allocation, AutoProcurementSuggestionService autoProcurement) {
         this.jdbc = jdbc;
         this.productCodeGenerator = productCodeGenerator;
+        this.allocation = allocation;
+        this.autoProcurement = autoProcurement;
     }
 
     @Transactional
@@ -364,6 +370,8 @@ public class MasterDataCommandService {
             writeTransaction(warehouseId, skuId, 0, baseActual, 0, locked, 0, transit, r.reason());
         }
         writeInventoryMovements(warehouseId, skuId, baseActual, movements);
+        if (actual > locked) allocation.reallocateWaitingForSku(skuId);
+        if (actual != 0 || locked != 0 || transit != 0) autoProcurement.requestRecalculation();
         return inventory(id);
     }
 
@@ -403,6 +411,11 @@ public class MasterDataCommandService {
                     ((Number) old.get("locked_quantity")).intValue(), locked,
                     ((Number) old.get("in_transit_quantity")).intValue(), transit, r.reason());
         }
+        int lockedBefore = ((Number) old.get("locked_quantity")).intValue();
+        int transitBefore = ((Number) old.get("in_transit_quantity")).intValue();
+        if (actual - locked > actualBefore - lockedBefore) allocation.reallocateWaitingForSku(skuId);
+        if (actual != actualBefore || locked != lockedBefore || transit != transitBefore)
+            autoProcurement.requestRecalculation();
         return inventory(id);
     }
 

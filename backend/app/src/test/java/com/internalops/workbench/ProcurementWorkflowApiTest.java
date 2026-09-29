@@ -723,6 +723,41 @@ class ProcurementWorkflowApiTest {
                 .andExpect(jsonPath("$.data.status").value("REJECTED"));
         assertThat(jdbc.queryForObject("SELECT status FROM procurement_suggestion WHERE id=?", String.class, suggestionId)).isEqualTo("REJECTED");
     }
+
+    @Test
+    void manualSalesAllocationRetiresCoveredProcurementReview() throws Exception {
+        Cookie session = login();
+        String generated = mvc.perform(post("/api/procurement/generate").cookie(session))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long suggestionId = mapper.readTree(generated).path("data").path("suggestionIds").get(0).asLong();
+        jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity) VALUES(1,101,3,0,0)");
+
+        mvc.perform(put("/api/orders/1/allocations").cookie(session).contentType("application/json")
+                        .content("{\"version\":0,\"items\":[{\"lineNo\":1,\"lockedQuantity\":3}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("READY_TO_SHIP"));
+
+        assertThat(jdbc.queryForObject("SELECT status FROM procurement_suggestion WHERE id=?", String.class, suggestionId)).isEqualTo("REJECTED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM shortage_coverage WHERE active=TRUE", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE sku_id=101", Integer.class)).isEqualTo(3);
+    }
+
+    @Test
+    void unchangedSalesAllocationKeepsReviewEditsIntact() throws Exception {
+        Cookie session = login();
+        String generated = mvc.perform(post("/api/procurement/generate").cookie(session))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long suggestionId = mapper.readTree(generated).path("data").path("suggestionIds").get(0).asLong();
+        long itemId = jdbc.queryForObject("SELECT id FROM procurement_suggestion_item WHERE suggestion_id=?", Long.class, suggestionId);
+
+        mvc.perform(put("/api/orders/1/allocations").cookie(session).contentType("application/json")
+                        .content("{\"version\":0,\"items\":[{\"lineNo\":1,\"lockedQuantity\":0}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("WAITING_STOCK"));
+
+        assertThat(jdbc.queryForObject("SELECT id FROM procurement_suggestion_item WHERE suggestion_id=?", Long.class, suggestionId)).isEqualTo(itemId);
+        assertThat(jdbc.queryForObject("SELECT status FROM procurement_suggestion WHERE id=?", String.class, suggestionId)).isEqualTo("DRAFT");
+    }
     @Test
     void updatesExistingDraftQrInsteadOfCreatingDuplicate() throws Exception {
         Cookie session = login();

@@ -37,6 +37,13 @@ public class InventoryAllocationService {
    tx(warehouse,sku,transactionType,"SALES_ORDER",String.valueOf(orderId),0,-lockedByOrder,0,actual,actual,locked,locked-lockedByOrder,transit,transit);
   }
  } public void reallocateWaiting(){for(Long id:jdbc.queryForList("SELECT id FROM sales_order WHERE status='WAITING_STOCK' ORDER BY receipt_confirmed_at,id",Long.class))allocate(id);}
+ public void reallocateWaitingForSku(long skuId){
+  for(Long id:jdbc.queryForList("""
+          SELECT o.id FROM sales_order o WHERE o.status='WAITING_STOCK'
+            AND EXISTS(SELECT 1 FROM sales_order_item i WHERE i.sales_order_id=o.id AND i.sku_id=?)
+          ORDER BY o.receipt_confirmed_at,o.id
+          """,Long.class,skuId))allocate(id);
+ }
  void tx(long wh,long sku,String type,String business,String no,int ad,int ld,int td,int ab,int aa,int lb,int la,int tb,int ta){jdbc.update("INSERT INTO inventory_transaction(warehouse_id,sku_id,transaction_type,business_type,business_no,actual_delta,locked_delta,transit_delta,actual_before,actual_after,locked_before,locked_after,transit_before,transit_after) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",wh,sku,type,business,no,ad,ld,td,ab,aa,lb,la,tb,ta);}
  static long num(Map<String,Object> m,String key){for(var e:m.entrySet())if(e.getKey().equalsIgnoreCase(key))return ((Number)e.getValue()).longValue();throw new IllegalArgumentException("缺少字段"+key);}
 }

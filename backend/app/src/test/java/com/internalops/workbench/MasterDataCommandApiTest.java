@@ -90,6 +90,47 @@ class MasterDataCommandApiTest {
     }
 
     @Test
+    void inventoryIncreaseAllocatesWaitingOrderAndRetiresStaleReview() throws Exception {
+        jdbc.update("UPDATE inventory_balance SET actual_quantity=0,locked_quantity=0 WHERE id=1");
+        jdbc.update("INSERT INTO sales_order(id,order_no,status,receipt_confirmed_at) VALUES(17,'DD-17','WAITING_STOCK',CURRENT_TIMESTAMP)");
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,uncovered_quantity) VALUES(36,17,1,1,120,120)");
+        jdbc.update("INSERT INTO inventory_balance(id,warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity) VALUES(2,1,2,10,0,0)");
+        jdbc.update("INSERT INTO sales_order(id,order_no,status,receipt_confirmed_at) VALUES(18,'DD-18','WAITING_STOCK',CURRENT_TIMESTAMP)");
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,uncovered_quantity) VALUES(38,18,1,2,5,5)");
+        jdbc.update("INSERT INTO procurement_suggestion(id,suggestion_no,status,system_managed) VALUES(15,'QR-15','DRAFT',TRUE)");
+        jdbc.update("INSERT INTO procurement_suggestion_item(id,suggestion_id,sku_id,supplier_id,shortage_quantity,suggested_quantity,purchase_price) VALUES(37,15,1,1,120,120,52.11)");
+        jdbc.update("INSERT INTO shortage_coverage(id,sales_order_item_id,suggestion_item_id,covered_quantity) VALUES(40,36,37,120)");
+
+        mvc.perform(put("/api/workbench/inventory/1").cookie(session).contentType("application/json")
+                        .content("{\"actualQuantity\":700,\"lockedQuantity\":0,\"inTransitQuantity\":0,\"version\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.actualQuantity").value(700))
+                .andExpect(jsonPath("$.data.lockedQuantity").value(120));
+
+        assertThat(jdbc.queryForObject("SELECT status FROM sales_order WHERE id=17", String.class)).isEqualTo("READY_TO_SHIP");
+        assertThat(jdbc.queryForObject("SELECT locked_quantity FROM sales_order_item WHERE id=36", Integer.class)).isEqualTo(120);
+        assertThat(jdbc.queryForObject("SELECT uncovered_quantity FROM sales_order_item WHERE id=36", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT status FROM procurement_suggestion WHERE id=15", String.class)).isEqualTo("REJECTED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM shortage_coverage WHERE active=TRUE", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT status FROM sales_order WHERE id=18", String.class)).isEqualTo("WAITING_STOCK");
+        assertThat(jdbc.queryForObject("SELECT locked_quantity FROM inventory_balance WHERE id=2", Integer.class)).isZero();
+    }
+
+    @Test
+    void inventoryMetadataEditDoesNotOverrideManualAllocation() throws Exception {
+        jdbc.update("UPDATE inventory_balance SET actual_quantity=10,locked_quantity=0 WHERE id=1");
+        jdbc.update("INSERT INTO sales_order(id,order_no,status) VALUES(17,'DD-17','WAITING_STOCK')");
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,uncovered_quantity) VALUES(36,17,1,1,3,3)");
+
+        mvc.perform(put("/api/workbench/inventory/1").cookie(session).contentType("application/json")
+                        .content("{\"actualQuantity\":10,\"lockedQuantity\":0,\"inTransitQuantity\":0,\"inventoryRemark\":\"盘点备注\",\"version\":0}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("SELECT status FROM sales_order WHERE id=17", String.class)).isEqualTo("WAITING_STOCK");
+        assertThat(jdbc.queryForObject("SELECT locked_quantity FROM sales_order_item WHERE id=36", Integer.class)).isZero();
+    }
+
+    @Test
     void keepsTheEnteredInventoryTotalWhenSavingInboundDetails() throws Exception {
         mvc.perform(put("/api/workbench/inventory/1").cookie(session).contentType("application/json")
                         .content("{\"actualQuantity\":6,\"lockedQuantity\":3,\"inTransitQuantity\":0,"
