@@ -42,3 +42,15 @@ it('rejects an all-zero or over-remaining receipt', async () => {
   expect(wrapper.text()).toContain('本次实收数量不能超过剩余数量')
   expect(receivePurchase).not.toHaveBeenCalled()
 })
+
+it('shows sales requirements before registering receipt quantities', () => {
+  const wrapper = mount(PurchaseReceiptDialog, { props: { purchase: {
+    ...purchase, salesDeliveryContact: 'DD001：张三', salesDeliveryAddress: 'DD001：广州', salesOrderRemark: 'DD001：说明书中性',
+    items: [{ ...purchase.items[0], remark: 'DD001 第1行：OA编号001' }]
+  } } })
+  const requirements = wrapper.get('[data-test="purchase-sales-requirements"]')
+  expect(requirements.text()).toContain('张三')
+  expect(requirements.text()).toContain('广州')
+  expect(requirements.text()).toContain('说明书中性')
+  expect(wrapper.get('[data-test="purchase-sales-line-remark"]').text()).toContain('OA编号001')
+})

@@ -396,6 +396,76 @@ class ProcurementWorkflowApiTest {
     }
 
     @Test
+    void purchaseReadsCurrentSalesRequirementsWithoutOverwritingProcurementNotes() throws Exception {
+        Cookie session = login();
+        jdbc.update("UPDATE sales_order SET delivery_contact=?,delivery_phone=?,delivery_address=?,order_remark=? WHERE id=1",
+                "张三", "13800000000", "广州海珠区", "锁上面印BRAVAT的logo\n包装、说明书中性");
+        jdbc.update("UPDATE sales_order_item SET item_remark=? WHERE id=1", "OA签呈编号：XS001");
+        String generated = mvc.perform(post("/api/procurement/generate").cookie(session)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long suggestionId = mapper.readTree(generated).path("data").path("suggestionIds").get(0).asLong();
+        String confirmed = mvc.perform(post("/api/procurement/suggestions/{id}/confirm", suggestionId).cookie(session)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long purchaseId = mapper.readTree(confirmed).path("data").path("purchaseId").asLong();
+        jdbc.update("UPDATE purchase_order SET purchase_remark=? WHERE id=?", "采购要求供应商提前通知", purchaseId);
+        mvc.perform(get("/api/procurement/purchases/{id}", purchaseId).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.salesDeliveryContact").value("DD20260800001：张三 / 13800000000"))
+                .andExpect(jsonPath("$.data.salesDeliveryAddress").value("DD20260800001：广州海珠区"))
+                .andExpect(jsonPath("$.data.salesOrderRemark").value("DD20260800001：锁上面印BRAVAT的logo\n包装、说明书中性"))
+                .andExpect(jsonPath("$.data.items[0].remark").value("DD20260800001 第1行：OA签呈编号：XS001"))
+                .andExpect(jsonPath("$.data.remark").value("采购要求供应商提前通知"));
+
+        jdbc.update("UPDATE sales_order SET delivery_contact=NULL,delivery_phone=?,delivery_address=?,order_remark=? WHERE id=1",
+                "13900000000", "新的收货地址", "标签更新\nModel: D1212K-C51B");
+        jdbc.update("UPDATE sales_order_item SET item_remark=? WHERE id=1", "新的OA编号");
+        mvc.perform(get("/api/procurement/purchases/{id}", purchaseId).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.salesDeliveryContact").value("DD20260800001：13900000000"))
+                .andExpect(jsonPath("$.data.salesDeliveryAddress").value("DD20260800001：新的收货地址"))
+                .andExpect(jsonPath("$.data.salesOrderRemark").value("DD20260800001：标签更新\nModel: D1212K-C51B"))
+                .andExpect(jsonPath("$.data.items[0].remark").value("DD20260800001 第1行：新的OA编号"))
+                .andExpect(jsonPath("$.data.remark").value("采购要求供应商提前通知"));
+    }
+
+    @Test
+    void mergesCoveredOrdersAndKeepsRequirementsBesideTheirOwnSku() throws Exception {
+        Cookie session = login();
+        jdbc.update("UPDATE sales_order SET order_remark=? WHERE id=1", "第一单包装中性");
+        jdbc.update("UPDATE sales_order_item SET item_remark=? WHERE id=1", "第一款印logo");
+        jdbc.update("INSERT INTO sku_supplier_config(id,sku_id,supplier_id,purchase_price,moq,lead_time_days,enabled) VALUES(2,102,201,12,1,7,TRUE)");
+        jdbc.update("INSERT INTO sku_supplier_purchase_info(id,supplier_product_config_id,purchase_price,moq,lead_time_days,enabled) VALUES(2,2,12,1,7,TRUE)");
+        jdbc.update("INSERT INTO sales_order(id,order_no,status,receipt_confirmed_at,order_remark) VALUES(2,'DD20260800002','WAITING_STOCK',CURRENT_TIMESTAMP,'第二单贴标签')");
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,uncovered_quantity,item_remark) VALUES(21,2,1,101,2,2,'第二单同款特殊包装')");
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,line_no,sku_id,quantity,uncovered_quantity,item_remark) VALUES(22,2,2,102,2,2,'另一产品独有要求')");
+        String generated = mvc.perform(post("/api/procurement/generate").cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long suggestionId = mapper.readTree(generated).path("data").path("suggestionIds").get(0).asLong();
+        String confirmed = mvc.perform(post("/api/procurement/suggestions/{id}/confirm", suggestionId).cookie(session).contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long purchaseId = mapper.readTree(confirmed).path("data").path("purchaseId").asLong();
+        var data = mapper.readTree(mvc.perform(get("/api/procurement/purchases/{id}", purchaseId).cookie(session))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).path("data");
+        assertThat(data.path("salesOrderRemark").asText()).isEqualTo("DD20260800001：第一单包装中性\nDD20260800002：第二单贴标签");
+        assertThat(data.path("items").get(0).path("remark").asText()).contains("第一款印logo", "第二单同款特殊包装").doesNotContain("另一产品独有要求");
+        assertThat(data.path("items").get(1).path("remark").asText()).contains("另一产品独有要求").doesNotContain("第一款印logo", "第二单同款特殊包装");
+        // A removed coverage must stop contributing requirements even when the SKU matches.
+        jdbc.update("UPDATE shortage_coverage SET active=FALSE WHERE sales_order_item_id=21");
+        var updated = mapper.readTree(mvc.perform(get("/api/procurement/purchases/{id}", purchaseId).cookie(session))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).path("data");
+        assertThat(updated.path("items").get(0).path("remark").asText()).contains("第一款印logo").doesNotContain("第二单同款特殊包装");
+        long manualId = createDraftManualPurchase(session, 10);
+        mvc.perform(get("/api/procurement/purchases/{id}", manualId).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.salesDeliveryContact").value(""))
+                .andExpect(jsonPath("$.data.salesDeliveryAddress").value(""))
+                .andExpect(jsonPath("$.data.salesOrderRemark").value(""))
+                .andExpect(jsonPath("$.data.items[0].remark").value(""));
+    }
+
+    @Test
     void subtractsAvailableInTransitQuantityBeforeCreatingAPurchaseSuggestion() throws Exception {
         Cookie session = login();
         jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity,in_transit_quantity,version) VALUES(1,101,0,0,2,0)");

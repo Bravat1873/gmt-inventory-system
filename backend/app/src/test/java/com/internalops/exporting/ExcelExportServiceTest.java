@@ -228,6 +228,48 @@ class ExcelExportServiceTest {
     }
 
     @Test
+    void purchaseDocumentIncludesSalesRequirementsAndContinuesLongRemarks() throws Exception {
+        ProcurementWorkflowService procurement = mock(ProcurementWorkflowService.class);
+        String lineRemark = "DD001 第1行：OA编号XS001\n" + "包装标签要求\n".repeat(30);
+        String orderRemark = "DD001：印BRAVAT的logo\nModel: D1212K-C51B\nDescription: Smart Door Lock\n" + "外箱标签中性\n".repeat(30);
+        when(procurement.purchase(7L)).thenReturn(Map.ofEntries(
+                Map.entry("purchaseNo", "CG001"), Map.entry("supplierName", "供应商一"),
+                Map.entry("deliveryAddress", "原交货地址"), Map.entry("salesDeliveryAddress", "DD001：广州市海珠区21楼"),
+                Map.entry("salesDeliveryContact", "DD001：张三 / 13800000000\nDD002：李四 / 13900000000"),
+                Map.entry("salesOrderRemark", orderRemark), Map.entry("remark", "采购独立备注"),
+                Map.entry("items", List.of(Map.of("productCode", "SKU001", "quantity", 5, "purchasePrice", new BigDecimal("10"), "remark", lineRemark)))));
+        ExcelExportService service = new ExcelExportService(null, null, procurement, null, null);
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.document("purchase", 7L)))) {
+            var sheet = workbook.getSheet("采购订单单据");
+            assertTrue(sheet.getRow(5).getCell(0).getStringCellValue().contains("张三 / 13800000000"));
+            assertTrue(sheet.getRow(5).getCell(0).getStringCellValue().contains("李四 / 13900000000"));
+            assertTrue(sheet.getRow(10).getHeightInPoints() > 44);
+            StringBuilder all = new StringBuilder();
+            for (var row : sheet) {
+                assertTrue(row.getHeightInPoints() <= 409);
+                for (var cell : row) if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING) all.append(cell.getStringCellValue()).append('\n');
+            }
+            assertTrue(all.toString().contains("OA编号XS001"));
+            assertTrue(all.toString().contains("销售订单备注："));
+            assertTrue(all.toString().contains("Model: D1212K-C51B"));
+            assertTrue(all.toString().contains("Description: Smart Door Lock"));
+            assertTrue(all.toString().contains("采购独立备注"));
+            assertTrue(all.toString().contains("DD001：广州市海珠区21楼"));
+            assertEquals(30, all.toString().split("包装标签要求", -1).length - 1);
+            assertEquals(30, all.toString().split("外箱标签中性", -1).length - 1);
+            workbook.getCreationHelper().createFormulaEvaluator().evaluateAll();
+            boolean foundTotal = false;
+            for (var row : sheet) {
+                var cell = row.getCell(9);
+                if (cell != null && cell.getCellType() == org.apache.poi.ss.usermodel.CellType.FORMULA && cell.getCellFormula().startsWith("SUM")) {
+                    assertEquals(50d, cell.getNumericCellValue()); foundTotal = true;
+                }
+            }
+            assertTrue(foundTotal);
+        }
+    }
+
+    @Test
     void afterSalesDocumentUsesAfterSalesTemplateAndUsesActualDetailRowCount() throws Exception {
         AfterSalesQueryService afterSales = mock(AfterSalesQueryService.class);
         when(afterSales.get(3L)).thenReturn(Map.ofEntries(

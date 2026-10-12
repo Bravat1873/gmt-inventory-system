@@ -75,3 +75,20 @@ it('hides the empty order-level remark and shows notes beside their own product'
   expect(notes[1].text()).toContain('第二行后发')
 })
 
+it('shows current sales requirements and product notes in a purchase trace', () => {
+  const wrapper = mount(BusinessTraceDialog, {
+    props: { trace: { type: 'purchase', title: '采购业务全景',
+      header: { remark: '采购人员另行要求', salesDeliveryContact: 'DD001：张三 / 13800000000', salesDeliveryAddress: 'DD001：广州市海珠区', salesOrderRemark: 'DD001：印BRAVAT\n包装中性' },
+      details: [{ productCode: 'A', remark: 'DD001 第1行：OA编号001' }, { productCode: 'B', remark: 'DD002 第2行：OA编号002' }], timeline: [] } }
+  })
+  const requirements = wrapper.get('[data-test="purchase-sales-requirements"]')
+  expect(requirements.text()).toContain('张三 / 13800000000')
+  expect(requirements.text()).toContain('广州市海珠区')
+  expect(requirements.text()).toContain('印BRAVAT\n包装中性')
+  expect(wrapper.get('.trace-remark').text()).toContain('采购人员另行要求')
+  const notes = wrapper.findAll('[data-test="trace-line-remark"]')
+  expect(notes[0].text()).toContain('OA编号001')
+  expect(notes[0].text()).not.toContain('OA编号002')
+  expect(notes[1].text()).toContain('OA编号002')
+})
+

@@ -54,10 +54,11 @@ public class BusinessTraceService {
         Map<String, Object> header = one("SELECT po.id, po.purchase_no AS purchaseNo, sp.supplier_name AS counterparty, po.status, po.total_amount AS totalAmount, "
                 + "po.expected_arrival_date AS expectedArrivalDate, po.purchase_remark AS remark, po.created_at AS createdAt, po.updated_at AS updatedAt "
                 + "FROM purchase_order po JOIN supplier sp ON sp.id=po.supplier_id WHERE po.id=?", id);
-        List<Map<String, Object>> details = jdbc.queryForList("SELECT poi.line_no AS lineNo, s.product_code AS productCode, s.customer_part_number AS customerPartNumber, s.product_name AS productName, s.model, s.configuration, s.unit, "
+        List<Map<String, Object>> details = jdbc.queryForList("SELECT poi.line_no AS lineNo, poi.sku_id AS skuId, s.product_code AS productCode, s.customer_part_number AS customerPartNumber, s.product_name AS productName, s.model, s.configuration, s.unit, "
                 + "poi.quantity, poi.received_quantity AS receivedQuantity, poi.purchase_price AS purchasePrice "
                 + "FROM purchase_order_item poi JOIN sku s ON s.id=poi.sku_id WHERE poi.purchase_order_id=? ORDER BY poi.line_no", id);
         List<Map<String, Object>> timeline = new ArrayList<>();
+        PurchaseSalesRequirements.enrich(jdbc, id, header, details);
         timeline.add(event(header.get("createdAt"), "采购单创建", "采购单 " + header.get("purchaseNo") + " 已创建", "purchase", id));
         jdbc.queryForList("SELECT COALESCE(confirmed_amount,amount) AS amount, payment_method AS paymentMethod, paid_at AS occurredAt FROM supplier_payment WHERE purchase_order_id=? AND COALESCE(review_status,'APPROVED')='APPROVED'", id)
                 .forEach(row -> timeline.add(event(row.get("occurredAt"), "供应商付款", "已登记付款 ¥" + row.get("amount") + "（" + row.get("paymentMethod") + "）", null, null)));

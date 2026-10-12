@@ -545,13 +545,13 @@ public class ExcelExportService {
             amount.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
             CellStyle titleStyle = style(workbook, true, HorizontalAlignment.CENTER);
             Font titleFont = workbook.createFont(); titleFont.setFontName("宋体"); titleFont.setFontHeightInPoints((short) 18); titleFont.setBold(true); titleStyle.setFont(titleFont);
-            int[] widths = {6,18,12,18,28,30,11,11,14,14,14,20};
+            int[] widths = {6,18,12,18,28,30,11,11,14,14,14,28};
             for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
             mergedRow(sheet, 0, 0, 11, "珠海吉门第采购订单", titleStyle, 34);
             mergedRow(sheet, 1, 0, 11, COMPANY_ADDRESS_AND_PHONE, center, 20);
             String[] meta = {"采购单号：" + string(record.get("purchaseNo")), "下单日期：" + string(record.get("orderDate")),
-                    "供应商：" + string(record.get("supplierName")), "联系人及电话：", "要求交期：" + string(record.get("expectedArrivalDate")), "交货地址：" + string(record.get("deliveryAddress"))};
-            for (int index = 0; index < meta.length; index++) mergedRow(sheet, index + 2, 0, 11, meta[index], cell, index == 5 ? 30 : 23);
+                    "供应商：" + string(record.get("supplierName")), "收货联系人及电话：" + string(record.get("salesDeliveryContact")), "要求交期：" + string(record.get("expectedArrivalDate")), "交货地址：" + string(record.get("deliveryAddress"))};
+            for (int index = 0; index < meta.length; index++) mergedRow(sheet, index + 2, 0, 11, meta[index], cell, purchaseTextHeight(meta[index], 190, index == 5 ? 30 : 23));
             sheet.createRow(8).setHeightInPoints(8);
             String[] headings = {"序号", "产品编号", "产品分类", "客户料号", "物料规格", "产品配置", "数量", "单位", "含税单价", "含税金额", "交期", "备注"};
             for (int column = 0; column < headings.length; column++) set(sheet, 9, column, headings[column], header);
@@ -563,17 +563,66 @@ public class ExcelExportService {
                 set(sheet,row,3,string(item.get("customerPartNumber")),cell); set(sheet,row,4,string(item.get("configuration")),cell); set(sheet,row,5,string(item.get("productConfiguration")),cell); set(sheet,row,6,hasItem ? item.get("quantity") : "",center);
                 set(sheet,row,7,string(item.get("unit")),center); set(sheet,row,8,hasItem ? item.get("purchasePrice") : "",amount);
                 if (hasItem) setFormula(sheet,row,9,"G" + (row + 1) + "*I" + (row + 1),amount); else set(sheet,row,9,"",amount);
-                set(sheet,row,10,string(record.get("expectedArrivalDate")),center); set(sheet,row,11,string(item.get("remark")),cell); sheet.getRow(row).setHeightInPoints(44);
+                List<String> remarkBlocks = purchaseTextBlocks(string(item.get("remark")), 26);
+                set(sheet,row,10,string(record.get("expectedArrivalDate")),center); set(sheet,row,11,remarkBlocks.get(0),cell); sheet.getRow(row).setHeightInPoints(purchaseTextHeight(remarkBlocks.get(0), 26, 44));
                 row++;
+                for (int block = 1; block < remarkBlocks.size(); block++) {
+                    fill(sheet,row,row,0,11,cell);
+                    set(sheet,row,11,remarkBlocks.get(block),cell);
+                    sheet.getRow(row++).setHeightInPoints(purchaseTextHeight(remarkBlocks.get(block),26,44));
+                }
             }
-            int totalRow = row; mergedRow(sheet,totalRow,0,8,"采购备注：" + string(record.get("remark")),cell,26);
+            String remarks = "采购备注：" + string(record.get("remark"));
+            if (!string(record.get("salesOrderRemark")).isBlank()) remarks += "\n销售订单备注：\n" + string(record.get("salesOrderRemark"));
+            List<String> remarkBlocks = purchaseTextBlocks(remarks, 150);
+            int totalRow = row; mergedRow(sheet,totalRow,0,8,remarkBlocks.get(0),cell,purchaseTextHeight(remarkBlocks.get(0),150,26));
             setFormula(sheet,totalRow,9,"SUM(J11:J" + totalRow + ")",amount); set(sheet,totalRow,10,"合计金额",header); set(sheet,totalRow,11,"",cell);
-            sheet.createRow(totalRow + 1).setHeightInPoints(8); int noteRow = totalRow + 2;
+            row++;
+            for (int block = 1; block < remarkBlocks.size(); block++) {
+                mergedRow(sheet,row++,0,11,remarkBlocks.get(block),cell,purchaseTextHeight(remarkBlocks.get(block),150,26));
+            }
+            String salesAddress = string(record.get("salesDeliveryAddress"));
+            if (!salesAddress.isBlank() && !salesAddress.equals(string(record.get("deliveryAddress")))) {
+                for (String block : purchaseTextBlocks("销售收货地址：\n" + salesAddress,190)) {
+                    mergedRow(sheet,row++,0,11,block,cell,purchaseTextHeight(block,190,30));
+                }
+            }
+            sheet.createRow(row++).setHeightInPoints(8); int noteRow = row;
             mergedRow(sheet,noteRow,0,2,"注意事项",header,150);
             mergedRow(sheet,noteRow,3,11,PURCHASE_NOTICES,cell,150);
             int approvalRow = noteRow + 2; for (String label : List.of("采购确认", "供应商确认")) { approvalBlock(sheet, approvalRow, label, 11, 8, 9, cell, header); approvalRow += 2; }
             sheet.setFitToPage(true); sheet.getPrintSetup().setLandscape(true); workbook.setForceFormulaRecalculation(true); workbook.write(output); return output.toByteArray();
         } catch (IOException exception) { throw new IllegalStateException("采购订单单据模板生成失败", exception); }
+    }
+
+    // Excel limits a row to 409 points. Continue long requirements on additional rows.
+    private List<String> purchaseTextBlocks(String text, int width) {
+        List<String> lines = new ArrayList<>();
+        for (String paragraph : text.split("\\R", -1)) {
+            StringBuilder line = new StringBuilder(); int used = 0;
+            for (int point : paragraph.codePoints().toArray()) {
+                int units = point > 255 ? 2 : 1;
+                if (used + units > width && !line.isEmpty()) {
+                    lines.add(line.toString()); line.setLength(0); used = 0;
+                }
+                line.appendCodePoint(point); used += units;
+            }
+            lines.add(line.toString());
+        }
+        List<String> blocks = new ArrayList<>();
+        for (int index = 0; index < lines.size(); index += 24) {
+            blocks.add(String.join("\n", lines.subList(index, Math.min(index + 24, lines.size()))));
+        }
+        return blocks;
+    }
+
+    private int purchaseTextHeight(String text, int width, int minimum) {
+        int lines = 0;
+        for (String line : text.split("\\R", -1)) {
+            int units = line.codePoints().map(point -> point > 255 ? 2 : 1).sum();
+            lines += Math.max(1, (units + width - 1) / width);
+        }
+        return Math.min(409, Math.max(minimum, lines * 15 + 8));
     }
 
     private byte[] afterSalesDocument(Map<String, Object> record) {

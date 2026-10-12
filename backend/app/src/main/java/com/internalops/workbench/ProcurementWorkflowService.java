@@ -836,6 +836,7 @@ public class ProcurementWorkflowService {
             item.put("purchasePrice", row.get("purchase_price"));
             items.add(item);
         }
+        PurchaseSalesRequirements.enrich(jdbc, id, result, items);
         result.put("items", items);
         return result;
     }

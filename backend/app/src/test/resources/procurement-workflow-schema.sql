@@ -51,6 +51,9 @@ CREATE TABLE sales_order(
     order_no VARCHAR(50),
     status VARCHAR(40) NOT NULL,
     delivery_address VARCHAR(1000),
+    delivery_contact VARCHAR(100),
+    delivery_phone VARCHAR(60),
+    order_remark VARCHAR(1000),
     receipt_confirmed_at TIMESTAMP,
     version INT NOT NULL DEFAULT 0
 );
@@ -60,6 +63,7 @@ CREATE TABLE sales_order_item(
     line_no INT NOT NULL,
     sku_id BIGINT NOT NULL,
     quantity INT NOT NULL,
+    item_remark VARCHAR(1000),
     locked_quantity INT NOT NULL DEFAULT 0,
     uncovered_quantity INT NOT NULL DEFAULT 0,
     version INT NOT NULL DEFAULT 0

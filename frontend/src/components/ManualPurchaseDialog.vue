@@ -10,6 +10,7 @@ import {
   type ProductSupplierOption,
   type SupplierPurchaseInfoOption
 } from '../api/workbench'
+import PurchaseSalesRequirements from './PurchaseSalesRequirements.vue'
 
 const props = defineProps<{ purchase?: PurchaseDetail }>()
 const emit = defineEmits<{ close: []; saved: []; message: [text: string, kind?: 'success' | 'error'] }>()
@@ -302,6 +303,7 @@ onMounted(async () => {
       <header><h2 id="manual-purchase-title">{{ purchase ? '修改采购' : '新增采购单' }}</h2><button type="button" :disabled="saving" @click="requestClose">关闭</button></header>
       <form novalidate @submit.prevent="save">
         <div class="manual-purchase-scroll"><fieldset :disabled="initializing || Boolean(initializationError)" class="manual-purchase-fields">
+        <PurchaseSalesRequirements v-if="purchase" :requirements="purchase" :items="purchase.items" />
         <section v-if="addedLines.length" class="manual-purchase-lines" data-test="manual-purchase-lines">
           <h3>已添加 {{ addedLines.length }} 条明细 · {{ lockedSupplier?.supplierName }}</h3>
           <div v-for="(line, index) in addedLines" :key="index" class="manual-purchase-line" :data-test="`manual-line-${index}`">

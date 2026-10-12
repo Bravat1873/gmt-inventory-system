@@ -440,6 +440,7 @@ export function deleteInvoice(type: 'SALES' | 'PURCHASE', id: number, invoiceId:
 }
 
 export interface PurchaseReceiptItem {
+  remark?: string
   purchasePrice?: number
   productCode?: string
   model?: string
@@ -454,6 +455,9 @@ export interface PurchaseReceiptItem {
 }
 
 export interface PurchaseDetail {
+  salesDeliveryContact?: string
+  salesDeliveryAddress?: string
+  salesOrderRemark?: string
   version?: number
   status?: string
   supplierLocked?: boolean

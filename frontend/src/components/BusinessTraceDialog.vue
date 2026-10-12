@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BusinessTrace } from '../api/workbench'
 import ProductIdentityDisplay from './ProductIdentityDisplay.vue'
+import PurchaseSalesRequirements from './PurchaseSalesRequirements.vue'
 
 const props = defineProps<{ trace: BusinessTrace }>()
 const emit = defineEmits<{ close: [] }>()
@@ -44,6 +45,7 @@ function header(key: string) {
           <h3>{{ trace.type === 'order' ? '订单备注' : '采购备注' }}</h3>
           <p>{{ header('remark') === '—' ? '暂无备注' : header('remark') }}</p>
         </section>
+        <PurchaseSalesRequirements v-if="trace.type === 'purchase'" :requirements="trace.header" />
         <section class="trace-section">
           <h3>业务轨迹</h3>
           <ol v-if="trace.timeline.length" class="trace-timeline">
@@ -65,7 +67,7 @@ function header(key: string) {
               <div class="trace-detail-metrics">
                 <div v-for="key in detailKeys().filter(value => !['productCode','customerPartNumber','productName','model','configuration','unit'].includes(value))" :key="key"><span>{{ detailLabel(key) }}</span><strong>{{ value(row[key]) }}</strong></div>
               </div>
-              <div v-if="trace.type === 'order'" class="trace-line-remark" data-test="trace-line-remark"><span>明细备注</span><p>{{ value(row.remark) }}</p></div>
+              <div v-if="trace.type === 'order' || row.remark" class="trace-line-remark" data-test="trace-line-remark"><span>明细备注</span><p>{{ value(row.remark) }}</p></div>
             </article>
           </div>
           <p v-else class="trace-empty">暂无明细</p>

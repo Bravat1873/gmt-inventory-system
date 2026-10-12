@@ -20,6 +20,20 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../api/workbench', () => api)
 
+it('keeps synchronized sales requirements separate from editable procurement remarks', async () => {
+  const wrapper = mount(ManualPurchaseDialog, { props: { purchase: {
+    id: 1, purchaseNo: 'CG001', supplierId: 201, supplierName: '贝朗供应商', totalAmount: 220,
+    remark: '采购独立备注', salesDeliveryContact: 'DD001：张三 / 13800000000', salesDeliveryAddress: 'DD001：广州', salesOrderRemark: 'DD001：印logo\n标签中性',
+    items: [{ id: 11, skuId: 101, purchasePrice: 220, quantity: 1, receivedQuantity: 0, remainingQuantity: 1, remark: 'DD001 第1行：OA编号001' }]
+  } } })
+  await flushPromises()
+  expect(wrapper.get('[data-test="purchase-sales-requirements"]').text()).toContain('印logo\n标签中性')
+  expect(wrapper.get('[data-test="purchase-sales-line-remark"]').text()).toContain('OA编号001')
+  const textarea = wrapper.findAll('textarea').find(field => (field.element as HTMLTextAreaElement).value === '采购独立备注')
+  expect(textarea).toBeDefined()
+  expect((textarea!.element as HTMLTextAreaElement).value).not.toContain('印logo')
+})
+
 it('adds multiple products from one supplier and saves the pending product too', async () => {
   vi.clearAllMocks()
   const wrapper = mount(ManualPurchaseDialog)
