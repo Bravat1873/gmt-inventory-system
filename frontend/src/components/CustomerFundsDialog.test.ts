@@ -12,6 +12,7 @@ vi.mock('../api/customer-funds', () => ({
   submitCustomerDeposit: vi.fn(),
   reviewCustomerFundRequest: vi.fn(),
   canReviewCustomerFunds: (role:string) => role === 'ADMIN' || role === 'FINANCE'
+  ,fundSourceLabel:(source?:string)=>source==='FOREX'?'外汇':source==='DOMESTIC'?'国内':'未填写'
 }))
 
 it('shows balance warning without stretching the customer table and allows finance review', async () => {
@@ -21,7 +22,9 @@ it('shows balance warning without stretching the customer table and allows finan
   expect(wrapper.text()).toContain('余额不足')
   expect(wrapper.find('[data-test="fund-review-approve"]').exists()).toBe(true)
   await wrapper.get('[data-test="fund-review-approve"]').trigger('click')
-  expect(api.reviewCustomerFundRequest).toHaveBeenCalledWith(9, true, '')
+  expect(wrapper.text()).toContain('财务确认金额')
+  await wrapper.get('[data-test="submit-fund-review"]').trigger('submit')
+  expect(api.reviewCustomerFundRequest).toHaveBeenCalledWith(9, true, '', 30)
 })
 it('submits an optional selected customer order with the deposit', async () => {
   vi.mocked(api.submitCustomerDeposit).mockResolvedValueOnce(10)
@@ -43,9 +46,10 @@ it('allows a prepayment without selecting an order', async () => {
   const wrapper = mount(CustomerFundsDialog, { props: { customer: { id: 7, customerName: '测试客户' }, currentUserRole: 'FINANCE' } })
   await flushPromises()
   await wrapper.get('.fund-deposit input[type="number"]').setValue('50')
+  await wrapper.get('[data-test="customer-fund-source"]').setValue('FOREX')
   await wrapper.get('.fund-deposit').trigger('submit')
   await flushPromises()
-  expect(api.submitCustomerDeposit).toHaveBeenCalledWith(7, expect.objectContaining({ amount: 50, orderId: undefined }))
+  expect(api.submitCustomerDeposit).toHaveBeenCalledWith(7, expect.objectContaining({ amount: 50, orderId: undefined, fundSource:'FOREX' }))
 })
 
 it('submits a negative customer payment for review', async () => {

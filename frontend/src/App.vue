@@ -8,6 +8,7 @@ import DashboardPage from './components/DashboardPage.vue'
 import EntityDialog from './components/EntityDialog.vue'
 import CustomerDialog from './components/CustomerDialog.vue'
 import CustomerFundsDialog from './components/CustomerFundsDialog.vue'
+import CustomerFundsPage from './components/CustomerFundsPage.vue'
 import SupplierDialog from './components/SupplierDialog.vue'
 import OrderDialog from './components/OrderDialog.vue'
 import ManualPurchaseDialog from './components/ManualPurchaseDialog.vue'
@@ -58,6 +59,9 @@ const businessTrace = ref<BusinessTrace | null>(null)
 const productGalleryRow = ref<Record<string, unknown>>()
 const productCodeRulesOpen = ref(false)
 const productMenuOpen = ref(activeModule.value === 'product')
+const financeMenuOpen = ref(['finance','customerFunds'].includes(activeModule.value))
+const fundsPage = ref<InstanceType<typeof CustomerFundsPage>>()
+const navigationModules = moduleDefinitions.filter(item=>item.key!=='customerFunds')
 const editRow = ref<Record<string, unknown>>()
 const list = ref<InstanceType<typeof ModuleListPage>>()
 const actionInput = ref<{ title: string; label: string; placeholder: string; submit: (value: string) => Promise<void> } | null>(null)
@@ -131,6 +135,7 @@ function navigateFromDashboard(key: ModuleKey, keyword: string) {
 }
 
 function navigateModule(key: ModuleKey) {
+  if (key === 'finance') { const wasFinance = activeModule.value === 'finance'; selectModule(key); financeMenuOpen.value = wasFinance ? !financeMenuOpen.value : true; return }
   if (key === 'product') {
     const alreadyOnProduct = activeModule.value === 'product'
     productCodeRulesOpen.value = false
@@ -376,21 +381,22 @@ async function saved(closeDialog = true) {
   <div v-else class="app-shell">
     <aside class="sidebar" aria-label="主导航">
       <nav class="nav-list">
-        <template v-for="item in moduleDefinitions" :key="item.key">
-          <button class="nav-item" :class="{ active: activeModule === item.key }" :data-module="item.key" @click="navigateModule(item.key)">
-            <span>{{ item.label }}</span><svg v-if="item.key === 'product'" class="nav-chevron" :class="{ open: productMenuOpen }" aria-hidden="true" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <template v-for="item in navigationModules" :key="item.key">
+          <button class="nav-item" :class="{ active: activeModule === item.key || (item.key === 'finance' && activeModule === 'customerFunds') }" :data-module="item.key" @click="navigateModule(item.key)">
+            <span>{{ item.label }}</span><svg v-if="['product','finance'].includes(item.key)" class="nav-chevron" :class="{ open: item.key === 'product' ? productMenuOpen : financeMenuOpen }" aria-hidden="true" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
           </button>
           <button v-if="item.key === 'product' && productMenuOpen" class="nav-subitem" :class="{ active: productCodeRulesOpen }" @click="selectModule('product'); productCodeRulesOpen=true">产品编号规则</button>
+          <button v-if="item.key === 'finance' && financeMenuOpen" class="nav-subitem" :class="{ active: activeModule === 'customerFunds' }" data-test="funds-submenu" @click="selectModule('customerFunds')">资金管理</button>
         </template>
       </nav>
     </aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><DashboardPage v-if="activeModule === 'dashboard'" @navigate="navigateFromDashboard" /><ProductCodeRulesDialog v-else-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :deleting-purchase-id="deletingPurchaseId" :current-user-role="user.role" @action="primary" @import="openImport" @export-document="exportDocument" @export-summary="exportSummary" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @finance-review="openFinanceReview" @invoice="openInvoice" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @review-order="reviewOrderRow" @review-purchase="reviewPurchaseRow" @delete-order="deleteOrderRow" @delete-purchase="deletePurchaseRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
+    <main><div class="content"><DashboardPage v-if="activeModule === 'dashboard'" @navigate="navigateFromDashboard" /><ProductCodeRulesDialog v-else-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><CustomerFundsPage v-else-if="activeModule === 'customerFunds'" ref="fundsPage" :current-user-role="user.role" @customer="openCustomerFunds" @navigate-customer="name=>navigateFromDashboard('customer',name)" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :deleting-purchase-id="deletingPurchaseId" :current-user-role="user.role" @action="primary" @import="openImport" @export-document="exportDocument" @export-summary="exportSummary" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @receipt="receipt" @payment="payment" @finance-review="openFinanceReview" @invoice="openInvoice" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @review-order="reviewOrderRow" @review-purchase="reviewPurchaseRow" @delete-order="deleteOrderRow" @delete-purchase="deletePurchaseRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
     <div v-if="importOpen && currentModule.importType && canUseCurrentModuleImport" class="dialog-mask import-dialog-mask"><ImportPanel :type="currentModule.importType" :title="currentModule.importActionLabel ?? currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <CustomerDialog v-if="entityOpen && activeModule === 'customer'" :row="editRow" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
-    <CustomerFundsDialog v-if="customerFundsRow" :customer="customerFundsRow" :current-user-role="user.role" @close="customerFundsRow=undefined" @changed="list?.reload()" @message="showMessage" />
+    <CustomerFundsDialog v-if="customerFundsRow" :customer="customerFundsRow" :current-user-role="user.role" @close="customerFundsRow=undefined" @changed="list?.reload(); fundsPage?.reload()" @message="showMessage" />
     <SupplierDialog v-if="supplierOpen" :row="editRow" @close="supplierOpen=false" @saved="saved" @message="showMessage" />
     <OrderDialog v-if="orderOpen" :row="editRow" :current-user-role="user.role" :default-salesperson="user?.displayName" @close="orderOpen=false" @saved="saved" @message="showMessage" />
     <ManualPurchaseDialog v-if="manualPurchaseOpen" :purchase="editingPurchase" @close="manualPurchaseOpen=false; editingPurchase=undefined" @saved="saved" @message="showMessage" />

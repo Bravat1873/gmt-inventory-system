@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Objects;
 
@@ -27,6 +28,13 @@ public class CustomerFundService {
     @Transactional
     public long submitDeposit(long customerId, CustomerFundRequestCommand command) {
         if (command == null || command.amount() == null || command.amount().signum() == 0) throw new IllegalArgumentException("打款金额不能为 0");
+        validateAmount(command.amount().abs());
+        if (!"DOMESTIC".equals(command.fundSource()) && !"FOREX".equals(command.fundSource()))
+            throw new IllegalArgumentException("资金来源请选择外汇或国内");
+        if (command.paymentAt() == null && command.paymentDate() == null) throw new IllegalArgumentException("请填写打款时间");
+        if (blank(command.paymentMethod())) throw new IllegalArgumentException("请填写打款方式");
+        if (command.paymentAt() != null && command.paymentDate() != null
+                && !command.paymentAt().toLocalDate().equals(command.paymentDate())) throw new IllegalArgumentException("打款日期与时间不一致");
         ensureCustomer(customerId);
         String sourceType = null;
         Long sourceId = null;
@@ -38,8 +46,12 @@ public class CustomerFundService {
             sourceId = command.orderId();
         }
         CurrentUser user = CurrentUser.required();
-        return insertRequest(customerId, "CUSTOMER_DEPOSIT", command.amount(), command.paymentDate(),
+        long id = insertRequest(customerId, "CUSTOMER_DEPOSIT", command.amount(),
+                command.paymentAt() == null ? command.paymentDate() : command.paymentAt().toLocalDate(),
                 command.paymentMethod(), command.referenceNo(), sourceType, sourceId, command.remark(), user.id());
+        if (command.paymentAt() != null) jdbc.update("UPDATE customer_fund_request SET payment_at=? WHERE id=?", command.paymentAt(), id);
+        jdbc.update("UPDATE customer_fund_request SET fund_source=? WHERE id=?", command.fundSource(), id);
+        return id;
     }
 
     @Transactional
@@ -60,19 +72,28 @@ public class CustomerFundService {
     @Transactional
     public void review(long requestId, CustomerFundReviewCommand command) {
         requireReviewer();
+        if (command == null) throw new IllegalArgumentException("请填写资金确认结果");
         Map<String,Object> request = one("SELECT * FROM customer_fund_request WHERE id=? FOR UPDATE", requestId);
         if (!"PENDING".equals(String.valueOf(request.get("status")))) throw new IllegalStateException("资金申请已处理");
         CurrentUser reviewer = CurrentUser.required();
         String status = command.approved() ? "APPROVED" : "REJECTED";
-        int changed = jdbc.update("UPDATE customer_fund_request SET status=?,review_comment=?,reviewed_by=?,reviewed_at=?,version=version+1 WHERE id=? AND status='PENDING'",
-                status, clean(command.comment()), reviewer.id(), LocalDateTime.now(), requestId);
-        if (changed != 1) throw new IllegalStateException("资金申请已处理");
-        if (!command.approved()) return;
-        String type = String.valueOf(request.get("request_type"));
         BigDecimal requestedAmount = decimal(request.get("amount"));
-        post(number(request, "customer_id"), type, requestedAmount.signum() < 0 ? "OUT" : "IN", requestedAmount.abs(), requestId,
+        BigDecimal confirmed = null;
+        if (command.approved()) {
+            BigDecimal value = command.confirmedAmount() == null ? requestedAmount.abs() : command.confirmedAmount();
+            validateAmount(value);
+            confirmed = requestedAmount.signum() < 0 ? value.negate() : value;
+            if (confirmed.compareTo(requestedAmount) != 0 && blank(command.comment())) throw new IllegalArgumentException("调整确认金额时必须填写原因");
+        } else if (blank(command.comment())) {
+            throw new IllegalArgumentException("驳回时必须填写原因");
+        }
+        if (command.approved()) post(number(request, "customer_id"), String.valueOf(request.get("request_type")),
+                confirmed.signum() < 0 ? "OUT" : "IN", confirmed.abs(), requestId,
                 string(request.get("source_type")), nullableLong(request.get("source_id")), sourceNo(request), null,
                 clean(command.comment()));
+        int changed = jdbc.update("UPDATE customer_fund_request SET status=?,confirmed_amount=?,review_comment=?,reviewed_by=?,reviewed_at=?,version=version+1 WHERE id=? AND status='PENDING'",
+                status, confirmed, clean(command.comment()), reviewer.id(), LocalDateTime.now(), requestId);
+        if (changed != 1) throw new IllegalStateException("资金申请已处理");
     }
 
     @Transactional
@@ -121,8 +142,11 @@ public class CustomerFundService {
 
     private long insertRequest(long customerId, String type, BigDecimal amount, Object date, String method,
                                String referenceNo, String sourceType, Long sourceId, String remark, long userId) {
-        return insert("INSERT INTO customer_fund_request(customer_id,request_type,status,amount,payment_date,payment_method,reference_no,source_type,source_id,remark,submitted_by) VALUES(?,?,'PENDING',?,?,?,?,?,?,?,?)",
+        long id = insert("INSERT INTO customer_fund_request(customer_id,request_type,status,amount,payment_date,payment_method,reference_no,source_type,source_id,remark,submitted_by) VALUES(?,?,'PENDING',?,?,?,?,?,?,?,?)",
                 customerId, type, amount, date, clean(method), clean(referenceNo), sourceType, sourceId, clean(remark), userId);
+        String number = "ZJ" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMM")) + String.format("%05d", id);
+        jdbc.update("UPDATE customer_fund_request SET operation_no=? WHERE id=?", number, id);
+        return id;
     }
 
     private long insert(String sql, Object... args) {
@@ -157,6 +181,11 @@ public class CustomerFundService {
         return null;
     }
     private void requirePositive(BigDecimal value) { if (value == null || value.signum() <= 0) throw new IllegalArgumentException("金额必须大于 0"); }
+    private void validateAmount(BigDecimal value) {
+        requirePositive(value);
+        if (value.stripTrailingZeros().scale() > 4 || value.abs().compareTo(new BigDecimal("1000000000000000")) >= 0)
+            throw new IllegalArgumentException("金额最多保留四位小数且不能超过数据库金额范围");
+    }
     private long number(Map<String,Object> row, String key) { return ((Number)row.get(key)).longValue(); }
     private Long nullableLong(Object value) { return value == null ? null : ((Number)value).longValue(); }
     private BigDecimal decimal(Object value) { return value instanceof BigDecimal b ? b : new BigDecimal(String.valueOf(value)); }

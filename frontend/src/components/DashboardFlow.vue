@@ -16,12 +16,13 @@ defineEmits<{ select: [category: string] }>()
       <button
         class="lightning-flow-stage"
         :class="{ active: selected === stage.key }"
+        :aria-pressed="selected === stage.key"
         :data-flow-stage="stage.key"
         @click="$emit('select', stage.key)"
       >
         <span class="flow-step">{{ index + 1 }}</span>
         <span class="flow-copy">
-          <strong>{{ stage.value.toLocaleString() }}</strong>
+          <strong>{{ stage.value.toLocaleString() }}<em>{{ stage.key==='DELIVERY'?'单':'件' }}</em></strong>
           <b>{{ stage.label }}</b>
           <small>{{ stage.caption }}</small>
         </span>

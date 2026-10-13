@@ -25,11 +25,13 @@ public class CustomerFundQueryService {
         Map<String,Object> result = new LinkedHashMap<>();
         result.put("customerId", customerId); result.put("balance", balance); result.put("orderOutstandingAmount", outstanding);
         result.put("coverageRatio", coverage); result.put("pendingAmount", pending); result.put("insufficient", balance.compareTo(outstanding) < 0);
+        result.put("pendingReceipt", amount("SELECT COALESCE(SUM(amount),0) FROM customer_fund_request WHERE customer_id=? AND status='PENDING' AND request_type='CUSTOMER_DEPOSIT' AND amount>0", customerId));
+        result.put("pendingRefund", amount("SELECT COALESCE(SUM(-amount),0) FROM customer_fund_request WHERE customer_id=? AND status='PENDING' AND request_type='CUSTOMER_DEPOSIT' AND amount<0", customerId));
         return result;
     }
 
     public List<Map<String,Object>> requests(long customerId) {
-        return camel(jdbc.queryForList("SELECT id,request_type AS `requestType`,status,amount,payment_date AS `paymentDate`,payment_method AS `paymentMethod`,reference_no AS `referenceNo`,source_type AS `sourceType`,source_id AS `sourceId`,remark,review_comment AS `reviewComment`,submitted_by AS `submittedBy`,submitted_at AS `submittedAt`,reviewed_by AS `reviewedBy`,reviewed_at AS `reviewedAt` FROM customer_fund_request WHERE customer_id=? ORDER BY submitted_at DESC,id DESC", customerId));
+        return camel(jdbc.queryForList("SELECT r.id,r.fund_source AS `fundSource`,r.operation_no AS `operationNo`,r.request_type AS `requestType`,r.status,r.amount,r.confirmed_amount AS `confirmedAmount`,r.payment_at AS `paymentAt`,r.payment_date AS `paymentDate`,r.payment_method AS `paymentMethod`,r.reference_no AS `referenceNo`,r.source_type AS `sourceType`,r.source_id AS `sourceId`,r.remark,r.review_comment AS `reviewComment`,r.submitted_by AS `submittedBy`,r.submitted_at AS `submittedAt`,r.reviewed_by AS `reviewedBy`,r.reviewed_at AS `reviewedAt`,u.display_name AS `submittedByName`,reviewer.display_name AS `reviewedByName` FROM customer_fund_request r LEFT JOIN sys_user u ON u.id=r.submitted_by LEFT JOIN sys_user reviewer ON reviewer.id=r.reviewed_by WHERE r.customer_id=? ORDER BY r.submitted_at DESC,r.id DESC", customerId));
     }
 
     public List<Map<String,Object>> orderOptions(long customerId) {
@@ -67,14 +69,14 @@ public class CustomerFundQueryService {
 
     private List<Map<String,Object>> camel(List<Map<String,Object>> rows) {
         Map<String,String> names = Map.ofEntries(
-                Map.entry("requesttype","requestType"), Map.entry("paymentdate","paymentDate"), Map.entry("paymentmethod","paymentMethod"),
+                Map.entry("fundsource","fundSource"), Map.entry("operationno","operationNo"), Map.entry("paymentat","paymentAt"), Map.entry("confirmedamount","confirmedAmount"), Map.entry("submittedbyname","submittedByName"), Map.entry("reviewedbyname","reviewedByName"), Map.entry("requesttype","requestType"), Map.entry("paymentdate","paymentDate"), Map.entry("paymentmethod","paymentMethod"),
                 Map.entry("referenceno","referenceNo"), Map.entry("sourcetype","sourceType"), Map.entry("sourceid","sourceId"),
                 Map.entry("reviewcomment","reviewComment"), Map.entry("submittedby","submittedBy"), Map.entry("submittedat","submittedAt"),
                 Map.entry("reviewedby","reviewedBy"), Map.entry("reviewedat","reviewedAt"), Map.entry("entrytype","entryType"),
                 Map.entry("balancebefore","balanceBefore"), Map.entry("balanceafter","balanceAfter"), Map.entry("requestid","requestId"),
                 Map.entry("sourceno","sourceNo"), Map.entry("reversesledgerid","reversesLedgerId"), Map.entry("operatedby","operatedBy"),
                 Map.entry("operatedat","operatedAt"), Map.entry("orderno","orderNo"), Map.entry("orderdate","orderDate"));
-        return rows.stream().map(row -> { Map<String,Object> result=new LinkedHashMap<>(); row.forEach((key,value)->result.put(names.getOrDefault(key.replace("_","").toLowerCase(),key.toLowerCase()),value)); return result; }).toList();
+        return rows.stream().map(row -> { Map<String,Object> result=new LinkedHashMap<>(); row.forEach((key,value)->result.put(names.getOrDefault(key.replace("_","").toLowerCase(),key.toLowerCase()),value instanceof java.sql.Timestamp timestamp ? timestamp.toLocalDateTime() : value)); return result; }).toList();
     }
     private BigDecimal amount(String sql, long id) { BigDecimal value=jdbc.queryForObject(sql,BigDecimal.class,id); return value==null?BigDecimal.ZERO:value; }
     private static BigDecimal decimal(Object value) { return value instanceof BigDecimal b ? b : new BigDecimal(String.valueOf(value)); }

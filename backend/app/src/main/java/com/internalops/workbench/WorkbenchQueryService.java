@@ -24,7 +24,7 @@ public class WorkbenchQueryService {
             "EXCEL_INBOUND", "EXCEL_OUTBOUND", "MANUAL_INBOUND", "MANUAL_OUTBOUND");
     private static final Set<String> INVENTORY_MOVEMENT_INBOUND_TYPES = Set.of("EXCEL_INBOUND", "MANUAL_INBOUND");
     private static final Map<String, String> CAMEL_KEYS = Map.ofEntries(
-            Map.entry("customercode", "customerCode"), Map.entry("customername", "customerName"),
+            Map.entry("fundbalance", "fundBalance"), Map.entry("pendingreceipt", "pendingReceipt"), Map.entry("pendingrefund", "pendingRefund"), Map.entry("customercode", "customerCode"), Map.entry("customername", "customerName"),
             Map.entry("contactname", "contactName"), Map.entry("displayname", "displayName"),
             Map.entry("businesscontactname", "businessContactName"), Map.entry("businesscontactphone", "businessContactPhone"),
             Map.entry("ordercontactname", "orderContactName"), Map.entry("ordercontactphone", "orderContactPhone"),
@@ -425,6 +425,9 @@ public class WorkbenchQueryService {
     private void registerModules() {
         modules.put("customer", new ModuleSpec(
                 "SELECT c.id, c.customer_code AS `customerCode`, c.customer_name AS `customerName`, c.address, "
+                        + "COALESCE((SELECT a.balance FROM customer_fund_account a WHERE a.customer_id=c.id),0) AS `fundBalance`, "
+                        + "COALESCE((SELECT SUM(r.amount) FROM customer_fund_request r WHERE r.customer_id=c.id AND r.status='PENDING' AND r.request_type='CUSTOMER_DEPOSIT' AND r.amount>0),0) AS `pendingReceipt`, "
+                        + "COALESCE((SELECT SUM(-r.amount) FROM customer_fund_request r WHERE r.customer_id=c.id AND r.status='PENDING' AND r.request_type='CUSTOMER_DEPOSIT' AND r.amount<0),0) AS `pendingRefund`, "
                         + "c.business_contact_name AS `businessContactName`, c.business_contact_phone AS `businessContactPhone`, "
                         + "c.order_contact_name AS `orderContactName`, c.order_contact_phone AS `orderContactPhone`, "
                         + "c.finance_contact_name AS `financeContactName`, c.finance_contact_phone AS `financeContactPhone`, "

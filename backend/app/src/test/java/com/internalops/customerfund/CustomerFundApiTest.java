@@ -42,7 +42,7 @@ class CustomerFundApiTest {
     @Test
     void overviewShowsBalanceOutstandingCoverageAndPendingAmount() throws Exception {
         mvc.perform(post("/api/customers/1/funds/deposits").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":30,\"paymentDate\":\"2026-08-14\",\"paymentMethod\":\"银行转账\"}"))
+                        .content("{\"amount\":30,\"paymentDate\":\"2026-08-14\",\"fundSource\":\"DOMESTIC\",\"paymentMethod\":\"银行转账\"}"))
                 .andExpect(status().isOk());
 
         mvc.perform(get("/api/customers/1/funds/overview"))
@@ -59,7 +59,7 @@ class CustomerFundApiTest {
         String from = today.withDayOfMonth(1).toString();
         String to = today.withDayOfMonth(today.lengthOfMonth()).toString();
         String response = mvc.perform(post("/api/customers/1/funds/deposits").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":100,\"paymentDate\":\"2026-08-14\",\"paymentMethod\":\"银行转账\"}"))
+                        .content("{\"amount\":100,\"paymentDate\":\"2026-08-14\",\"fundSource\":\"DOMESTIC\",\"paymentMethod\":\"银行转账\"}"))
                 .andReturn().getResponse().getContentAsString();
         long id = Long.parseLong(response.replaceAll(".*\\\"data\\\":([0-9]+).*", "$1"));
         mvc.perform(post("/api/customer-funds/requests/" + id + "/review").contentType(MediaType.APPLICATION_JSON)
@@ -83,7 +83,7 @@ class CustomerFundApiTest {
                 .andExpect(jsonPath("$.data.length()").value(1));
 
         String response = mvc.perform(post("/api/customers/1/funds/deposits").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":100,\"paymentDate\":\"2026-08-14\",\"paymentMethod\":\"银行转账\",\"orderId\":10}"))
+                        .content("{\"amount\":100,\"paymentDate\":\"2026-08-14\",\"fundSource\":\"DOMESTIC\",\"paymentMethod\":\"银行转账\",\"orderId\":10}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         long id = Long.parseLong(response.replaceAll(".*\\\"data\\\":([0-9]+).*", "$1"));
         mvc.perform(post("/api/customer-funds/requests/" + id + "/review").contentType(MediaType.APPLICATION_JSON)
@@ -94,10 +94,10 @@ class CustomerFundApiTest {
                 .andExpect(jsonPath("$.data[0].sourceNo").value("SO-001"));
 
         mvc.perform(post("/api/customers/1/funds/deposits").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":10,\"paymentDate\":\"2026-08-14\",\"paymentMethod\":\"银行转账\",\"orderId\":30}"))
+                        .content("{\"amount\":10,\"paymentDate\":\"2026-08-14\",\"fundSource\":\"DOMESTIC\",\"paymentMethod\":\"银行转账\",\"orderId\":30}"))
                 .andExpect(status().isBadRequest());
         mvc.perform(post("/api/customers/1/funds/deposits").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":10,\"paymentDate\":\"2026-08-14\",\"paymentMethod\":\"银行转账\",\"orderId\":31}"))
+                        .content("{\"amount\":10,\"paymentDate\":\"2026-08-14\",\"fundSource\":\"DOMESTIC\",\"paymentMethod\":\"银行转账\",\"orderId\":31}"))
                 .andExpect(status().isBadRequest());
     }
 }

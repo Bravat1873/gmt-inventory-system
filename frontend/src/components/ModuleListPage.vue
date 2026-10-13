@@ -24,6 +24,7 @@ async function load(page = readAddress()) { loading.value = true; writeAddress(p
 function search() { load(1) }
 function orderBy(field: string) { if (!field) return; direction.value = sort.value === field && direction.value === 'asc' ? 'desc' : 'asc'; sort.value = field; load(1) }
 function text(value: unknown, field?: string) {
+  if (field && ['fundBalance','pendingReceipt','pendingRefund'].includes(field)) return '¥ ' + Number(value??0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:4})
   if (value === true) return '启用'; if (value === false) return '停用'; if (value == null || value === '') return '—'
   if (field === 'inventoryAgeDays') return `${Number(value)} 天`
   if (field === 'productType') return ({ SMART_LOCK: '智能锁', ENTRY_DOOR: '入户门' } as Record<string, string>)[String(value)] ?? String(value)

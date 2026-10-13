@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS customer_fund_request;
+DROP TABLE IF EXISTS customer_fund_account;
 DROP TABLE IF EXISTS product_image;
 DROP TABLE IF EXISTS inventory_balance;
 DROP TABLE IF EXISTS warehouse;
@@ -134,3 +136,6 @@ INSERT INTO sku_supplier_config(sku_id,supplier_id,purchase_price,moq,lead_time_
 (101,203,105.0000,2,5,TRUE);
 
 ALTER TABLE sku ADD COLUMN sales_minimum_order_quantity INT NOT NULL DEFAULT 1;
+
+CREATE TABLE customer_fund_account(customer_id BIGINT PRIMARY KEY,balance DECIMAL(19,4));
+CREATE TABLE customer_fund_request(id BIGINT PRIMARY KEY,customer_id BIGINT,status VARCHAR(20),request_type VARCHAR(30),amount DECIMAL(19,4));
