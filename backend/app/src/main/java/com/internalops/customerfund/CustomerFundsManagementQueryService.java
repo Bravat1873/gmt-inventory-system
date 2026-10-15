@@ -30,6 +30,11 @@ public class CustomerFundsManagementQueryService {
 
     public Map<String, Object> operations(boolean ledger, int page, Long customerId, String keyword,
                                           String status, String direction, String fundSource, LocalDate from, LocalDate to) {
+        return operations(ledger,page,customerId,keyword,status,direction,fundSource,from,to,false);
+    }
+
+    public Map<String, Object> operations(boolean ledger, int page, Long customerId, String keyword,
+                                          String status, String direction, String fundSource, LocalDate from, LocalDate to, boolean exportAll) {
         if (from != null && to != null && to.isBefore(from)) throw new IllegalArgumentException("结束日期不能早于开始日期");
         if (status != null && !Set.of("PENDING","APPROVED","REJECTED","REVERSED").contains(status)) throw new IllegalArgumentException("不支持的资金状态");
         if (direction != null && !Set.of("IN","OUT").contains(direction)) throw new IllegalArgumentException("不支持的资金方向");
@@ -86,8 +91,9 @@ public class CustomerFundsManagementQueryService {
         if (from != null) { where.append(" AND ").append(time).append(">=?"); args.add(from.atStartOfDay()); }
         if (to != null) { where.append(" AND ").append(time).append("<?"); args.add(to.plusDays(1).atStartOfDay()); }
         Long total = jdbc.queryForObject("SELECT COUNT(*) " + join + where, Long.class, args.toArray());
-        List<Object> paged = new ArrayList<>(args); paged.add(10); paged.add((Math.max(1,page)-1)*10);
-        List<Map<String,Object>> items = rows(select+join+where+" ORDER BY "+time+" DESC,"+prefix+".id DESC LIMIT ? OFFSET ?",paged);
+        List<Object> paged = new ArrayList<>(args);
+        if (!exportAll) { paged.add(10); paged.add((Math.max(1,page)-1)*10); }
+        List<Map<String,Object>> items = rows(select+join+where+" ORDER BY "+time+" DESC,"+prefix+".id DESC"+(exportAll ? "" : " LIMIT ? OFFSET ?"),paged);
         Map<String,Object> result = new LinkedHashMap<>();
         result.put("items",items); result.put("total",total); result.put("page",Math.max(1,page)); result.put("pageSize",10);
         if (!ledger) {

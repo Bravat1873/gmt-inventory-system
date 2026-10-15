@@ -140,8 +140,10 @@ it('places order type after customer in order and after-sales lists', () => {
   for (const key of ['order', 'afterSales'] as const) {
     const module = moduleDefinitions.find(item => item.key === key)!
     const customerIndex = module.fields.indexOf('customerName')
-    expect(module.fields[customerIndex + 1]).toBe('orderType')
-    expect(module.columns[customerIndex + 1]).toBe('订单类型')
+    const typeIndex = customerIndex + (key === 'order' ? 2 : 1)
+    if (key === 'order') expect(module.fields[customerIndex + 1]).toBe('fundBalance')
+    expect(module.fields[typeIndex]).toBe('orderType')
+    expect(module.columns[typeIndex]).toBe('订单类型')
   }
 })
 

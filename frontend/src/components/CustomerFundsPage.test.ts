@@ -4,7 +4,7 @@ import CustomerFundsPage from './CustomerFundsPage.vue'
 import * as api from '../api/customer-funds'
 const pending={id:1,customerId:7,customerName:'测试客户',customerCode:'C007',operationNo:'ZJ20261000001',amount:100,direction:'IN' as const,fundSource:'FOREX' as const,status:'PENDING',submittedByName:'登记员',submittedAt:'2026-10-12T10:00:01',paymentAt:'2026-10-11T14:05:06'}
 vi.mock('../api/customer-funds',()=>({
- loadFundCustomers:vi.fn(),loadFundOperations:vi.fn(),reviewCustomerFundRequest:vi.fn(),reverseCustomerFund:vi.fn(),
+ downloadFundExport:vi.fn().mockResolvedValue(undefined),loadFundCustomers:vi.fn(),loadFundOperations:vi.fn(),reviewCustomerFundRequest:vi.fn(),reverseCustomerFund:vi.fn(),
  loadCustomerFundOrders:vi.fn().mockResolvedValue([]),submitCustomerDeposit:vi.fn(),
  canReviewCustomerFunds:(role:string)=>['ADMIN','FINANCE'].includes(role)
  ,fundSourceLabel:(source?:string)=>source==='FOREX'?'外汇':source==='DOMESTIC'?'国内':'未填写'
@@ -14,6 +14,17 @@ beforeEach(()=>{
  vi.mocked(api.loadFundCustomers).mockResolvedValue([{id:7,customerCode:'C007',customerName:'测试客户',enabled:true,balance:500}])
  vi.mocked(api.loadFundOperations).mockResolvedValue({items:[pending],total:1,page:1,pageSize:10,summary:{pendingReceipt:100,pendingRefund:20,confirmedReceipt:500,confirmedRefund:0}})
  vi.mocked(api.reviewCustomerFundRequest).mockResolvedValue({})
+})
+it('exports all matching funds using the current filters and active tab',async()=>{
+ const wrapper=mount(CustomerFundsPage,{props:{currentUserRole:'FINANCE'}});await flushPromises()
+ await wrapper.get('[data-test="fund-source-filter"]').setValue('FOREX')
+ await wrapper.get('[data-test="export-funds"]').trigger('click');await flushPromises()
+ expect(api.downloadFundExport).toHaveBeenCalledWith(expect.any(URLSearchParams),false)
+ expect(vi.mocked(api.downloadFundExport).mock.calls[0][0].get('fundSource')).toBe('FOREX')
+ expect(vi.mocked(api.downloadFundExport).mock.calls[0][0].has('page')).toBe(false)
+ await wrapper.findAll('.fund-tabs button')[1].trigger('click');await flushPromises()
+ await wrapper.get('[data-test="export-funds"]').trigger('click');await flushPromises()
+ expect(api.downloadFundExport).toHaveBeenLastCalledWith(expect.any(URLSearchParams),true)
 })
 it('renders required fields, separate totals and customer navigation',async()=>{
  const wrapper=mount(CustomerFundsPage,{props:{currentUserRole:'FINANCE'}});await flushPromises()

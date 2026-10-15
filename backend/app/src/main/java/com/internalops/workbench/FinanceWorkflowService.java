@@ -1,6 +1,7 @@
 package com.internalops.workbench;
 
 import com.internalops.customerfund.CustomerFundService;
+import com.internalops.auth.CurrentUser;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -55,6 +56,30 @@ public class FinanceWorkflowService {
     }
 
     private Map<String, Object> order(long id) { return jdbc.queryForMap("SELECT status,total_amount,customer_id,order_no FROM sales_order WHERE id=? FOR UPDATE", id); }
+
+    @Transactional
+    public Map<String, Object> payOrder(long id, BigDecimal expectedAmount) {
+        if (!CurrentUser.required().role().canWriteFinance()) throw new SecurityException("只有财务或管理员可以支付订单");
+        Map<String, Object> order = order(id);
+        String status = String.valueOf(order.get("status"));
+        if ("DRAFT".equals(status) || "CANCELLED".equals(status)) throw new IllegalStateException("草稿或已取消订单不能支付");
+        BigDecimal outstanding = receivableAmount(id).subtract(receivedAmount(id));
+        if (outstanding.signum() <= 0) throw new IllegalStateException("订单已支付，无需重复支付");
+        if (expectedAmount == null || outstanding.compareTo(expectedAmount) != 0) throw new IllegalStateException("订单待支付金额已变化，请重新打开支付窗口");
+        Integer pending = jdbc.queryForObject("SELECT COUNT(*) FROM customer_receipt WHERE sales_order_id=? AND review_status='PENDING'", Integer.class, id);
+        if (pending != null && pending > 0) throw new IllegalStateException("订单存在待复核收款，请先在财务管理处理后再支付");
+        LocalDateTime now = LocalDateTime.now();
+        long userId = CurrentUser.required().id();
+        customerFunds.debitForOrder(id, outstanding, "订单支付：客户余额抵扣");
+        jdbc.update("""
+                INSERT INTO customer_receipt(sales_order_id,amount,confirmed_amount,payment_method,payment_remark,
+                    received_at,confirmed_by,review_status,reviewed_by,reviewed_at,review_remark)
+                VALUES(?,?,?,'客户余额','订单支付',?,?,'APPROVED',?,?,'订单支付：客户余额抵扣')
+                """, id, outstanding, outstanding, now, userId, userId, now);
+        jdbc.update("UPDATE sales_order SET receipt_confirmed_at=?,updated_at=?,version=version+1 WHERE id=?", now, now, id);
+        return Map.of("id", id, "paymentStatus", "PAID", "paidAmount", outstanding,
+                "customerBalance", customerFunds.balance(((Number) order.get("customer_id")).longValue()));
+    }
 
     private BigDecimal receivableAmount(long id) {
         BigDecimal result = jdbc.queryForObject("SELECT COALESCE(SUM(i.quantity * i.sale_price), 0) FROM sales_order_item i WHERE i.sales_order_id=?", BigDecimal.class, id);

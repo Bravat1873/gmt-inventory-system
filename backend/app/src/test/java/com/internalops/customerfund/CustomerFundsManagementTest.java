@@ -28,7 +28,7 @@ class CustomerFundsManagementTest {
         var json=new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
         json.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         mvc=MockMvcBuilders.standaloneSetup(new CustomerFundsManagementController(queries))
-                .setMessageConverters(new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(json)).build();
+                .setMessageConverters(new org.springframework.http.converter.ByteArrayHttpMessageConverter(),new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(json)).build();
         CurrentUser.set(new CurrentUser(9,"finance","财务",UserRole.FINANCE));
     }
     @AfterEach void cleanup(){CurrentUser.clear();db.shutdown();}
@@ -97,6 +97,30 @@ class CustomerFundsManagementTest {
         mvc.perform(get("/api/customer-funds/operations").param("direction","bad")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/customer-funds/operations").param("from","2026-10-13").param("to","2026-10-12")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/customer-funds/customers")).andExpect(status().isOk()).andExpect(jsonPath("$.data[0].customerCode").exists());
+    }
+
+    @Test void excelExportIncludesEveryFilteredRowAndSeparateLedger() throws Exception {
+        for(int i=0;i<12;i++)deposit("1");
+        var response=mvc.perform(get("/api/customer-funds/operations/export").param("customerId","1").param("status","PENDING"))
+                .andExpect(status().isOk()).andExpect(header().string("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andReturn().getResponse();
+        try(var book=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(response.getContentAsByteArray()))) {
+            assertThat(book.getSheetAt(0).getLastRowNum()).isEqualTo(12);
+            assertThat(book.getSheetAt(0).getRow(0).getCell(0).getStringCellValue()).isEqualTo("操作编号");
+            assertThat(book.getSheetAt(0).getRow(1).getCell(2).getStringCellValue()).isEqualTo("测试客户");
+            assertThat(book.getSheet("筛选汇总").getRow(0).getCell(1).getNumericCellValue()).isEqualTo(12);
+        }
+        mvc.perform(get("/api/customer-funds/ledger/export").param("direction","bad")).andExpect(status().isBadRequest());
+        long id=deposit("100");commands.review(id,new CustomerFundReviewCommand(true,"到账"));
+        commands.debitForOrder(10,new BigDecimal("20"),"订单抵扣");
+        var ledger=mvc.perform(get("/api/customer-funds/ledger/export").param("direction","OUT"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        try(var book=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(ledger.getContentAsByteArray()))) {
+            assertThat(book.getSheetAt(0).getLastRowNum()).isEqualTo(1);
+            assertThat(book.getSheetAt(0).getRow(1).getCell(4).getStringCellValue()).isEqualTo("订单抵扣");
+            assertThat(book.getSheetAt(0).getRow(1).getCell(10).getNumericCellValue()).isEqualTo(100);
+            assertThat(book.getSheetAt(0).getRow(1).getCell(11).getNumericCellValue()).isEqualTo(80);
+        }
     }
 
     @Test void rejectsExcessPrecisionAndInsufficientBalanceWithoutChangingState(){

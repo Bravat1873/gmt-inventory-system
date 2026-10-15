@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import type { UserRole } from '../api/auth'
-import { fundSourceLabel, canReviewCustomerFunds, loadFundCustomers, loadFundOperations, reverseCustomerFund, type FundCustomer, type FundOperation, type FundPage } from '../api/customer-funds'
+import { downloadFundExport, fundSourceLabel, canReviewCustomerFunds, loadFundCustomers, loadFundOperations, reverseCustomerFund, type FundCustomer, type FundOperation, type FundPage } from '../api/customer-funds'
 import { formatDateTimeToSecond } from '../utils/date-time'
 import FundOperationDialog from './FundOperationDialog.vue'
 import FundReviewDialog from './FundReviewDialog.vue'
@@ -19,9 +19,12 @@ const statuses:Record<string,string>={PENDING:'待确认',APPROVED:'已确认',R
 const types:Record<string,string>={CUSTOMER_DEPOSIT:'客户打款',ORDER_RECEIPT:'订单抵扣',ORDER_REFUND:'订单抵扣退回',AFTER_SALES_REFUND:'售后退回余额',REVERSAL:'冲正'}
 const summaryMetrics=[{key:'pendingReceipt',label:'待确认收款'},{key:'pendingRefund',label:'待确认退款'},{key:'confirmedReceipt',label:'已确认收款'},{key:'confirmedRefund',label:'已确认退款'}] as const
 let generation=0
+const exporting=ref(false)
+function filterParams(){const params=new URLSearchParams();for(const [key,value] of Object.entries(filters))if(value!==null&&value!=='')params.set(key,String(value));return params}
+async function exportFunds(){exporting.value=true;try{await downloadFundExport(filterParams(),tab.value==='ledger');emit('message','资金 Excel 已开始下载')}catch(cause){emit('message',cause instanceof Error?cause.message:'资金导出失败','error')}finally{exporting.value=false}}
 async function load(page=1){
  const token=++generation;loading.value=true;error.value=''
- const params=new URLSearchParams({page:String(page)});for(const [key,value] of Object.entries(filters))if(value!==null&&value!=='')params.set(key,String(value))
+ const params=filterParams();params.set('page',String(page))
  try{const result=await loadFundOperations(params,tab.value==='ledger');if(token===generation)data.value=result}catch(cause){if(token===generation){error.value=cause instanceof Error?cause.message:'读取资金记录失败';data.value={items:[],total:0,page:1,pageSize:10}}}finally{if(token===generation)loading.value=false}
 }
 async function reload(){try{customers.value=await loadFundCustomers();await load(data.value.page)}catch(cause){error.value=cause instanceof Error?cause.message:'读取客户失败'}}
@@ -32,7 +35,7 @@ onMounted(reload);defineExpose({reload})
 </script>
 <template>
  <section class="customer-funds-page">
-  <header class="funds-page-heading"><div><h1>资金管理</h1><p>客户收付款登记、资金确认及余额流水</p></div><button class="primary-action" data-test="new-fund-operation" :disabled="loading" @click="newOpen=true">新增资金记录</button></header>
+  <header class="funds-page-heading"><div><h1>资金管理</h1><p>客户收付款登记、资金确认及余额流水</p></div><div class="fund-heading-actions"><button class="secondary-action" data-test="export-funds" :disabled="loading||exporting" @click="exportFunds">{{ exporting?'正在导出…':'导出资金数据' }}</button><button class="primary-action" data-test="new-fund-operation" :disabled="loading" @click="newOpen=true">新增资金记录</button></div></header>
   <nav class="fund-tabs"><button :class="{active:tab==='operations'}" @click="switchTab('operations')">收付款登记</button><button :class="{active:tab==='ledger'}" @click="switchTab('ledger')">余额流水</button></nav>
   <form class="funds-filters" @submit.prevent="load()">
    <label><span>客户</span><FuzzyPicker v-model="filters.customerId" :options="options" placeholder="全部客户，可搜索名称或编码" /></label>
@@ -97,6 +100,7 @@ onMounted(reload);defineExpose({reload})
  <div v-if="reversal" class="dialog-mask"><section class="dialog-card" role="dialog" aria-modal="true"><header><h2>冲正资金记录</h2><button :disabled="reversing" @click="reversal=undefined">关闭</button></header><form @submit.prevent="reverse"><p>{{ reversal.operationNo }} · {{ reversal.customerName }} · ¥ {{ money(reversal.confirmedAmount??reversal.amount) }}</p><label><span>冲正原因</span><textarea v-model="reversalReason" maxlength="1000" :disabled="reversing"></textarea></label><p v-if="error" class="form-error" role="alert">{{ error }}</p><footer><button class="primary-action" :disabled="reversing">确认冲正</button></footer></form></section></div>
 </template>
 <style scoped>
+.fund-heading-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end}@media(max-width:650px){.funds-page-heading{flex-wrap:wrap}.fund-heading-actions{justify-content:flex-start}}
 .funds-page-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}h1{margin:0;font-size:25px}.funds-page-heading p{color:#64748b;margin:8px 0 0}.funds-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:16px 0}.funds-filters label{display:flex;flex-direction:column;gap:6px;min-width:130px}.funds-filters label:first-child{width:260px}.funds-filters input,.funds-filters select{padding:9px;border:1px solid #d4d9df;border-radius:4px;min-width:0}.funds-filters span{font-size:13px}.funds-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.funds-summary>div{border:1px solid #dce3ec;border-radius:8px;padding:16px;background:#fff}.funds-summary span{display:block;color:#64748b;font-size:13px}.funds-summary strong{display:block;margin-top:8px;font-size:20px;overflow-wrap:anywhere}.funds-table-scroll{overflow:auto;border:1px solid #dce3ec;background:#fff}.funds-table-scroll table{border-collapse:collapse;min-width:1500px;width:100%;font-size:13px}.funds-table-scroll th,.funds-table-scroll td{padding:13px 12px;border-bottom:1px solid #e5e9ef;text-align:left;vertical-align:middle;white-space:nowrap}.funds-table-scroll th{background:#f8fafc}.funds-table-scroll small{display:block;color:#64748b;margin-top:5px}.fund-row-actions{display:flex;gap:8px}.fund-row-actions button,.funds-pagination button{border:1px solid #cbd5e1;background:#fff;border-radius:4px;padding:6px 10px;cursor:pointer}.fund-amount{font-variant-numeric:tabular-nums}.danger{color:#b91c1c}.funds-empty{text-align:center!important;padding:30px!important;color:#64748b}.funds-pagination{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px}.fund-detail{padding:20px 22px;white-space:pre-wrap;overflow-wrap:anywhere}@media(max-width:650px){.funds-page-heading{align-items:flex-start}.funds-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.funds-filters label{flex:1;min-width:140px}.funds-filters label:first-child{width:100%}.funds-filters input{width:100%;box-sizing:border-box}.funds-page-heading .primary-action{white-space:nowrap}}
 </style>
 <style scoped>

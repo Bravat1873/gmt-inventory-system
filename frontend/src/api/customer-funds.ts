@@ -30,3 +30,10 @@ export interface FundPage { items:FundOperation[]; total:number; page:number; pa
 export const loadFundCustomers=()=>request<FundCustomer[]>('/api/customer-funds/customers')
 export const loadFundOperations=(params:URLSearchParams,ledger=false)=>request<FundPage>(`/api/customer-funds/${ledger?'ledger':'operations'}?${params}`)
 export const reverseCustomerFund=(id:number,reason:string)=>request(`/api/customer-funds/ledger/${id}/reverse`,{method:'POST',body:JSON.stringify({reason})})
+export async function downloadFundExport(params:URLSearchParams,ledger=false) {
+  const response=await fetch(`/api/customer-funds/${ledger?'ledger':'operations'}/export?${params}`,{credentials:'include'})
+  if(!response.ok){const payload=await response.json().catch(()=>null);throw new Error(payload?.message||'资金导出失败')}
+  const url=URL.createObjectURL(await response.blob())
+  const link=document.createElement('a');link.href=url;link.download=ledger?'客户余额流水.xlsx':'客户收付款资金数据.xlsx'
+  document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)
+}

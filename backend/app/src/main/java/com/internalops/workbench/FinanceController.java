@@ -13,6 +13,8 @@ public class FinanceController {
     private final FinanceReviewService review;
     private final FinanceInvoiceService invoices;
     public FinanceController(FinanceWorkflowService workflow, FinanceReviewService review, FinanceInvoiceService invoices) { this.workflow=workflow; this.review=review; this.invoices=invoices; }
+    public record OrderPaymentRequest(java.math.BigDecimal expectedAmount) {}
+    @PostMapping("/{id}/pay") public ApiResponse<Map<String,Object>> pay(@PathVariable long id,@RequestBody OrderPaymentRequest request){requireFinanceWrite();return ApiResponse.ok(workflow.payOrder(id,request.expectedAmount()));}
     @PostMapping("/{id}/receipt") public ApiResponse<Map<String,Object>> receipt(@PathVariable long id,@RequestBody FinanceActionRequest request){requireFinanceWrite();return ApiResponse.ok(workflow.receipt(id,request));}
     @GetMapping("/{type}/{id}/records") public ApiResponse<Object> records(@PathVariable String type,@PathVariable long id){return ApiResponse.ok(review.records(type,id));}
     @PostMapping("/receipts/{id}/review") public ApiResponse<Map<String,Object>> reviewReceipt(@PathVariable long id,@RequestBody FinanceReviewRequest request){requireFinanceWrite();return ApiResponse.ok(review.reviewReceipt(id,request));}

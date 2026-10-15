@@ -15,16 +15,13 @@ vi.mock('../api/customer-funds', () => ({
   ,fundSourceLabel:(source?:string)=>source==='FOREX'?'外汇':source==='DOMESTIC'?'国内':'未填写'
 }))
 
-it('shows balance warning without stretching the customer table and allows finance review', async () => {
-  const wrapper = mount(CustomerFundsDialog, { props: { customer: { id: 7, customerName: '测试客户' }, currentUserRole: 'FINANCE' } })
+it.each(['FINANCE', 'ADMIN', 'USER'] as const)('keeps confirmation exclusively in funds management for %s', async role => {
+  const wrapper = mount(CustomerFundsDialog, { props: { customer: { id: 7, customerName: '测试客户' }, currentUserRole: role } })
   await flushPromises()
   expect(wrapper.text()).toContain('¥ 120.00')
   expect(wrapper.text()).toContain('余额不足')
-  expect(wrapper.find('[data-test="fund-review-approve"]').exists()).toBe(true)
-  await wrapper.get('[data-test="fund-review-approve"]').trigger('click')
-  expect(wrapper.text()).toContain('财务确认金额')
-  await wrapper.get('[data-test="submit-fund-review"]').trigger('submit')
-  expect(api.reviewCustomerFundRequest).toHaveBeenCalledWith(9, true, '', 30)
+  expect(wrapper.find('[data-test="fund-review-approve"]').exists()).toBe(false)
+  expect(wrapper.text()).toContain('请到资金管理确认')
 })
 it('submits an optional selected customer order with the deposit', async () => {
   vi.mocked(api.submitCustomerDeposit).mockResolvedValueOnce(10)

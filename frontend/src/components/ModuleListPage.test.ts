@@ -78,7 +78,7 @@ it('shows a finance summary export action', async () => {
   expect(wrapper.emitted('exportSummary')).toHaveLength(1)
 })
 
-it('shows finance registration and review but not invoice maintenance for finance users', async () => {
+it('shows finance review without registration but not invoice maintenance for finance users', async () => {
   loadModule.mockResolvedValue({ items: [{
     id: 1,
     cashDirection: 'RECEIVABLE',
@@ -90,7 +90,7 @@ it('shows finance registration and review but not invoice maintenance for financ
   await flushPromises()
 
   expect(wrapper.get('[data-test="view-details"]').text()).toBe('查看')
-  expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(true)
+  expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(false)
   expect(wrapper.find('[data-test="invoice"]').exists()).toBe(false)
   expect(wrapper.get('.row-actions').text()).toContain('复核')
 })
@@ -283,7 +283,7 @@ it('shortens customer, order, after-sales and finance row action labels', async 
   loadModule.mockResolvedValueOnce({ items: [{ id: 1, cashDirection: 'RECEIVABLE', outstandingAmount: 120, pendingReviewCount: 2 }], total: 1, page: 1, pageSize: 10, totalPages: 1 })
   const finance = mount(ModuleListPage, { props: { module: moduleDefinitions.find(item => item.key === 'finance')!, currentUserRole: 'ADMIN' } })
   await flushPromises()
-  expect(finance.get('[data-test="finance-receipt"]').text()).toBe('登记')
+  expect(finance.find('[data-test="finance-receipt"]').exists()).toBe(false)
   expect(finance.get('.row-actions').text()).toContain('复核')
   expect(finance.get('.row-actions').text()).not.toContain('复核（')
 })
@@ -303,7 +303,7 @@ it('shows finance direction dot in the business type cell and the matching autom
   await flushPromises()
 
   expect(wrapper.get('[data-test="finance-direction"]').attributes('aria-label')).toBe('收款')
-  expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(true)
+  expect(wrapper.find('[data-test="finance-receipt"]').exists()).toBe(false)
 })
 
   it('shows payment and receipt actions independently for an unfinished purchase', async () => {
@@ -498,4 +498,14 @@ it('returns to the last valid page after deleting its final purchase row', async
   expect(wrapper.text()).toContain('CG-REMAINING')
   expect(loadModule.mock.calls.map(call => call[1].get('page'))).toEqual(['2', '2', '1'])
   wrapper.unmount()
+})
+it('shows customer balance and payment progress on the order row without registration', async () => {
+  loadModule.mockResolvedValue({items:[{id:10,orderNo:'SO-001',status:'SHIPPED',totalAmount:100,receivedAmount:20,fundBalance:500},{id:11,orderNo:'SO-002',status:'SHIPPED',totalAmount:100,receivedAmount:100,fundBalance:500}],total:2,page:1,pageSize:10,totalPages:1})
+  const wrapper=mount(ModuleListPage,{props:{module:moduleDefinitions.find(item=>item.key==='order')!,currentUserRole:'FINANCE'}})
+  await flushPromises()
+  expect(wrapper.text()).toContain('可用余额');expect(wrapper.text()).toContain('¥ 500.00')
+  const payments=wrapper.findAll('[data-test="order-payment"]')
+  expect(payments[0].text()).toBe('支付');expect(payments[1].text()).toBe('已支付');expect(payments[1].attributes('disabled')).toBeDefined()
+  await payments[0].trigger('click');expect(wrapper.emitted('orderPayment')?.[0][0]).toMatchObject({id:10})
+  expect(wrapper.emitted('receipt')).toBeUndefined()
 })

@@ -28,6 +28,16 @@ class FinanceWorkbenchQueryApiTest {
 
     private final Cookie session = new Cookie("OPS_SESSION", "finance-test-token");
 
+    @Test void orderRowsUseCurrentCustomerBalanceAndConfirmedReceipts() throws Exception {
+        for(String column : new String[]{"external_order_no VARCHAR(100)","total_amount DECIMAL(19,4) DEFAULT 100","order_date DATE","order_type VARCHAR(40)","salesperson VARCHAR(100)","receipt_confirmed_at TIMESTAMP","shipped_at TIMESTAMP","carrier VARCHAR(100)","tracking_no VARCHAR(100)","version INT DEFAULT 0"}) jdbc.execute("ALTER TABLE sales_order ADD "+column);
+        jdbc.execute("CREATE TABLE IF NOT EXISTS customer_fund_account(customer_id BIGINT PRIMARY KEY,balance DECIMAL(19,4))");
+        jdbc.update("INSERT INTO customer_fund_account(customer_id,balance) SELECT customer_id,500 FROM sales_order WHERE id=10");
+        jdbc.update("UPDATE customer_receipt SET confirmed_amount=25,review_status='APPROVED' WHERE id=12");
+        mvc.perform(get("/api/workbench/order").param("keyword","SO-F-001").cookie(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].fundBalance").value(500))
+                .andExpect(jsonPath("$.data.items[0].receivedAmount").value(25));
+    }
+
     @Test
     void unreviewedPurchaseDraftsAreAlsoExcludedFromFinanceExport() throws Exception {
         jdbc.update("UPDATE purchase_order SET status='DRAFT' WHERE id=20");
