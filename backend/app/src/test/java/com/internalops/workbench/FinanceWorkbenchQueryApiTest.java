@@ -35,7 +35,28 @@ class FinanceWorkbenchQueryApiTest {
         jdbc.update("UPDATE customer_receipt SET confirmed_amount=25,review_status='APPROVED' WHERE id=12");
         mvc.perform(get("/api/workbench/order").param("keyword","SO-F-001").cookie(session))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].fundBalance").value(500))
-                .andExpect(jsonPath("$.data.items[0].receivedAmount").value(25));
+                .andExpect(jsonPath("$.data.items[0].receivedAmount").value(25))
+                .andExpect(jsonPath("$.data.items[0].outstandingAmount").value(75));
+    }
+
+    @Test void purchaseFundsShareConfirmedPaymentsAndNeverIncludeSalesOrDrafts() throws Exception {
+        jdbc.update("INSERT INTO supplier_payment(id,purchase_order_id,amount,review_status) VALUES(92,20,10,'PENDING')");
+        jdbc.update("INSERT INTO supplier_payment(id,purchase_order_id,amount,review_status) VALUES(93,20,15,'REJECTED')");
+        mvc.perform(get("/api/workbench/purchaseFunds").cookie(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].businessNo").value("PO-F-002"))
+                .andExpect(jsonPath("$.data.items[0].settledAmount").value(40))
+                .andExpect(jsonPath("$.data.items[0].outstandingAmount").value(60))
+                .andExpect(jsonPath("$.data.items[0].pendingReviewCount").value(1));
+        mvc.perform(get("/api/workbench/purchaseFunds").param("keyword","RECEIVABLE").cookie(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        jdbc.update("UPDATE supplier_payment SET review_status='APPROVED',confirmed_amount=8 WHERE id=92");
+        mvc.perform(get("/api/workbench/purchaseFunds").param("keyword","PO-F-002").cookie(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].settledAmount").value(48))
+                .andExpect(jsonPath("$.data.items[0].outstandingAmount").value(52));
+        jdbc.update("UPDATE purchase_order SET status='DRAFT' WHERE id=20");
+        mvc.perform(get("/api/workbench/purchaseFunds").cookie(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
     }
 
     @Test

@@ -59,6 +59,11 @@ public class FinanceWorkflowService {
 
     @Transactional
     public Map<String, Object> payOrder(long id, BigDecimal expectedAmount) {
+        return payOrder(id, expectedAmount, null);
+    }
+
+    @Transactional
+    public Map<String, Object> payOrder(long id, BigDecimal expectedAmount, BigDecimal amount) {
         if (!CurrentUser.required().role().canWriteFinance()) throw new SecurityException("只有财务或管理员可以支付订单");
         Map<String, Object> order = order(id);
         String status = String.valueOf(order.get("status"));
@@ -66,18 +71,23 @@ public class FinanceWorkflowService {
         BigDecimal outstanding = receivableAmount(id).subtract(receivedAmount(id));
         if (outstanding.signum() <= 0) throw new IllegalStateException("订单已支付，无需重复支付");
         if (expectedAmount == null || outstanding.compareTo(expectedAmount) != 0) throw new IllegalStateException("订单待支付金额已变化，请重新打开支付窗口");
+        BigDecimal paymentAmount = amount == null ? outstanding : amount;
+        if (paymentAmount.signum() <= 0) throw new IllegalArgumentException("支付金额必须大于 0");
+        if (paymentAmount.stripTrailingZeros().scale() > 4) throw new IllegalArgumentException("支付金额最多保留四位小数");
+        if (paymentAmount.compareTo(outstanding) > 0) throw new IllegalArgumentException("本次支付金额不能超过未付金额");
         Integer pending = jdbc.queryForObject("SELECT COUNT(*) FROM customer_receipt WHERE sales_order_id=? AND review_status='PENDING'", Integer.class, id);
         if (pending != null && pending > 0) throw new IllegalStateException("订单存在待复核收款，请先在财务管理处理后再支付");
         LocalDateTime now = LocalDateTime.now();
         long userId = CurrentUser.required().id();
-        customerFunds.debitForOrder(id, outstanding, "订单支付：客户余额抵扣");
+        customerFunds.debitForOrder(id, paymentAmount, "订单支付：客户余额抵扣");
         jdbc.update("""
                 INSERT INTO customer_receipt(sales_order_id,amount,confirmed_amount,payment_method,payment_remark,
                     received_at,confirmed_by,review_status,reviewed_by,reviewed_at,review_remark)
                 VALUES(?,?,?,'客户余额','订单支付',?,?,'APPROVED',?,?,'订单支付：客户余额抵扣')
-                """, id, outstanding, outstanding, now, userId, userId, now);
+                """, id, paymentAmount, paymentAmount, now, userId, userId, now);
         jdbc.update("UPDATE sales_order SET receipt_confirmed_at=?,updated_at=?,version=version+1 WHERE id=?", now, now, id);
-        return Map.of("id", id, "paymentStatus", "PAID", "paidAmount", outstanding,
+        return Map.of("id", id, "paymentStatus", paymentAmount.compareTo(outstanding) == 0 ? "PAID" : "PARTIALLY_PAID",
+                "paidAmount", paymentAmount, "receivedAmount", receivedAmount(id), "outstandingAmount", outstanding.subtract(paymentAmount),
                 "customerBalance", customerFunds.balance(((Number) order.get("customer_id")).longValue()));
     }
 

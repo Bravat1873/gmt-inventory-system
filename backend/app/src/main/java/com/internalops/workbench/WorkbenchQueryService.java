@@ -25,6 +25,7 @@ public class WorkbenchQueryService {
     private static final Set<String> INVENTORY_MOVEMENT_INBOUND_TYPES = Set.of("EXCEL_INBOUND", "MANUAL_INBOUND");
     private static final Map<String, String> CAMEL_KEYS = Map.ofEntries(
             Map.entry("receivedamount", "receivedAmount"),
+            Map.entry("pendingreviewcount", "pendingReviewCount"),
             Map.entry("fundbalance", "fundBalance"), Map.entry("pendingreceipt", "pendingReceipt"), Map.entry("pendingrefund", "pendingRefund"), Map.entry("customercode", "customerCode"), Map.entry("customername", "customerName"),
             Map.entry("contactname", "contactName"), Map.entry("displayname", "displayName"),
             Map.entry("businesscontactname", "businessContactName"), Map.entry("businesscontactphone", "businessContactPhone"),
@@ -85,7 +86,7 @@ public class WorkbenchQueryService {
     }
 
     public PageResult<Map<String, Object>> query(String module, ListQuery query) {
-        ModuleSpec spec = modules.get(module);
+        ModuleSpec spec = modules.get("purchaseFunds".equals(module) ? "finance" : module);
         if (spec == null) {
             throw new IllegalArgumentException("不支持的业务模块");
         }
@@ -100,9 +101,10 @@ public class WorkbenchQueryService {
         }
         List<Object> parameters = new ArrayList<>();
         String where = "supplier".equals(module) ? " WHERE sp.enabled=TRUE" : "";
+        if ("purchaseFunds".equals(module)) where = " WHERE f.cash_direction='PAYABLE'";
         if (!query.keyword().isBlank()) {
             where += where.isBlank() ? " WHERE " : " AND ";
-            where += spec.keywordPredicate();
+            where += "(" + spec.keywordPredicate() + ")";
             for (int i = 0; i < spec.keywordParameterCount(); i++) {
                 parameters.add(query.keyword());
             }
@@ -483,6 +485,7 @@ public class WorkbenchQueryService {
                 "SELECT o.id, o.order_no AS `orderNo`, o.external_order_no AS `externalOrderNo`, c.customer_name AS `customerName`, "
                         + "COALESCE(fa.balance,0) AS `fundBalance`, "
                         + "COALESCE((SELECT SUM(COALESCE(cr.confirmed_amount,cr.amount)) FROM customer_receipt cr WHERE cr.sales_order_id=o.id AND COALESCE(cr.review_status,'APPROVED')='APPROVED'),0) AS `receivedAmount`, "
+                        + "GREATEST(o.total_amount-COALESCE((SELECT SUM(COALESCE(cr.confirmed_amount,cr.amount)) FROM customer_receipt cr WHERE cr.sales_order_id=o.id AND COALESCE(cr.review_status,'APPROVED')='APPROVED'),0),0) AS `outstandingAmount`, "
                         + "o.total_amount AS `totalAmount`, o.order_date AS `orderDate`, o.order_type AS `orderType`, o.salesperson, o.status, o.receipt_confirmed_at AS `receiptConfirmedAt`, "
                         + "o.shipped_at AS `shippedAt`, o.carrier, o.tracking_no AS `trackingNo`, o.created_at AS `createdAt`, o.updated_at AS `updatedAt`, o.version",
                 "FROM sales_order o JOIN customer c ON c.id=o.customer_id LEFT JOIN customer_fund_account fa ON fa.customer_id=o.customer_id",
@@ -584,4 +587,3 @@ public class WorkbenchQueryService {
                               String defaultSort, String tieBreaker) {
     }
 }
-

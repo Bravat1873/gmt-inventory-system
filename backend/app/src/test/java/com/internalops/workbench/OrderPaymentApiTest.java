@@ -83,5 +83,30 @@ class OrderPaymentApiTest {
         assertThat(balance()).isEqualByComparingTo("420");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM customer_fund_ledger",Integer.class)).isEqualTo(1);
     }
+    @Test void partialPaymentsAccumulateAndRejectStaleRetries() throws Exception {
+        mvc.perform(post("/api/finance/orders/10/pay").contentType("application/json").content("{\"expectedAmount\":80,\"amount\":30}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentStatus").value("PARTIALLY_PAID"))
+                .andExpect(jsonPath("$.data.receivedAmount").value(50)).andExpect(jsonPath("$.data.outstandingAmount").value(50));
+        mvc.perform(post("/api/finance/orders/10/pay").contentType("application/json").content("{\"expectedAmount\":80,\"amount\":30}"))
+                .andExpect(status().isConflict());
+        assertThat(balance()).isEqualByComparingTo("470");
+        mvc.perform(post("/api/finance/orders/10/pay").contentType("application/json").content("{\"expectedAmount\":50,\"amount\":50}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.paymentStatus").value("PAID"))
+                .andExpect(jsonPath("$.data.receivedAmount").value(100)).andExpect(jsonPath("$.data.outstandingAmount").value(0));
+        assertThat(balance()).isEqualByComparingTo("420");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM customer_fund_ledger",Integer.class)).isEqualTo(2);
+    }
+    @Test void rejectsInvalidPartialAmountsAndAllowsAffordablePartialPayment() throws Exception {
+        for (String amount : new String[]{"0","-1","81","0.00001"}) {
+            mvc.perform(post("/api/finance/orders/10/pay").contentType("application/json")
+                    .content("{\"expectedAmount\":80,\"amount\":"+amount+"}"))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(balance()).isEqualByComparingTo("500");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM customer_fund_ledger",Integer.class)).isZero();
+        jdbc.update("UPDATE customer_fund_account SET balance=30 WHERE customer_id=1");
+        mvc.perform(post("/api/finance/orders/10/pay").contentType("application/json").content("{\"expectedAmount\":80,\"amount\":30}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.customerBalance").value(0));
+    }
     private BigDecimal balance(){return jdbc.queryForObject("SELECT balance FROM customer_fund_account WHERE customer_id=1",BigDecimal.class);}
 }

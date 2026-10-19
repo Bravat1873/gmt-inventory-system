@@ -6,9 +6,10 @@ import { formatDateTimeToSecond } from '../utils/date-time'
 import FundOperationDialog from './FundOperationDialog.vue'
 import FundReviewDialog from './FundReviewDialog.vue'
 import FuzzyPicker from './FuzzyPicker.vue'
+import PurchaseFundsPanel from './PurchaseFundsPanel.vue'
 const props=defineProps<{currentUserRole:UserRole}>()
 const emit=defineEmits<{customer:[row:Record<string,unknown>];navigateCustomer:[name:string];message:[text:string,kind?:'success'|'error']}>()
-const customers=ref<FundCustomer[]>([]),data=ref<FundPage>({items:[],total:0,page:1,pageSize:10}),tab=ref<'operations'|'ledger'>('operations'),loading=ref(false),error=ref(''),newOpen=ref(false)
+const customers=ref<FundCustomer[]>([]),data=ref<FundPage>({items:[],total:0,page:1,pageSize:10}),tab=ref<'operations'|'ledger'|'purchases'>('operations'),loading=ref(false),error=ref(''),newOpen=ref(false)
 const review=ref<{item:FundOperation;approved:boolean}>(),detail=ref<FundOperation>(),reversal=ref<FundOperation>(),reversalReason=ref(''),reversing=ref(false)
 const filters=reactive({customerId:null as number|null,keyword:'',status:'',direction:'',fundSource:'',from:'',to:''})
 const canReview=computed(()=>canReviewCustomerFunds(props.currentUserRole))
@@ -28,15 +29,17 @@ async function load(page=1){
  try{const result=await loadFundOperations(params,tab.value==='ledger');if(token===generation)data.value=result}catch(cause){if(token===generation){error.value=cause instanceof Error?cause.message:'读取资金记录失败';data.value={items:[],total:0,page:1,pageSize:10}}}finally{if(token===generation)loading.value=false}
 }
 async function reload(){try{customers.value=await loadFundCustomers();await load(data.value.page)}catch(cause){error.value=cause instanceof Error?cause.message:'读取客户失败'}}
-function switchTab(next:'operations'|'ledger'){tab.value=next;filters.status='';load()}
+function switchTab(next:'operations'|'ledger'|'purchases'){tab.value=next;filters.status='';if(next!=='purchases')load()}
 async function changed(){newOpen.value=false;review.value=undefined;reversal.value=undefined;await reload()}
 async function reverse(){if(!reversalReason.value.trim()){error.value='请填写冲正原因';return}reversing.value=true;try{await reverseCustomerFund(reversal.value!.ledgerId!,reversalReason.value.trim());emit('message','已冲正，客户余额已更新');await changed()}catch(cause){error.value=cause instanceof Error?cause.message:'冲正失败'}finally{reversing.value=false}}
 onMounted(reload);defineExpose({reload})
 </script>
 <template>
  <section class="customer-funds-page">
-  <header class="funds-page-heading"><div><h1>资金管理</h1><p>客户收付款登记、资金确认及余额流水</p></div><div class="fund-heading-actions"><button class="secondary-action" data-test="export-funds" :disabled="loading||exporting" @click="exportFunds">{{ exporting?'正在导出…':'导出资金数据' }}</button><button class="primary-action" data-test="new-fund-operation" :disabled="loading" @click="newOpen=true">新增资金记录</button></div></header>
-  <nav class="fund-tabs"><button :class="{active:tab==='operations'}" @click="switchTab('operations')">收付款登记</button><button :class="{active:tab==='ledger'}" @click="switchTab('ledger')">余额流水</button></nav>
+  <header class="funds-page-heading"><div><h1>资金管理</h1><p>客户资金、采购付款及资金确认</p></div><div v-if="tab!=='purchases'" class="fund-heading-actions"><button class="secondary-action" data-test="export-funds" :disabled="loading||exporting" @click="exportFunds">{{ exporting?'正在导出…':'导出资金数据' }}</button><button class="primary-action" data-test="new-fund-operation" :disabled="loading" @click="newOpen=true">新增资金记录</button></div></header>
+  <nav class="fund-tabs"><button :class="{active:tab==='operations'}" @click="switchTab('operations')">收付款登记</button><button :class="{active:tab==='ledger'}" @click="switchTab('ledger')">余额流水</button><button data-test="purchase-funds-tab" :class="{active:tab==='purchases'}" @click="switchTab('purchases')">采购付款</button></nav>
+  <PurchaseFundsPanel v-if="tab==='purchases'" :current-user-role="currentUserRole" @message="(text,kind)=>emit('message',text,kind)" />
+  <template v-else>
   <form class="funds-filters" @submit.prevent="load()">
    <label><span>客户</span><FuzzyPicker v-model="filters.customerId" :options="options" placeholder="全部客户，可搜索名称或编码" /></label>
    <label><span>资金来源</span><select data-test="fund-source-filter" v-model="filters.fundSource"><option value="">全部来源</option><option value="FOREX">外汇</option><option value="DOMESTIC">国内</option></select></label>
@@ -66,6 +69,7 @@ onMounted(reload);defineExpose({reload})
    </tr><tr v-if="!data.items.length"><td :colspan="tab==='ledger'?12:11" class="funds-empty">{{ loading?'正在读取资金记录…':'暂无符合条件的记录' }}</td></tr></tbody>
   </table></div>
   <footer class="funds-pagination"><span>共 {{ data.total }} 条 · 第 {{ data.page }} 页</span><button :disabled="loading||data.page<=1" @click="load(data.page-1)">上一页</button><button :disabled="loading||data.page*10>=data.total" @click="load(data.page+1)">下一页</button></footer>
+  </template>
  </section>
  <FundOperationDialog v-if="newOpen" :customers="customers" :customer-id="filters.customerId" @close="newOpen=false" @saved="changed" @message="(text,kind)=>emit('message',text,kind)" />
  <FundReviewDialog v-if="review" :request="review.item" :approved="review.approved" @close="review=undefined" @saved="changed" @message="(text,kind)=>emit('message',text,kind)" />
