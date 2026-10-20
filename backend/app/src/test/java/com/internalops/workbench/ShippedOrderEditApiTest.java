@@ -7,6 +7,8 @@ import com.internalops.customerfund.CustomerFundQueryService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -84,6 +86,27 @@ class ShippedOrderEditApiTest {
         assertThat(jdbc.queryForObject("SELECT amount FROM customer_receipt WHERE payment_method='订单调整'",BigDecimal.class)).isEqualByComparingTo("-20");
         assertThat((BigDecimal)funds.overview(1).get("orderOutstandingAmount")).isEqualByComparingTo("0");
         assertThat((BigDecimal)funds.summary(1,"DAY",LocalDate.now(),LocalDate.now()).get(0).get("receiptAmount")).isEqualByComparingTo("-20");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"10.0004,100.00", "10.0005,100.01", "10.0006,100.01"})
+    void fractionalCentOrderTotalCanBeSavedWithReceiptRefund(String price, String expectedTotal) throws Exception {
+        var request = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(body(10,10,100,100,"四舍五入"));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) request.get("items").get(0)).put("salePrice", new BigDecimal(price));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) request.get("receiptConfirmation")).put("amount", new BigDecimal("99.91"));
+
+        mvc.perform(put("/api/orders/801").contentType("application/json").content(request.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalAmount").value(new BigDecimal(expectedTotal).doubleValue()))
+                .andExpect(jsonPath("$.data.receivedAmount").value(99.91))
+                .andExpect(jsonPath("$.data.status").value("SHIPPED"));
+
+        assertThat(jdbc.queryForObject("SELECT total_amount FROM sales_order WHERE id=801",BigDecimal.class)).isEqualByComparingTo(expectedTotal);
+        assertThat(balance()).isEqualByComparingTo("500.09");
+        assertThat(jdbc.queryForObject("SELECT amount FROM customer_receipt WHERE payment_method='订单调整'",BigDecimal.class)).isEqualByComparingTo("-0.09");
+        assertThat(count("customer_fund_ledger")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT quantity FROM sales_shipment_item WHERE id=801",Integer.class)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance WHERE sku_id=1",Integer.class)).isEqualTo(20);
     }
 
     @Test void additionalQuantityReopensOnlyTheUnshippedDemandAndKeepsCoverageHistory() throws Exception {

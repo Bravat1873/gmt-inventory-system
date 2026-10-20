@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -403,7 +404,12 @@ public class SalesOrderCommandService {
         }
     }
 
-    private BigDecimal total(SalesOrderRequest request) { return request.items().stream().map(item -> item.salePrice().multiply(BigDecimal.valueOf(item.quantity()))).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2); }
+    private BigDecimal total(SalesOrderRequest request) {
+        return request.items().stream()
+                .map(item -> item.salePrice().multiply(BigDecimal.valueOf(item.quantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
     private void insertItems(long orderId, List<SalesOrderRequest.Item> items) {
         int nextLine = 10000;
         for (SalesOrderRequest.Item item : items) {
