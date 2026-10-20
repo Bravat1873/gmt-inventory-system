@@ -29,7 +29,7 @@ class FinanceWorkbenchQueryApiTest {
     private final Cookie session = new Cookie("OPS_SESSION", "finance-test-token");
 
     @Test void orderRowsUseCurrentCustomerBalanceAndConfirmedReceipts() throws Exception {
-        for(String column : new String[]{"external_order_no VARCHAR(100)","total_amount DECIMAL(19,4) DEFAULT 100","order_date DATE","order_type VARCHAR(40)","salesperson VARCHAR(100)","receipt_confirmed_at TIMESTAMP","shipped_at TIMESTAMP","carrier VARCHAR(100)","tracking_no VARCHAR(100)","version INT DEFAULT 0"}) jdbc.execute("ALTER TABLE sales_order ADD "+column);
+        for(String column : new String[]{"external_order_no VARCHAR(100)","order_date DATE","order_type VARCHAR(40)","salesperson VARCHAR(100)","receipt_confirmed_at TIMESTAMP","shipped_at TIMESTAMP","carrier VARCHAR(100)","tracking_no VARCHAR(100)","version INT DEFAULT 0"}) jdbc.execute("ALTER TABLE sales_order ADD "+column);
         jdbc.execute("CREATE TABLE IF NOT EXISTS customer_fund_account(customer_id BIGINT PRIMARY KEY,balance DECIMAL(19,4))");
         jdbc.update("INSERT INTO customer_fund_account(customer_id,balance) SELECT customer_id,500 FROM sales_order WHERE id=10");
         jdbc.update("UPDATE customer_receipt SET confirmed_amount=25,review_status='APPROVED' WHERE id=12");
@@ -66,6 +66,26 @@ class FinanceWorkbenchQueryApiTest {
         try (var book = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(exports.summary("finance")))) {
             var sheet=book.getSheetAt(0);
             for(int i=1;i<=sheet.getLastRowNum();i++) org.assertj.core.api.Assertions.assertThat(sheet.getRow(i).getCell(0).getStringCellValue()).isNotEqualTo(no);
+        }
+    }
+
+    @Test
+    void editedOrderTotalDrivesFinanceAndExportDespiteLegacyRoundedUnitPrice() throws Exception {
+        jdbc.update("UPDATE sales_order SET total_amount=146000.67 WHERE id=10");
+        jdbc.update("UPDATE sales_order_item SET quantity=102,sale_price=1431.38 WHERE sales_order_id=10");
+        jdbc.update("UPDATE customer_receipt SET confirmed_amount=146000.67,review_status='APPROVED' WHERE id=12");
+        mvc.perform(get("/api/workbench/finance").param("keyword","SO-F-001").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].amount").value(146000.67))
+                .andExpect(jsonPath("$.data.items[0].outstandingAmount").value(0))
+                .andExpect(jsonPath("$.data.items[0].status").value("已收清"));
+        try (var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(exports.summary("finance")))) {
+            var sheet = workbook.getSheetAt(0);
+            var sales = java.util.stream.IntStream.rangeClosed(1,sheet.getLastRowNum()).mapToObj(sheet::getRow)
+                    .filter(row -> "SO-F-001".equals(row.getCell(0).getStringCellValue())).findFirst().orElseThrow();
+            var formatter = new org.apache.poi.ss.usermodel.DataFormatter();
+            org.assertj.core.api.Assertions.assertThat(new java.math.BigDecimal(formatter.formatCellValue(sales.getCell(5)))).isEqualByComparingTo("146000.67");
+            org.assertj.core.api.Assertions.assertThat(new java.math.BigDecimal(formatter.formatCellValue(sales.getCell(7)))).isEqualByComparingTo("0");
         }
     }
 

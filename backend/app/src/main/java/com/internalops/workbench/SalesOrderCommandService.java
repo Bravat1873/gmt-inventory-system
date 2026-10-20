@@ -255,7 +255,7 @@ public class SalesOrderCommandService {
         String orderContactName = firstNonBlank(request.orderContactName(), request.customerContact());
         String orderContactPhone = firstNonBlank(request.orderContactPhone(), request.customerPhone());
         int changed = jdbc.update("UPDATE sales_order SET external_order_no=?,customer_id=?,status=?,total_amount=?,order_date=?,order_type=?,salesperson=?,customer_contact=?,customer_phone=?,business_contact_name=?,business_contact_phone=?,order_contact_name=?,order_contact_phone=?,finance_contact_name=?,finance_contact_phone=?,order_remark=?,delivery_address=?,delivery_contact=?,delivery_phone=?,shipping_method=?,version=version+1 WHERE id=? AND version=?",
-                blankToNull(request.externalOrderNo()), request.customerId(), requestedStatusOrCurrent(request, currentStatus), total(request), request.orderDate(), trim(request.orderType()), trim(request.salesperson()), orderContactName, orderContactPhone,
+                blankToNull(request.externalOrderNo()), request.customerId(), requestedStatusOrCurrent(request, currentStatus), editedTotal(id, request), request.orderDate(), trim(request.orderType()), trim(request.salesperson()), orderContactName, orderContactPhone,
                 blankToNull(request.businessContactName()), blankToNull(request.businessContactPhone()), orderContactName, orderContactPhone, blankToNull(request.financeContactName()), blankToNull(request.financeContactPhone()),
                 blankToNull(request.remark()), blankToNull(request.deliveryAddress()), blankToNull(request.deliveryContact()), blankToNull(request.deliveryPhone()), blankToNull(request.shippingMethod()), id, request.version());
         if (changed == 0) throw new IllegalStateException("数据已被其他操作修改，请重新打开后再试");
@@ -400,8 +400,32 @@ public class SalesOrderCommandService {
             if (item.skuId() == null || jdbc.queryForObject("SELECT COUNT(*) FROM sku WHERE id=? AND enabled=TRUE", Integer.class, item.skuId()) == 0) throw new IllegalArgumentException("订单中存在无效产品");
             if (item.quantity() == null || item.quantity() == 0) throw new IllegalArgumentException("产品数量不能为零；退货请填写负数");
             if (item.salePrice() == null || item.salePrice().signum() < 0) throw new IllegalArgumentException("销售单价不能为负数");
+            if (item.salePrice().stripTrailingZeros().scale() > 8) throw new IllegalArgumentException("销售单价最多支持8位小数");
             if (item.remark() != null && item.remark().length() > 1000) throw new IllegalArgumentException("明细备注不能超过1000个字符");
         }
+    }
+
+    private BigDecimal editedTotal(long orderId, SalesOrderRequest request) {
+        var saved = jdbc.queryForList("SELECT line_no,sku_id,quantity,sale_price FROM sales_order_item WHERE sales_order_id=? ORDER BY line_no", orderId);
+        // Legacy unit prices may already have lost precision. Metadata/receipt-only edits
+        // must retain the saved settlement total instead of recomputing from those prices.
+        if (saved.size() == request.items().size()) {
+            boolean unchanged = true;
+            int nextLine = 10000;
+            for (var item : request.items()) {
+                int line = item.lineNo() == null ? nextLine : item.lineNo();
+                nextLine = Math.max(nextLine, line + 10000);
+                var old = saved.stream().filter(row -> ((Number) value(row, "line_no")).intValue() == line).findFirst().orElse(null);
+                if (old == null || ((Number) value(old, "sku_id")).longValue() != item.skuId()
+                        || ((Number) value(old, "quantity")).intValue() != item.quantity()
+                        || ((BigDecimal) value(old, "sale_price")).compareTo(item.salePrice()) != 0) {
+                    unchanged = false;
+                    break;
+                }
+            }
+            if (unchanged) return jdbc.queryForObject("SELECT total_amount FROM sales_order WHERE id=?", BigDecimal.class, orderId);
+        }
+        return total(request);
     }
 
     private BigDecimal total(SalesOrderRequest request) {

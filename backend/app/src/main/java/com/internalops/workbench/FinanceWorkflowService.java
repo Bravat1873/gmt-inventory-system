@@ -92,7 +92,7 @@ public class FinanceWorkflowService {
     }
 
     private BigDecimal receivableAmount(long id) {
-        BigDecimal result = jdbc.queryForObject("SELECT COALESCE(SUM(i.quantity * i.sale_price), 0) FROM sales_order_item i WHERE i.sales_order_id=?", BigDecimal.class, id);
+        BigDecimal result = jdbc.queryForObject("SELECT total_amount FROM sales_order WHERE id=?", BigDecimal.class, id);
         return result == null ? BigDecimal.ZERO : result;
     }
 

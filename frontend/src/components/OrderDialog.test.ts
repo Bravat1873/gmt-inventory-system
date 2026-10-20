@@ -298,6 +298,21 @@ it('restores the original remainder before previewing an edited order', async ()
 
 
 
+it('keeps the saved total when legacy rounded unit prices have not changed', async () => {
+  loadOrderSkus.mockResolvedValue([sku(1)])
+  loadOrderCustomers.mockResolvedValue([])
+  const wrapper = mount(OrderDialog, { props: { currentUserRole: 'ADMIN', row: {
+    ...validOrder(), id: 24, version: 1, status: 'SHIPPED', totalAmount: 146000.67, receivedAmount: 146000.67,
+    items: [{ lineNo: 2, skuId: 1, quantity: 102, shippedQuantity: 102, salePrice: 1431.38 }]
+  } } })
+  await flushPromises()
+  await wrapper.get('form').trigger('submit')
+  const dialog = wrapper.get('[data-test="receipt-confirm-dialog"]')
+  expect(dialog.text()).toContain('146,000.67')
+  expect(dialog.text()).not.toContain('146,000.76')
+  wrapper.unmount()
+})
+
 it('requires a reason before atomically saving a shipped order and receipt adjustment', async () => {
   updateOrder.mockClear()
   loadOrderSkus.mockResolvedValue([sku(1)])

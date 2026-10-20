@@ -17,7 +17,7 @@ public class CustomerFundQueryService {
 
     public Map<String,Object> overview(long customerId) {
         BigDecimal balance = amount("SELECT COALESCE(balance,0) FROM customer_fund_account WHERE customer_id=?", customerId);
-        BigDecimal receivable = amount("SELECT COALESCE(SUM(i.quantity*i.sale_price),0) FROM sales_order_item i JOIN sales_order o ON o.id=i.sales_order_id WHERE o.customer_id=? AND o.status<>'DRAFT'", customerId);
+        BigDecimal receivable = amount("SELECT COALESCE(SUM(o.total_amount),0) FROM sales_order o WHERE o.customer_id=? AND o.status<>'DRAFT'", customerId);
         BigDecimal received = amount("SELECT COALESCE(SUM(COALESCE(r.confirmed_amount,r.amount)),0) FROM customer_receipt r JOIN sales_order o ON o.id=r.sales_order_id WHERE o.customer_id=? AND o.status<>'DRAFT' AND COALESCE(r.review_status,'APPROVED')='APPROVED'", customerId);
         BigDecimal outstanding = receivable.subtract(received).max(BigDecimal.ZERO);
         BigDecimal pending = amount("SELECT COALESCE(SUM(amount),0) FROM customer_fund_request WHERE customer_id=? AND status='PENDING'", customerId);

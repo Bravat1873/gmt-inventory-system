@@ -34,6 +34,7 @@ CREATE TABLE supplier(
     supplier_name VARCHAR(200) NOT NULL
 );
 CREATE TABLE sales_order(
+    total_amount DECIMAL(18,2) NOT NULL DEFAULT 100,
     id BIGINT PRIMARY KEY,
     order_no VARCHAR(50) NOT NULL,
     customer_id BIGINT NOT NULL,

@@ -88,6 +88,13 @@ class ShippedOrderEditApiTest {
         assertThat((BigDecimal)funds.summary(1,"DAY",LocalDate.now(),LocalDate.now()).get(0).get("receiptAmount")).isEqualByComparingTo("-20");
     }
 
+    @Test void metadataOnlySavePreservesLegacySettlementTotal() throws Exception {
+        jdbc.update("UPDATE sales_order SET total_amount=99.91 WHERE id=801");
+        mvc.perform(put("/api/orders/801").contentType("application/json").content(body(10,10,100,100,"")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalAmount").value(99.91));
+    }
+
     @ParameterizedTest
     @CsvSource({"10.0004,100.00", "10.0005,100.01", "10.0006,100.01"})
     void fractionalCentOrderTotalCanBeSavedWithReceiptRefund(String price, String expectedTotal) throws Exception {
@@ -102,11 +109,20 @@ class ShippedOrderEditApiTest {
                 .andExpect(jsonPath("$.data.status").value("SHIPPED"));
 
         assertThat(jdbc.queryForObject("SELECT total_amount FROM sales_order WHERE id=801",BigDecimal.class)).isEqualByComparingTo(expectedTotal);
+        assertThat(jdbc.queryForObject("SELECT sale_price FROM sales_order_item WHERE id=801",BigDecimal.class)).isEqualByComparingTo(price);
         assertThat(balance()).isEqualByComparingTo("500.09");
         assertThat(jdbc.queryForObject("SELECT amount FROM customer_receipt WHERE payment_method='订单调整'",BigDecimal.class)).isEqualByComparingTo("-0.09");
         assertThat(count("customer_fund_ledger")).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT quantity FROM sales_shipment_item WHERE id=801",Integer.class)).isEqualTo(10);
         assertThat(jdbc.queryForObject("SELECT actual_quantity FROM inventory_balance WHERE sku_id=1",Integer.class)).isEqualTo(20);
+        request.put("version", jdbc.queryForObject("SELECT version FROM sales_order WHERE id=801", Integer.class));
+        var confirmation = (com.fasterxml.jackson.databind.node.ObjectNode) request.get("receiptConfirmation");
+        confirmation.put("originalAmount", new BigDecimal("99.91"));
+        mvc.perform(put("/api/orders/801").contentType("application/json").content(request.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalAmount").value(new BigDecimal(expectedTotal).doubleValue()));
+        assertThat(balance()).isEqualByComparingTo("500.09");
+        assertThat(count("customer_fund_ledger")).isEqualTo(1);
     }
 
     @Test void additionalQuantityReopensOnlyTheUnshippedDemandAndKeepsCoverageHistory() throws Exception {

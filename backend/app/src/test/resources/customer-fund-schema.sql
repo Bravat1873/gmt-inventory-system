@@ -1,6 +1,6 @@
 CREATE TABLE customer(id BIGINT PRIMARY KEY, customer_name VARCHAR(200), customer_code VARCHAR(40), enabled BOOLEAN DEFAULT TRUE);
 CREATE TABLE sys_user(id BIGINT PRIMARY KEY, username VARCHAR(80), display_name VARCHAR(100), role VARCHAR(20));
-CREATE TABLE sales_order(id BIGINT PRIMARY KEY, order_no VARCHAR(50), customer_id BIGINT, status VARCHAR(40), order_date DATE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE sales_order(id BIGINT PRIMARY KEY,total_amount DECIMAL(18,2) DEFAULT 0, order_no VARCHAR(50), customer_id BIGINT, status VARCHAR(40), order_date DATE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE sales_order_item(id BIGINT PRIMARY KEY, sales_order_id BIGINT, quantity INT, shipped_quantity INT DEFAULT 0, sale_price DECIMAL(19,4));
 CREATE TABLE customer_receipt(id BIGINT PRIMARY KEY, sales_order_id BIGINT, amount DECIMAL(19,4), confirmed_amount DECIMAL(19,4), review_status VARCHAR(20));
 CREATE TABLE after_sales_order(id BIGINT PRIMARY KEY, after_sales_no VARCHAR(50), customer_id BIGINT, after_sales_type VARCHAR(20), status VARCHAR(30));
@@ -16,6 +16,7 @@ INSERT INTO sales_order(id,order_no,customer_id,status,order_date) VALUES(10,'SO
 INSERT INTO sales_order(id,order_no,customer_id,status,order_date) VALUES(30,'SO-OTHER',2,'DRAFT','2026-08-14');
 INSERT INTO sales_order(id,order_no,customer_id,status,order_date) VALUES(31,'SO-CANCELLED',1,'CANCELLED','2026-08-14');
 INSERT INTO sales_order_item VALUES(11,10,5,0,20);
+UPDATE sales_order SET total_amount=100 WHERE id=10;
 INSERT INTO customer_receipt(id,sales_order_id,amount) VALUES(12,10,20);
 INSERT INTO after_sales_order VALUES(20,'AS-001',1,'RETURN','RETURN_RECEIVED');
 INSERT INTO after_sales_return_line(id,after_sales_order_id,sales_order_item_id,received_quantity) VALUES(21,20,11,3);

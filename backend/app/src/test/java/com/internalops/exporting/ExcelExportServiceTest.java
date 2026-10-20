@@ -140,6 +140,18 @@ class ExcelExportServiceTest {
     }
 
     @Test
+    void salesDocumentUsesSavedTotalWhenLegacyUnitPricesDiffer() throws Exception {
+        SalesOrderCommandService salesOrders = mock(SalesOrderCommandService.class);
+        when(salesOrders.get(24L)).thenReturn(Map.of(
+                "orderNo", "DD20260900008", "totalAmount", new BigDecimal("146000.67"),
+                "items", List.of(Map.of("quantity", 102, "salePrice", new BigDecimal("1431.38")))));
+        ExcelExportService service = new ExcelExportService(null, salesOrders, null, null, null);
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.document("order", 24L)))) {
+            assertEquals(146000.67, workbook.getSheetAt(0).getRow(12).getCell(9).getNumericCellValue());
+        }
+    }
+
+    @Test
     void salesDocumentUsesConfirmedPrintTemplateAndUsesActualDetailRowCount() throws Exception {
         SalesOrderCommandService salesOrders = mock(SalesOrderCommandService.class);
         when(salesOrders.get(9L)).thenReturn(Map.of(

@@ -18,7 +18,7 @@ class FinanceWorkflowPartialReceiptTest {
         when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(Map.of(
                 "status", "READY_TO_SHIP", "total_amount", new BigDecimal("100"),
                 "customer_id", 1L, "order_no", "SO-001"));
-        when(jdbc.queryForObject(contains("FROM sales_order_item"), eq(BigDecimal.class), eq(7L))).thenReturn(new BigDecimal("100"));
+        when(jdbc.queryForObject(contains("SELECT total_amount FROM sales_order"), eq(BigDecimal.class), eq(7L))).thenReturn(new BigDecimal("100"));
         when(jdbc.queryForObject(contains("FROM customer_receipt"), eq(BigDecimal.class), eq(7L))).thenReturn(BigDecimal.ZERO);
         CustomerFundService funds = mock(CustomerFundService.class);
         when(funds.balance(1L)).thenReturn(new BigDecimal("475"));

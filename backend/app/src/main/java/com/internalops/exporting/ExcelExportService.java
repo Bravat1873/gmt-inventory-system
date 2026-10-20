@@ -89,7 +89,7 @@ public class ExcelExportService {
                        f.created_at,f.updated_at
                 FROM (
                     SELECT o.order_no AS business_no,'销售订单' AS business_type,'RECEIVABLE' AS cash_direction,c.customer_name AS counterparty,
-                           COALESCE((SELECT SUM(i.quantity*i.sale_price) FROM sales_order_item i WHERE i.sales_order_id=o.id),0) AS amount,
+                           o.total_amount AS amount,
                            COALESCE((SELECT SUM(COALESCE(cr.confirmed_amount,cr.amount)) FROM customer_receipt cr WHERE cr.sales_order_id=o.id AND COALESCE(cr.review_status,'APPROVED')='APPROVED'),0) AS settled_amount,
                            (SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(cr.invoice_no), '')) FROM customer_receipt cr WHERE cr.sales_order_id=o.id) AS invoice_nos,
                            o.created_at,o.updated_at
@@ -427,7 +427,7 @@ public class ExcelExportService {
 
             int totalRow = row;
             mergedRow(sheet, totalRow, 0, 8, "订单备注：" + string(record.get("remark")), cell, 26);
-            setFormula(sheet, totalRow, 9, "SUM(J12:J" + totalRow + ")", amount);
+            set(sheet, totalRow, 9, record.get("totalAmount"), amount);
             set(sheet, totalRow, 10, "合计金额", header);
             sheet.createRow(totalRow + 1).setHeightInPoints(8);
             int paymentRow = totalRow + 2;

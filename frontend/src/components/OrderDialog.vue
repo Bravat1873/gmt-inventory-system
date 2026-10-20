@@ -55,7 +55,15 @@ const targetReceivedAmount = computed(() => receiptChoice.value === 'adjust' ? r
 const receiptDelta = computed(() => Math.round((targetReceivedAmount.value - originalReceivedAmount) * 100) / 100)
 const isEditing = computed(() => Boolean(props.row?.id))
 const selectedCustomer = computed(() => customers.value.find(item => item.id === form.customerId))
-const orderAmount = computed(() => form.items.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.salePrice || 0), 0))
+const orderAmount = computed(() => {
+  const original = props.row?.items as Line[] | undefined
+  const unchanged = original && original.length === form.items.length && form.items.every((line, index) => {
+    const saved = original[index]
+    return saved && line.skuId === saved.skuId && Number(line.quantity) === Number(saved.quantity) && Number(line.salePrice) === Number(saved.salePrice)
+  })
+  if (isEditing.value && unchanged && props.row?.totalAmount != null) return Number(props.row.totalAmount)
+  return form.items.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.salePrice || 0), 0)
+})
 const customerBalance = computed(() => Number(selectedCustomer.value?.fundBalance ?? 0))
 const balanceCoverage = computed(() => orderAmount.value <= 0 ? 100 : customerBalance.value / orderAmount.value * 100)
 const money = (value:number) => value.toLocaleString('zh-CN', { minimumFractionDigits:2, maximumFractionDigits:2 })
