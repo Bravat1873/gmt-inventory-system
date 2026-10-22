@@ -129,11 +129,8 @@ public class ProductImageService {
             List<Long> remaining = jdbc.queryForList("SELECT id FROM product_image WHERE product_id=? ORDER BY sort_order,id", Long.class, productId);
             if (!remaining.isEmpty()) setPrimary(productId, remaining.get(0));
         }
-        try {
-            storage.delete(target.storageKey());
-        } catch (IOException exception) {
-            throw new InternalException("Unable to delete product image content", exception);
-        }
+        // Retain immutable content so undo can restore the image with its metadata.
+        // Storage keys are never public URLs; content requires an existing product_image row.
         return images(productId);
     }
 

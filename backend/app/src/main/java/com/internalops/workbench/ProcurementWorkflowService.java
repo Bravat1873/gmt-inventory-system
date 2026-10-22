@@ -43,9 +43,9 @@ public class ProcurementWorkflowService {
         this.recommendations = recommendations;
     }
 
-    // After-commit listeners need a separate transaction to persist regenerated suggestions.
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
-    public void regenerateAfterCommit() {
+    // Automatic procurement belongs to the command's transaction and audit operation.
+    @Transactional
+    public void regenerateInCurrentTransaction() {
         generate();
     }
 

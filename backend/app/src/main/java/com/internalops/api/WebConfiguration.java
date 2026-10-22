@@ -13,7 +13,7 @@ public class WebConfiguration implements WebMvcConfigurer {
                         "http://localhost:*",
                         "http://127.0.0.1:*",
                         "https://gmt-erp.bravat.com")
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true)
                 .maxAge(3600);

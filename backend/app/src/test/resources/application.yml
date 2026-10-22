@@ -7,3 +7,6 @@ spring:
     password:
   flyway:
     enabled: false
+app:
+  operation-audit:
+    enabled: false

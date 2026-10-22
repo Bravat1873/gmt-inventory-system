@@ -1,0 +1,77 @@
+const tables: Record<string, string> = {
+  customer: '客户资料', customer_contact: '客户联系人', customer_contract: '客户合同', customer_contract_price: '合同价格',
+  sys_user: '用户资料', sku: '产品资料', product_image: '产品图片', product_code_rule: '产品编号规则', sku_cost_history: '成本记录',
+  supplier: '供应商资料', sku_supplier_config: '产品供应商配置', sku_supplier_config_history: '供应商报价历史', sku_supplier_purchase_info: '采购价格记录',
+  sales_order: '销售订单', sales_order_item: '订单明细', sales_shipment: '发货单', sales_shipment_item: '发货明细',
+  inventory_balance: '库存余额', inventory_transaction: '库存流水', inventory_locked_allocation: '库存锁定分配', warehouse: '仓库',
+  procurement_suggestion: '采购建议', procurement_suggestion_item: '采购建议明细', shortage_coverage: '缺口覆盖',
+  purchase_order: '采购订单', purchase_order_item: '采购明细', goods_receipt: '采购收货单', goods_receipt_item: '采购收货明细',
+  customer_receipt: '客户收款', supplier_payment: '供应商付款', sales_invoice: '销售发票', purchase_invoice: '采购发票',
+  customer_fund_account: '客户资金余额', customer_fund_request: '资金申请', customer_fund_ledger: '资金流水',
+  after_sales_order: '售后单', after_sales_return_line: '售后退货明细', after_sales_replacement_line: '售后换货明细',
+  after_sales_receipt: '售后收货单', after_sales_receipt_line: '售后收货明细', after_sales_shipment: '售后发货单',
+  after_sales_shipment_line: '售后发货明细', after_sales_refund: '售后退款', after_sales_event: '售后操作事件',
+  import_batch: '导入批次', import_row: '导入数据行', import_workbook_file: '导入原始文件信息', import_workbook_sheet: '原始工作表', import_workbook_row: '原始表格行',
+  document_number_sequence: '单号分配', attachment: '附件', exception_case: '异常处理'
+}
+const fields: Record<string, string> = {
+  id: '记录ID', customer_id: '客户ID', supplier_id: '供应商ID', sku_id: '产品ID', product_id: '产品ID',
+  sales_order_id: '销售订单ID', sales_order_item_id: '订单明细ID', purchase_order_id: '采购订单ID', purchase_order_item_id: '采购明细ID',
+  warehouse_id: '仓库ID', suggestion_id: '采购建议ID', suggestion_item_id: '采购建议明细ID', request_id: '资金申请ID',
+  customer_name: '客户名称', customer_code: '客户编码', supplier_name: '供应商名称', supplier_code: '供应商编码',
+  product_name: '产品名称', product_code: '产品编号', customer_part_number: '客户料号', model: '型号',
+  order_no: '订单编号', purchase_no: '采购单号', suggestion_no: '建议单号', after_sales_no: '售后单号', receipt_no: '收货单号',
+  status: '状态', version: '数据版本', total_amount: '总金额', amount: '金额', confirmed_amount: '确认金额',
+  balance: '可用余额', balance_before: '变更前余额', balance_after: '变更后余额', direction: '收支方向',
+  quantity: '数量', actual_quantity: '实际库存', locked_quantity: '锁定库存', in_transit_quantity: '在途库存',
+  uncovered_quantity: '缺货数量', received_quantity: '已收数量', shipped_quantity: '已发数量', covered_quantity: '覆盖数量',
+  actual_before: '变更前实际库存', actual_after: '变更后实际库存', actual_delta: '实际库存变动',
+  locked_before: '变更前锁定库存', locked_after: '变更后锁定库存', locked_delta: '锁定库存变动',
+  transit_before: '变更前在途库存', transit_after: '变更后在途库存', transit_delta: '在途库存变动',
+  sale_price: '销售单价', purchase_price: '采购单价', current_cost: '当前成本', old_cost: '原成本', new_cost: '新成本',
+  return_unit_price: '退回单价', payment_method: '付款方式', payment_date: '付款日期', payment_at: '付款时间',
+  remark: '备注', reason: '原因', review_comment: '审核意见', review_remark: '复核备注', review_status: '复核状态',
+  created_at: '创建时间', updated_at: '修改时间', operated_at: '操作时间', submitted_at: '提交时间', reviewed_at: '复核时间',
+  created_by: '创建人ID', updated_by: '修改人ID', operated_by: '操作人ID', submitted_by: '提交人ID', reviewed_by: '复核人ID',
+  confirmed_by: '确认人ID', confirmed_at: '确认时间', received_at: '收货/收款时间', paid_at: '付款时间',
+  source_type: '来源类型', source_id: '来源ID', source_no: '来源单号', business_type: '业务类型', business_no: '业务单号',
+  transaction_type: '库存变动类型', entry_type: '资金变动类型', request_type: '申请类型', reverses_ledger_id: '被冲正流水ID',
+  username: '用户名', display_name: '姓名', role: '角色', enabled: '启用状态', phone: '电话', address: '地址',
+  contact_name: '联系人', external_order_no: '外部订单号', order_type: '订单类型', order_date: '订单日期',
+  customer_type: '客户类型', taxpayer_id: '纳税人识别号', bank_name: '开户银行', bank_account: '银行账户',
+  invoice_title: '开票抬头', invoice_address: '开票地址', invoice_phone: '开票电话', invoice_no: '发票号码', invoice_date: '开票日期',
+  business_contact_name: '业务联系人', business_contact_phone: '业务联系电话', order_contact_name: '订单联系人', order_contact_phone: '订单联系电话',
+  finance_contact_name: '财务联系人', finance_contact_phone: '财务联系电话', customer_contact: '客户联系人', customer_phone: '客户电话',
+  contact_title: '联系人职称', short_name: '简称', manufacturer_category: '厂商分类', manufacturer_type: '厂商类型',
+  supplier_location: '供应商地点', product_attribute: '产品属性', currency: '币种', tax_registration_no: '税务登记号', bank_address: '开户地址',
+  contract_no: '合同编号', contract_id: '合同ID', start_date: '开始日期', end_date: '结束日期',
+  content_type: '文件类型', uploaded_by: '上传人员', original_name: '原始文件名', file_hash: '文件校验值',
+  import_type: '导入类型', total_rows: '总行数', valid_rows: '有效行数', error_rows: '错误行数', ignored_rows: '忽略行数',
+  committed_rows: '已导入行数', result_detail: '处理结果', committed_at: '导入时间', normalized_data: '导入行内容',
+  source_sheet: '来源工作表', source_row: '来源行号', row_status: '行状态', error_message: '错误信息', manual_entry: '手动录入',
+  sheet_id: '工作表ID', sheet_index: '工作表序号', sheet_name: '工作表名称', column_count: '列数', cell_values: '原始单元格内容',
+  moq: '最小采购量', lead_time_days: '交期天数', supplier_product_config_id: '供应商产品配置ID', supplier_purchase_info_id: '采购价格记录ID',
+  shortage_quantity: '缺货数量', suggested_quantity: '建议采购数量', confirmed_quantity: '确认采购数量',
+  accepted_quantity: '合格数量', rejected_quantity: '不合格数量', goods_receipt_id: '收货单ID', received_by: '收货人ID',
+  sales_shipment_id: '发货单ID', operator_name: '操作人员', shipped_at: '发货时间', shipping_remark: '发货备注',
+  delivery_contact: '收货联系人', delivery_phone: '收货电话', shipping_method: '运输方式',
+  order_remark: '订单备注', item_remark: '明细备注', payment_remark: '付款备注', receipt_confirmed_at: '收款确认时间',
+  sales_minimum_order_quantity: '销售最小起订量', cost_snapshot: '成本快照', factory_price: '出厂价',
+  product_type: '产品类型', material_type: '物料类型', brand: '品牌', color: '颜色', lock_body: '锁体', product_version: '产品版本',
+  business_unique_id: '产品唯一ID', code_suffix: '编号后缀', ean_code: 'EAN条码',
+  after_sales_order_id: '售后单ID', after_sales_type: '售后类型', event_type: '事件类型', description: '事件说明',
+  application_date: '申请日期', refund_amount: '退款金额', return_quantity: '退回数量', replacement_quantity: '换出数量',
+  tax_inclusive_amount: '含税金额', tax_rate: '税率', tax_amount: '税额', is_default: '默认仓库', warehouse_code: '仓库编码', warehouse_name: '仓库名称',
+  salesperson: '销售员', expected_arrival_date: '预计到货日期', delivery_address: '交货地址', carrier: '物流公司', tracking_no: '物流单号',
+  is_primary: '主图', sort_order: '排列顺序', original_filename: '原始文件名', storage_key: '文件存储标识', file_size: '文件大小',
+  line_no: '行号', active: '生效状态', batch_id: '导入批次ID', current_value: '已分配序号', document_type: '单据类型', year_month: '年月',
+  unit: '单位', configuration: '物料规格', product_configuration: '产品配置', reference_no: '银行流水号', fund_source: '资金来源'
+}
+export const operationTableLabel = (table: string) => tables[table] || table
+export const operationFieldLabel = (field: string) => fields[field] || field
+export function operationValue(value: unknown): string {
+  if (value === null || value === undefined) return '—'
+  if (value === '') return '（空）'
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)
+}

@@ -23,6 +23,7 @@ public class SalesOrderImportCommitService {
     private final SalesOrderCommandService salesOrders;
     private final TransactionTemplate transactions;
     private final TransactionTemplate orderTransactions;
+    private final TransactionTemplate auditedOrderTransactions;
 
     public SalesOrderImportCommitService(JdbcTemplate jdbc, ImportBatchRepository repository,
                                          SalesOrderCommandService salesOrders,
@@ -33,6 +34,8 @@ public class SalesOrderImportCommitService {
         this.transactions = new TransactionTemplate(transactionManager);
         this.orderTransactions = new TransactionTemplate(transactionManager);
         this.orderTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.auditedOrderTransactions=new TransactionTemplate(transactionManager);
+        this.auditedOrderTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_NESTED);
     }
 
     public ImportBatchView commit(long batchId) {
@@ -49,7 +52,8 @@ public class SalesOrderImportCommitService {
         int createdOrders = 0;
         for (Map.Entry<String, List<ImportRowView>> order : rowsByOrder.entrySet()) {
             try {
-                orderTransactions.executeWithoutResult(status -> commitOrder(order.getKey(), order.getValue(), conflictActions));
+                var perOrder=com.internalops.audit.OperationScope.current()==null?orderTransactions:auditedOrderTransactions;
+                perOrder.executeWithoutResult(status -> commitOrder(order.getKey(), order.getValue(), conflictActions));
                 committedRows += order.getValue().size();
                 createdOrders++;
             } catch (RuntimeException failure) {

@@ -9,6 +9,7 @@ import EntityDialog from './components/EntityDialog.vue'
 import CustomerDialog from './components/CustomerDialog.vue'
 import CustomerFundsDialog from './components/CustomerFundsDialog.vue'
 import CustomerFundsPage from './components/CustomerFundsPage.vue'
+import OperationRecordsPage from './components/OperationRecordsPage.vue'
 import SupplierDialog from './components/SupplierDialog.vue'
 import OrderDialog from './components/OrderDialog.vue'
 import ManualPurchaseDialog from './components/ManualPurchaseDialog.vue'
@@ -381,7 +382,7 @@ async function saved(closeDialog = true) {
 <template>
   <div v-if="!authReady" class="login-page">正在检查登录状态…</div>
   <LoginPage v-else-if="!user" @logged-in="user=$event" />
-  <div v-else class="app-shell">
+  <div v-else class="app-shell" :class="{ 'operations-active': activeModule === 'operationRecords' }">
     <aside class="sidebar" aria-label="主导航">
       <nav class="nav-list">
         <template v-for="item in navigationModules" :key="item.key">
@@ -395,7 +396,7 @@ async function saved(closeDialog = true) {
     </aside>
     <div class="current-user">{{ user.displayName }}（{{ user.username }}）<button class="text-action" @click="signOut">退出</button></div>
     <div v-if="message" class="message-bar" :class="`message-${messageKind}`" role="status"><span>{{ message }}</span><button data-test="close-message" @click="message=''">关闭</button></div>
-    <main><div class="content"><DashboardPage v-if="activeModule === 'dashboard'" @navigate="navigateFromDashboard" /><ProductCodeRulesDialog v-else-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><CustomerFundsPage v-else-if="activeModule === 'customerFunds'" ref="fundsPage" :current-user-role="user.role" @customer="openCustomerFunds" @navigate-customer="name=>navigateFromDashboard('customer',name)" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :deleting-purchase-id="deletingPurchaseId" :current-user-role="user.role" @action="primary" @import="openImport" @export-document="exportDocument" @export-summary="exportSummary" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @order-payment="row=>orderPaymentRow=row" @receipt="receipt" @payment="payment" @finance-review="openFinanceReview" @invoice="openInvoice" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @review-order="reviewOrderRow" @review-purchase="reviewPurchaseRow" @delete-order="deleteOrderRow" @delete-purchase="deletePurchaseRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
+    <main><div class="content"><DashboardPage v-if="activeModule === 'dashboard'" @navigate="navigateFromDashboard" /><ProductCodeRulesDialog v-else-if="productCodeRulesOpen" @close="productCodeRulesOpen=false" @message="showMessage" /><CustomerFundsPage v-else-if="activeModule === 'customerFunds'" ref="fundsPage" :current-user-role="user.role" @customer="openCustomerFunds" @navigate-customer="name=>navigateFromDashboard('customer',name)" @message="showMessage" /><OperationRecordsPage v-else-if="activeModule === 'operationRecords'" :current-user="user" @message="showMessage" /><ModuleListPage v-else ref="list" :module="currentModule" :deleting-purchase-id="deletingPurchaseId" :current-user-role="user.role" @action="primary" @import="openImport" @export-document="exportDocument" @export-summary="exportSummary" @manual="manual" @edit="edit" @gallery="openProductGallery" @funds="openCustomerFunds" @details="details" @order-payment="row=>orderPaymentRow=row" @receipt="receipt" @payment="payment" @finance-review="openFinanceReview" @invoice="openInvoice" @purchase-receipt="purchaseReceipt" @after-sales-receipt="openAfterSalesReceipt" @after-sales-shipment="openAfterSalesShipment" @after-sales-refund="row=>afterSalesRefundId=Number(row.id)" @after-sales-cancel="cancelAfterSalesRow" @review-order="reviewOrderRow" @review-purchase="reviewPurchaseRow" @delete-order="deleteOrderRow" @delete-purchase="deletePurchaseRow" @shipment="shipment" @allocation="allocation" @workflow="workflow" @navigate-supplier="selectModule('supplier')" @message="showMessage" /></div></main>
     <div v-if="importOpen && currentModule.importType && canUseCurrentModuleImport" class="dialog-mask import-dialog-mask"><ImportPanel :type="currentModule.importType" :title="currentModule.importActionLabel ?? currentModule.actionLabel" @close="importOpen=false; list?.reload()" @message="showMessage" /></div>
     <CustomerDialog v-if="entityOpen && activeModule === 'customer'" :row="editRow" @close="entityOpen=false" @saved="saved" @message="showMessage" />
     <EntityDialog v-else-if="entityOpen" :module="activeModule" :row="editRow" :current-user-role="user.role" @close="entityOpen=false" @saved="saved" @message="showMessage" />
@@ -423,4 +424,3 @@ async function saved(closeDialog = true) {
     <ActionInputDialog v-if="actionInput" :title="actionInput.title" :label="actionInput.label" :placeholder="actionInput.placeholder" @close="actionInput=null" @confirm="submitActionInput" />
   </div>
 </template>
-

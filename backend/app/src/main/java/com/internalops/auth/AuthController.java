@@ -13,8 +13,9 @@ import java.util.Map;
 public class AuthController {
     private final AuthService auth;
     public AuthController(AuthService auth) { this.auth=auth; }
-    @PostMapping("/login") public ApiResponse<CurrentUser> login(@RequestBody Map<String,String> body,HttpServletResponse response) {
+    @PostMapping("/login") public ApiResponse<CurrentUser> login(@RequestBody Map<String,String> body,HttpServletResponse response,HttpServletRequest request) {
         AuthService.Session session=auth.login(body.getOrDefault("username",""),body.getOrDefault("password", ""));
+        request.setAttribute("operationActor",session.user());
         Cookie cookie=new Cookie("OPS_SESSION",session.token()); cookie.setHttpOnly(true); cookie.setPath("/"); cookie.setMaxAge(8*60*60); response.addCookie(cookie); return ApiResponse.ok(session.user());
     }
     @PostMapping("/logout") public ApiResponse<Void> logout(HttpServletRequest request,HttpServletResponse response) { auth.logout(token(request)); Cookie cookie=new Cookie("OPS_SESSION",""); cookie.setPath("/"); cookie.setMaxAge(0); response.addCookie(cookie); return ApiResponse.ok(null); }
