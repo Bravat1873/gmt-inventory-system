@@ -15,6 +15,7 @@ const tables: Record<string, string> = {
   document_number_sequence: '单号分配', attachment: '附件', exception_case: '异常处理'
 }
 const fields: Record<string, string> = {
+  _protected: '安全信息或文件内容（不保存原文）',
   id: '记录ID', customer_id: '客户ID', supplier_id: '供应商ID', sku_id: '产品ID', product_id: '产品ID',
   sales_order_id: '销售订单ID', sales_order_item_id: '订单明细ID', purchase_order_id: '采购订单ID', purchase_order_item_id: '采购明细ID',
   warehouse_id: '仓库ID', suggestion_id: '采购建议ID', suggestion_item_id: '采购建议明细ID', request_id: '资金申请ID',

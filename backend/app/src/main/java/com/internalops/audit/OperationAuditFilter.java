@@ -33,7 +33,8 @@ public class OperationAuditFilter extends OncePerRequestFilter {
     }
     @Override protected boolean shouldNotFilter(HttpServletRequest request) {
         String path=request.getRequestURI();
-        return !enabled || !path.startsWith("/api/") || request.getMethod().equals("OPTIONS")
+        return !enabled || !path.startsWith("/api/") || !Set.of("POST","PUT","PATCH","DELETE").contains(request.getMethod())
+                || path.startsWith("/api/auth/")
                 || path.equals("/api/system/health") || path.equals("/api/auth/me")
                 || path.startsWith("/api/dashboard") || path.matches("/api/product-images/[^/]+/content")
                 || (path.startsWith("/api/operation-records") && request.getMethod().equals("GET"));
@@ -58,19 +59,13 @@ public class OperationAuditFilter extends OncePerRequestFilter {
                     @Override public void beforeCommit(boolean readOnly) {records.finish(id,buffered.getStatus(),finalActor,mutation);}
                 });
             });
-            if(buffered.getStatus()>=400) records.failed(request.getMethod(),request.getRequestURI(),initialActor,request.getRemoteAddr(),buffered.getStatus(),failureMessage(buffered));
         } catch(Exception error) {
             log.error("Operation transaction failed: {} {}",request.getMethod(),request.getRequestURI(),error);
             buffered.reset();buffered.setStatus(500);buffered.setContentType("application/json;charset=UTF-8");
             String message="操作未完成，业务数据已回滚，请刷新后重试";
             buffered.getWriter().write(json.writeValueAsString(new ApiResponse<>(false,null,message)));
-            try {records.failed(request.getMethod(),request.getRequestURI(),initialActor,request.getRemoteAddr(),500,message);}
-            catch(Exception auditError){log.error("Failed to persist failure audit",auditError);}
         } finally {OperationScope.clear();}
         buffered.copyBodyToResponse();
-    }
-    private String failureMessage(ContentCachingResponseWrapper response) {
-        try{return json.readTree(response.getContentAsByteArray()).path("message").asText("操作失败");}catch(Exception e){return "操作失败";}
     }
     private static class RequestFailure extends RuntimeException {RequestFailure(Throwable cause){super(cause);} }
 }

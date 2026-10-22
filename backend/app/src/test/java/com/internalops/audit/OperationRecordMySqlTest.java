@@ -67,6 +67,10 @@ class OperationRecordMySqlTest {
         assertThat(detail.path("canUndo").asBoolean()).isTrue();
         assertThat(detail.path("operation").path("actorUsername").asText()).isEqualTo("admin");
         assertThat(tables(id)).contains("customer_fund_account","customer_fund_ledger","customer_receipt","sales_order");
+        assertThat(detail.path("operation").path("relatedRecords").asText()).contains("订单号：AT-"+suffix,"客户：审计测试客户"+suffix);
+        assertThat(detail.path("operation").path("changeSummary").toString()).contains("customer_fund_account","balance");
+        for(JsonNode change:detail.path("changes"))if(change.path("table").asText().equals("customer_receipt"))
+            assertThat(change.path("relatedInfo").asText()).contains("订单号：AT-"+suffix);
         assertThat(balance()).isEqualByComparingTo("400");
         undo(id,admin).andExpect(status().isOk());
         assertThat(balance()).isEqualByComparingTo("500");
@@ -111,20 +115,21 @@ class OperationRecordMySqlTest {
         assertThat(detail(id,owner).path("operation").path("status").asText()).isEqualTo("SUCCESS");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_context",Integer.class)).isZero();
     }
-    @Test void failedRequestRollsBackEveryChangeAndStillRecordsFailure()throws Exception {
+    @Test void failedRequestRollsBackEveryChangeWithoutRecordingAnUnchangedOperation()throws Exception {
         String path="/api/audit-fixture/"+customer+"/fail";
         mvc.perform(post(path).cookie(owner)).andExpect(status().isBadRequest());
         assertThat(name()).isEqualTo("审计测试客户"+suffix);assertThat(balance()).isEqualByComparingTo("500");
-        var record=detail(last(path),owner).path("operation");
-        assertThat(record.path("status").asText()).isEqualTo("FAILED");assertThat(record.path("changeCount").asInt()).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_record WHERE request_path=?",Integer.class,path)).isZero();
     }
-    @Test void patchExportAndLoginAreRecordedWithoutSecrets()throws Exception {
+    @Test void onlyPatchIsRecordedWhileExportAndLoginAreOmittedAndSecretsStayPrivate()throws Exception {
         String path="/api/audit-fixture/"+customer;
         mvc.perform(patch(path).cookie(owner).contentType("application/json").content("{\"name\":\"补丁更新\"}")).andExpect(status().isOk());
         assertThat(last(path)).isPositive();
+        long count=jdbc.queryForObject("SELECT COUNT(*) FROM operation_record",Long.class);
         mvc.perform(get("/api/audit-fixture/export").cookie(owner)).andExpect(status().isOk()).andExpect(content().string("csv-data"));
-        assertThat(detail(last("/api/audit-fixture/export"),owner).path("canUndo").asBoolean()).isFalse();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_record WHERE action='登录系统' AND actor_username=?",Integer.class,"owner-"+suffix)).isPositive();
+        login("owner-"+suffix);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_record",Long.class)).isEqualTo(count);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_record WHERE action='登录系统' AND actor_username=?",Integer.class,"owner-"+suffix)).isZero();
         String userPath="/api/workbench/user";
         mvc.perform(post(userPath).cookie(admin).contentType("application/json").content("{\"username\":\"created-"+suffix+"\",\"displayName\":\"新增人员\",\"password\":\"AuditSecret123!\",\"role\":\"USER\"}")).andExpect(status().isOk());
         var detail=detail(last(userPath),admin);
@@ -218,12 +223,55 @@ class OperationRecordMySqlTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_order WHERE external_order_no=?",Integer.class,"IMPORT-"+suffix)).isZero();
         assertThat(jdbc.queryForObject("SELECT status FROM import_batch WHERE id=?",String.class,batch)).isEqualTo("PREVIEW");
     }
+    @Test void unchangedSavesAndReadOnlyPostsDoNotProduceRecords()throws Exception {
+        long count=jdbc.queryForObject("SELECT COUNT(*) FROM operation_record",Long.class);
+        rename(owner,name()); // Version increments, but the submitted business value is unchanged.
+        mvc.perform(post("/api/audit-fixture/no-change").cookie(owner)).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_record",Long.class)).isEqualTo(count);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_context",Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_change c LEFT JOIN operation_record r ON r.id=c.operation_id WHERE r.id IS NULL",Integer.class)).isZero();
+    }
+    @Test void deletedOrderAndShipmentKeepBusinessNumbersAndProductContext()throws Exception {
+        long sku=product();
+        jdbc.update("UPDATE sales_order SET external_order_no=? WHERE id=?","CUSTOMER-"+suffix,order);
+        jdbc.update("INSERT INTO sales_order_item(sales_order_id,line_no,sku_id,quantity,sale_price) VALUES(?,1,?,2,10)",order,sku);
+        long item=jdbc.queryForObject("SELECT id FROM sales_order_item WHERE sales_order_id=?",Long.class,order);
+        jdbc.update("INSERT INTO sales_shipment(shipment_no,sales_order_id,delivery_address,operator_name) VALUES(?,?,'测试地址','仓管')","FH-"+suffix,order);
+        long shipment=jdbc.queryForObject("SELECT id FROM sales_shipment WHERE sales_order_id=?",Long.class,order);
+        jdbc.update("INSERT INTO sales_shipment_item(sales_shipment_id,sales_order_item_id,quantity) VALUES(?,?,1)",shipment,item);
+        String path="/api/audit-fixture/order/"+order;
+        mvc.perform(delete(path).cookie(owner)).andExpect(status().isOk());long id=last(path);
+        var detail=detail(id,owner);
+        assertThat(detail.path("operation").path("relatedRecords").asText()).contains("订单号：AT-"+suffix,"客户订单号：CUSTOMER-"+suffix,"发货单号：FH-"+suffix,"产品编号：AT"+suffix,"客户：审计测试客户"+suffix);
+        for(JsonNode change:detail.path("changes"))if(change.path("table").asText().equals("sales_shipment_item"))
+            assertThat(change.path("relatedInfo").asText()).contains("发货单号：FH-"+suffix,"订单号：AT-"+suffix,"产品编号：AT"+suffix);
+        jdbc.update("UPDATE customer SET customer_name='事后改名' WHERE id=?",customer);
+        assertThat(detail(id,owner).path("operation").path("relatedRecords").asText()).doesNotContain("事后改名");
+        mvc.perform(get("/api/operation-records").cookie(owner).param("keyword","FH-"+suffix)).andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].id").value(id));
+        undo(id,owner).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_shipment WHERE id=?",Integer.class,shipment)).isEqualTo(1);
+    }
+    @Test void passwordOnlyChangesAreRecordedWithoutPersistingThePassword()throws Exception {
+        long user=jdbc.queryForObject("SELECT id FROM sys_user WHERE username=?",Long.class,"other-"+suffix);
+        String path="/api/audit-fixture/password/"+user;
+        mvc.perform(patch(path).cookie(admin)).andExpect(status().isOk());
+        var detail=detail(last(path),admin);
+        assertThat(detail.path("operation").path("changeSummary").toString()).contains("_protected");
+        assertThat(detail.toString()).doesNotContain("ChangedSecret123","password_hash");
+        assertThat(detail.path("canUndo").asBoolean()).isFalse();
+    }
+    @Test void historicalViewRecordsAreHiddenWithoutDeletingThem()throws Exception {
+        long id=rename(owner,"过滤旧查看记录"+suffix);
+        jdbc.update("INSERT INTO operation_record(action,module_name,http_method,request_path,actor_name,actor_username,actor_role,status,change_count) VALUES('查看','订单管理','GET','/api/orders','旧人员','legacy','USER','SUCCESS',0)");
+        mvc.perform(get("/api/operation-records").cookie(owner).param("actor","legacy")).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        assertThat(detail(id,owner).path("operation").path("changeCount").asInt()).isPositive();
+    }
     private long product() {
         jdbc.update("INSERT INTO sku(product_code,business_unique_id,customer_part_number,product_name,current_cost) VALUES(?,?,?,'测试门锁',5)","AT"+suffix,"AT"+suffix+"::P","P"+suffix);
         return jdbc.queryForObject("SELECT id FROM sku WHERE product_code=?",Long.class,"AT"+suffix);
     }
     private Cookie login(String username)throws Exception {return mvc.perform(post("/api/auth/login").contentType("application/json").content(json.writeValueAsString(Map.of("username",username,"password","123")))).andExpect(status().isOk()).andReturn().getResponse().getCookie("OPS_SESSION");}
-    private long rename(Cookie user,String name)throws Exception {String path="/api/audit-fixture/"+customer;mvc.perform(patch(path).cookie(user).contentType("application/json").content(json.writeValueAsString(Map.of("name",name)))).andExpect(status().isOk());return last(path);}
+    private long rename(Cookie user,String name)throws Exception {String path="/api/audit-fixture/"+customer;mvc.perform(patch(path).cookie(user).contentType("application/json").content(json.writeValueAsString(Map.of("name",name)))).andExpect(status().isOk());return Optional.ofNullable(jdbc.queryForObject("SELECT MAX(id) FROM operation_record WHERE request_path=?",Long.class,path)).orElse(0L);}
     private long last(String path){return jdbc.queryForObject("SELECT MAX(id) FROM operation_record WHERE request_path=?",Long.class,path);}
     private JsonNode detail(long id,Cookie user)throws Exception{return json.readTree(mvc.perform(get("/api/operation-records/"+id).cookie(user)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray()).path("data");}
     private ResultActions undo(long id,Cookie user)throws Exception{return mvc.perform(post("/api/operation-records/"+id+"/undo").cookie(user).contentType("application/json").content("{\"reason\":\"录入有误，恢复原状态\"}"));}
@@ -239,6 +287,14 @@ class OperationRecordMySqlTest {
         @PostMapping("/{id}/multi") ApiResponse<Void> multi(@PathVariable long id){jdbc.update("UPDATE customer SET customer_name='联动修改' WHERE id=?",id);jdbc.update("UPDATE customer_fund_account SET balance=450,version=version+1 WHERE customer_id=?",id);return ApiResponse.ok(null);}
         @PostMapping("/{id}/fail") ApiResponse<Void> fail(@PathVariable long id){multi(id);throw new IllegalArgumentException("测试业务校验失败");}
         @PostMapping("/{id}/order") ApiResponse<Void> child(@PathVariable long id){jdbc.update("INSERT INTO sales_order(order_no,customer_id,status,total_amount) VALUES(?,?,'DRAFT',10)","CHILD-"+UUID.randomUUID(),id);return ApiResponse.ok(null);}
+        @PostMapping("/no-change") ApiResponse<Void> noChange(){return ApiResponse.ok(null);}
+        @PatchMapping("/password/{id}") ApiResponse<Void> password(@PathVariable long id){jdbc.update("UPDATE sys_user SET password_hash='ChangedSecret123' WHERE id=?",id);return ApiResponse.ok(null);}
+        @DeleteMapping("/order/{id}") ApiResponse<Void> deleteOrder(@PathVariable long id){
+            jdbc.update("DELETE FROM sales_shipment_item WHERE sales_shipment_id IN (SELECT id FROM sales_shipment WHERE sales_order_id=?)",id);
+            jdbc.update("DELETE FROM sales_shipment WHERE sales_order_id=?",id);
+            jdbc.update("DELETE FROM sales_order_item WHERE sales_order_id=?",id);
+            jdbc.update("DELETE FROM sales_order WHERE id=?",id);return ApiResponse.ok(null);
+        }
         @GetMapping("/export") String export(){return "csv-data";}
     }
 }

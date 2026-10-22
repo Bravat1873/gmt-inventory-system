@@ -5,8 +5,8 @@ import type { OperationDetail, OperationRecord } from '../api/operation-records'
 
 const api = vi.hoisted(() => ({ loadOperations: vi.fn(), loadOperation: vi.fn(), undoOperation: vi.fn() }))
 vi.mock('../api/operation-records', () => api)
-const row: OperationRecord = { id: 12, action: '订单管理 · 修改', moduleName: '订单管理', httpMethod: 'PUT', requestPath: '/api/orders/4', actorId: 2, actorName: '业务员甲', actorUsername: 'owner', operatedAt: '2026-10-22T14:10:05', status: 'SUCCESS', changeCount: 2, affectedModules: '订单管理、库存管理', relatedRecords: 'DD20261000004' }
-const details = (overrides: Partial<OperationDetail> = {}): OperationDetail => ({ operation: { ...row }, changes: [{ id: 50, module: '库存管理', table: 'inventory_balance', recordKey: '{"id":4}', label: '门锁库存', type: 'UPDATE', preserved: false, fields: [{ field: 'locked_quantity', before: '3', after: '5' }] }], changePage: 1, changePageSize: 100, canUndo: true, undoReason: '', blockers: [], ...overrides })
+const row: OperationRecord = { id: 12, action: '订单管理 · 修改', moduleName: '订单管理', httpMethod: 'PUT', requestPath: '/api/orders/4', actorId: 2, actorName: '业务员甲', actorUsername: 'owner', operatedAt: '2026-10-22T14:10:05', status: 'SUCCESS', changeCount: 2, affectedModules: '订单管理、库存管理', relatedRecords: '订单号：DD20261000004；客户：测试客户；产品编号：LOCK-01', changeSummary: [{ table: 'inventory_balance', type: 'UPDATE', count: 1, fields: ['locked_quantity'] }] }
+const details = (overrides: Partial<OperationDetail> = {}): OperationDetail => ({ operation: { ...row }, changes: [{ id: 50, module: '库存管理', table: 'inventory_balance', recordKey: '{"id":4}', label: '门锁库存', relatedInfo: '订单号：DD20261000004；发货单号：FH20261000001；产品编号：LOCK-01', type: 'UPDATE', preserved: false, fields: [{ field: 'locked_quantity', before: '3', after: '5' }] }], changePage: 1, changePageSize: 100, canUndo: true, undoReason: '', blockers: [], ...overrides })
 const owner = { id: 2, username: 'owner', displayName: '业务员甲', role: 'USER' as const }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -18,7 +18,9 @@ it('shows the operator, time, associated records and both affected modules', asy
   const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
   expect(wrapper.text()).toContain('业务员甲'); expect(wrapper.text()).toContain('2026-10-22 14:10:05')
   expect(wrapper.text()).toContain('订单管理、库存管理'); expect(wrapper.text()).toContain('DD20261000004')
+  expect(wrapper.text()).toContain('客户：测试客户'); expect(wrapper.text()).toContain('锁定库存')
   await wrapper.findAll('button').find(b => b.text() === '详情')!.trigger('click'); await flushPromises()
+  expect(wrapper.text()).toContain('发货单号：FH20261000001'); expect(wrapper.text()).toContain('产品编号：LOCK-01')
   expect(wrapper.text()).toContain('锁定库存'); expect(wrapper.find('.operations-diff').text()).toContain('3'); expect(wrapper.find('.operations-diff').text()).toContain('5')
 })
 it('allows owners to undo only after reviewing changes and providing a reason', async () => {

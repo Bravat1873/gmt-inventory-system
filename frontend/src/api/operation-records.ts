@@ -2,12 +2,14 @@ export interface OperationRecord {
   id: number; action: string; moduleName: string; httpMethod: string; requestPath: string
   actorId: number | null; actorName: string; actorUsername: string; operatedAt: string
   completedAt?: string; status: 'SUCCESS' | 'FAILED' | 'REVERSED' | 'LEGACY'
+  changeSummary?: { table: string; type: 'INSERT' | 'UPDATE' | 'DELETE'; count: number; fields: string[] }[]
   changeCount: number; affectedModules?: string; relatedRecords?: string; clientIp?: string
   nonReversibleReason?: string; resultMessage?: string; reversesId?: number
   reversedByOperationId?: number; reversalReason?: string
 }
 export interface OperationChange {
   id: number; module: string; table: string; recordKey: string; label: string
+  relatedInfo?: string
   type: 'INSERT' | 'UPDATE' | 'DELETE'; preserved: boolean
   fields: { field: string; before: unknown; after: unknown }[]
 }

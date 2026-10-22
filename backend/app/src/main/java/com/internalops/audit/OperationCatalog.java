@@ -62,9 +62,37 @@ final class OperationCatalog {
         if (method.equals("GET")) verb = path.contains("export") || path.endsWith(".xlsx") ? "导出" : "查看";
         return requestModule(path) + " · " + verb;
     }
+    private static final Map<String,String> IDENTIFIERS=new LinkedHashMap<>();
+    static {
+        String[][] fields={
+            {"order_no","订单号"},{"external_order_no","客户订单号"},{"purchase_no","采购单号"},
+            {"suggestion_no","采购建议单号"},{"after_sales_no","售后单号"},{"shipment_no","发货单号"},
+            {"receipt_no","收货单号"},{"refund_no","退款单号"},{"payment_no","付款单号"},
+            {"operation_no","资金单号"},{"request_no","申请单号"},{"invoice_no","发票号"},
+            {"confirmed_invoice_no","确认发票号"},{"source_no","来源单号"},{"business_no","业务单号"},
+            {"contract_no","合同号"},{"case_no","异常单号"},{"reference_no","银行流水号"},
+            {"tracking_no","物流单号"},{"logistics_no","物流单号"},
+            {"customer_code","客户编码"},{"customer_name","客户"},
+            {"supplier_code","供应商编码"},{"supplier_name","供应商"},
+            {"product_code","产品编号"},{"customer_part_number","客户料号"},{"product_name","产品"},
+            {"model","型号"},{"warehouse_name","仓库"},{"line_no","明细行"},
+            {"username","账号"},{"display_name","名称"},{"filename","文件"},
+            {"original_filename","文件"},{"original_name","文件"},{"sheet_name","工作表"}
+        };
+        for(String[] field:fields)IDENTIFIERS.put(field[0],field[1]);
+    }
+    static List<String> identifiers(Map<String,Object> row) {
+        if(row==null)return List.of();
+        var result=new ArrayList<String>();
+        IDENTIFIERS.forEach((column,label)->{
+            Object value=row.get(column);
+            if(value!=null&&!value.toString().isBlank())result.add(label+"："+value);
+        });
+        return result;
+    }
     static String label(String table, Map<String,Object> row) {
         if (row == null) return "";
-        for (String column:List.of("order_no","purchase_no","suggestion_no","after_sales_no","receipt_no","source_no","business_no","invoice_no","customer_name","supplier_name","product_name","username","filename","original_filename")) {
+        for (String column:List.of("order_no","purchase_no","suggestion_no","after_sales_no","shipment_no","receipt_no","operation_no","source_no","business_no","invoice_no","customer_name","supplier_name","product_code","product_name","username","filename","original_filename")) {
             Object value=row.get(column);
             if (value!=null && !value.toString().isBlank()) return value.toString();
         }

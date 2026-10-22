@@ -46,12 +46,27 @@ public class OperationRecordService {
 
     void finish(long id, int status, CurrentUser actor, boolean mutation) {
         List<Change> changes=changes(id);
+        if(changes.stream().noneMatch(c->c.meaningful()&&!PRESERVED.contains(c.table()))) {
+            if(mutation)jdbc.update("DELETE FROM operation_context WHERE connection_id="+connectionId());
+            jdbc.update("DELETE FROM operation_change WHERE operation_id=?",id);
+            jdbc.update("DELETE FROM operation_record WHERE id=?",id);
+            return;
+        }
+        var snapshots=new LinkedHashMap<String,List<Map<String,Object>>>();
+        for(Change change:changes) {
+            var rows=snapshots.computeIfAbsent(entity(change.table(),map(change.key())),key->new ArrayList<>());
+            if(change.before()!=null)rows.add(change.before());
+            if(change.after()!=null)rows.add(change.after());
+        }
         var modules=new LinkedHashSet<String>(); var references=new LinkedHashSet<String>();
         var entities=new LinkedHashSet<String>(); String blocked=null;
         for (Change change:changes) {
             modules.add(OperationCatalog.module(change.table()));
-            Map<String,Object> row=change.after()==null?change.before():change.after();
-            references.add(OperationCatalog.label(change.table(),row));
+            var info=new LinkedHashSet<String>();
+            collectContext(change.before(),change.table(),info,snapshots,new HashSet<>(),0);
+            collectContext(change.after(),change.table(),info,snapshots,new HashSet<>(),0);
+            references.addAll(info);
+            jdbc.update("UPDATE operation_change SET related_info=? WHERE id=?",truncate(String.join("；",info),16000),change.id());
             if (change.table().equals("sys_user")) blocked="用户安全信息不支持撤回，请通过用户管理重新设置；密码不会保存在日志中";
             if (change.table().equals("import_workbook_file") && !change.type().equals("INSERT")) blocked="原始导入文件内容未复制到日志，无法自动还原";
             if (!PRESERVED.contains(change.table())) {
@@ -60,32 +75,19 @@ public class OperationRecordService {
                 addReferences(change.after(),change.table(),entities,new HashSet<>(),0);
             }
         }
-        for (String key:entities) {
-            jdbc.update("INSERT INTO operation_entity(operation_id,entity_key) VALUES(?,?)",id,key);
-            int separator=key.indexOf(':');String table=key.substring(0,separator);
-            var related=current(table(table),map(key.substring(separator+1)),false);
-            if(related!=null)references.add(OperationCatalog.module(table)+"："+OperationCatalog.label(table,related));
-        }
-        if (changes.isEmpty()) blocked="此次操作没有可撤回的数据变更";
+        for (String key:entities) jdbc.update("INSERT INTO operation_entity(operation_id,entity_key) VALUES(?,?)",id,key);
         jdbc.update("""
             UPDATE operation_record SET status='SUCCESS',completed_at=CURRENT_TIMESTAMP,http_status=?,change_count=?,
-            affected_modules=?,related_records=?,non_reversible_reason=? WHERE id=?
-            """,status,changes.size(),String.join("、",modules),truncate(String.join("；",references),16000),blocked,id);
+            affected_modules=?,related_records=?,non_reversible_reason=?,change_summary=? WHERE id=?
+            """,status,changes.size(),String.join("、",modules),truncate(String.join("；",references),16000),blocked,encode(summary(changes)),id);
         if (actor!=null) jdbc.update("UPDATE operation_record SET actor_id=?,actor_name=?,actor_username=?,actor_role=? WHERE id=?",
                 actor.id(),actor.displayName(),actor.username(),actor.role().name(),id);
         if (mutation) jdbc.update("DELETE FROM operation_context WHERE connection_id="+connectionId());
     }
 
-    @Transactional
-    public void failed(String method,String path,CurrentUser actor,String ip,int status,String message) {
-        long id=begin(method,path,actor,ip,false);
-        jdbc.update("UPDATE operation_record SET status='FAILED',http_status=?,completed_at=CURRENT_TIMESTAMP,result_message=?,non_reversible_reason=? WHERE id=?",
-                status,truncate(message,1000),"操作未成功，业务变更已回滚",id);
-    }
-
     public Map<String,Object> list(String keyword,String actor,String module,String status,String from,String to,int requestedPage) {
         CurrentUser.required();
-        int page=Math.max(1,requestedPage); var args=new ArrayList<Object>(); var where=new StringBuilder(" WHERE status<>'RUNNING'");
+        int page=Math.max(1,requestedPage); var args=new ArrayList<Object>(); var where=new StringBuilder(" WHERE status<>'RUNNING' AND change_count>0");
         if (!blank(keyword)) {
             where.append(" AND (action LIKE ? OR related_records LIKE ? OR request_path LIKE ? OR CAST(id AS CHAR)=?)");
             for(int i=0;i<3;i++)args.add("%"+keyword.trim()+"%"); args.add(keyword.trim());
@@ -108,7 +110,7 @@ public class OperationRecordService {
         var result=new LinkedHashMap<String,Object>();result.put("operation",view(record));
         result.put("changes",changes.stream().map(c->Map.of("id",c.id(),"module",OperationCatalog.module(c.table()),"table",c.table(),
                 "recordKey",c.key(),"label",OperationCatalog.label(c.table(),c.after()==null?c.before():c.after()),"type",c.type(),
-                "fields",diff(c),"preserved",PRESERVED.contains(c.table()))).toList());
+                "fields",diff(c),"preserved",PRESERVED.contains(c.table()),"relatedInfo",c.relatedInfo()==null?String.join("；",OperationCatalog.identifiers(c.after()==null?c.before():c.after())):c.relatedInfo())).toList());
         result.put("changePage",page);result.put("changePageSize",100);
         var blockers=blockers(id);String reason=unavailable(record,blockers);
         if(reason==null) reason=staleReason(id);
@@ -218,6 +220,46 @@ public class OperationRecordService {
         if(seen.add(entity)) addReferences(current(parent,key,false),name,entities,seen,depth+1);
     }
 
+    private List<Map<String,Object>> summary(List<Change> changes) {
+        var groups=new LinkedHashMap<String,List<Change>>();
+        for(Change change:changes)if(change.meaningful()&&!PRESERVED.contains(change.table()))
+            groups.computeIfAbsent(change.table()+":"+change.type(),key->new ArrayList<>()).add(change);
+        var result=new ArrayList<Map<String,Object>>();
+        for(var group:groups.values()) {
+            var fields=new LinkedHashSet<String>();
+            for(Change change:group)for(var field:diff(change)) {
+                String name=field.get("field").toString();
+                if(!Set.of("id","created_at","updated_at","version").contains(name))fields.add(name);
+            }
+            if(fields.isEmpty())fields.add("_protected");
+            result.add(Map.of("table",group.get(0).table(),"type",group.get(0).type(),"count",group.size(),"fields",fields));
+        }
+        return result;
+    }
+
+    private void collectContext(Map<String,Object> row,String name,Set<String> info,
+                                Map<String,List<Map<String,Object>>> snapshots,Set<String> seen,int depth) {
+        if(row==null||depth>8)return;
+        info.addAll(OperationCatalog.identifiers(row));
+        var refs=new LinkedHashMap<>(table(name).references());
+        String source=OperationCatalog.sourceTable(row.get("source_type"));
+        if(source!=null)refs.put("source_id",source);
+        source=OperationCatalog.sourceTable(row.get("business_type"));
+        if(source!=null)refs.put("business_id",source);
+        for(var ref:refs.entrySet()) {
+            String target=ref.getValue();Object value=row.get(ref.getKey());
+            if(value==null||Set.of("sys_user","product_code_rule").contains(target)||!tables().containsKey(target))continue;
+            Table parent=table(target);if(parent.keys().size()!=1)continue;
+            var key=Map.of(parent.keys().get(0),value);String identity=entity(target,key);
+            if(!seen.add(identity))continue;
+            // Deleted parents remain available from this operation's immutable before snapshots.
+            var rows=snapshots.computeIfAbsent(identity,ignored->{
+                var current=current(parent,key,false);return current==null?List.of():List.of(current);
+            });
+            for(var related:rows)collectContext(related,target,info,snapshots,seen,depth+1);
+        }
+    }
+
     private List<Map<String,Object>> diff(Change change) {
         var columns=new LinkedHashSet<String>();if(change.before()!=null)columns.addAll(change.before().keySet());if(change.after()!=null)columns.addAll(change.after().keySet());
         var result=new ArrayList<Map<String,Object>>();
@@ -231,6 +273,9 @@ public class OperationRecordService {
     private Map<String,Object> view(Map<String,Object> raw) {
         var result=new LinkedHashMap<String,Object>();
         raw.forEach((k,v)->{ var parts=k.split("_");var key=new StringBuilder(parts[0]);for(int i=1;i<parts.length;i++)key.append(Character.toUpperCase(parts[i].charAt(0))).append(parts[i].substring(1));result.put(key.toString(),v instanceof Timestamp time?time.toLocalDateTime().toString():v); });
+        Object summary=raw.get("change_summary");
+        try { result.put("changeSummary",summary==null?List.of():json.readTree(summary.toString())); }
+        catch(Exception e){throw new IllegalStateException("变更摘要无法读取",e);}
         return result;
     }
     private Map<String,Object> record(long id) {
@@ -238,7 +283,7 @@ public class OperationRecordService {
         if(rows.isEmpty())throw new IllegalArgumentException("操作记录不存在");return rows.get(0);
     }
     private List<Change> changes(long id) { return jdbc.query("SELECT * FROM operation_change WHERE operation_id=? ORDER BY id",(rs,n)->readChange(rs),id); }
-    private Change readChange(ResultSet rs)throws SQLException { return new Change(rs.getLong("id"),rs.getString("table_name"),rs.getString("record_key"),rs.getString("change_type"),map(rs.getString("before_data")),map(rs.getString("after_data"))); }
+    private Change readChange(ResultSet rs)throws SQLException { return new Change(rs.getLong("id"),rs.getString("table_name"),rs.getString("record_key"),rs.getString("change_type"),map(rs.getString("before_data")),map(rs.getString("after_data")),rs.getString("related_info"),rs.getBoolean("meaningful_change")); }
     private Map<String,Object> current(Table table,Map<String,Object> key,boolean lock) {
         if(!new HashSet<>(table.keys()).equals(key.keySet()))throw new UndoConflict("记录主键结构已变化，请人工核查");
         var rows=jdbc.queryForList("SELECT "+table.columns().stream().map(this::quote).collect(Collectors.joining(","))+" FROM "+quote(table.name())+" WHERE "+predicate(key)+(lock?" FOR UPDATE":""),key.values().toArray());
@@ -292,7 +337,7 @@ public class OperationRecordService {
     private String connectionId() {return jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<String>)c->c.getMetaData().getDatabaseProductName().equals("H2")?"SESSION_ID()":"CONNECTION_ID()");}
     private static boolean blank(String text) {return text==null||text.isBlank();}
     private static String truncate(String text,int length) {return text==null?null:text.substring(0,Math.min(text.length(),length));}
-    private record Change(long id,String table,String key,String type,Map<String,Object> before,Map<String,Object> after) { }
+    private record Change(long id,String table,String key,String type,Map<String,Object> before,Map<String,Object> after,String relatedInfo,boolean meaningful) { }
     private record Table(String name,List<String> keys,List<String> columns,Map<String,String> references) { }
     public static class UndoConflict extends RuntimeException {public UndoConflict(String message){super(message);} }
 }

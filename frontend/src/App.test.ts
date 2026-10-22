@@ -41,7 +41,7 @@ describe('连续导航和浏览器地址状态', () => {
     await flushPromises()
     const menuLabels = wrapper.findAll('.nav-list>.nav-item').map(item => item.text())
     expect(menuLabels).toHaveLength(11)
-    expect(menuLabels).toContain('操作记录')
+    expect(menuLabels.indexOf('操作记录')).toBe(menuLabels.indexOf('财务管理') + 1)
     expect(menuLabels[0]).toBe('首页')
     expect(menuLabels.indexOf('售后管理')).toBe(menuLabels.indexOf('订单管理') + 1)
     expect(wrapper.get('h1').text()).toBe('订单管理')

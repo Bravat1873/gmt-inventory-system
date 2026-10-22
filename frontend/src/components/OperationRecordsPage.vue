@@ -12,9 +12,10 @@ const filters = reactive({ keyword: '', actor: '', module: '', status: '', from:
 const loading = ref(false), detailLoading = ref(false), undoing = ref(false), error = ref(''), detailError = ref('')
 const detail = ref<OperationDetail>(), reason = ref(''), confirming = ref(false), heading = ref<HTMLElement>()
 let generation = 0, detailGeneration = 0
-const statuses = { SUCCESS: '成功', FAILED: '失败', REVERSED: '已撤回', LEGACY: '历史日志' }
+const statuses = { SUCCESS: '成功', REVERSED: '已撤回' }
+const statusLabel = (status: OperationRecord['status']) => status === 'FAILED' ? '失败' : status === 'LEGACY' ? '历史日志' : statuses[status]
 const types = { INSERT: '新增', UPDATE: '修改', DELETE: '删除' }
-const modules = ['客户管理', '产品管理', '供应商管理', '订单管理', '库存管理', '采购管理', '财务管理', '资金管理', '售后管理', '用户管理', '导入管理', '登录管理', '操作记录']
+const modules = ['客户管理', '产品管理', '供应商管理', '订单管理', '库存管理', '采购管理', '财务管理', '资金管理', '售后管理', '用户管理', '导入管理', '操作记录']
 const changePages = computed(() => detail.value ? Math.max(1, Math.ceil(detail.value.operation.changeCount / detail.value.changePageSize)) : 1)
 const eligible = (row: OperationRecord) => row.status === 'SUCCESS' && row.changeCount > 0 && !row.reversesId && !row.nonReversibleReason && (props.currentUser.role === 'ADMIN' || row.actorId === props.currentUser.id)
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : '请求失败，请重试'
@@ -60,7 +61,7 @@ onMounted(() => load())
 <template>
   <section class="operations-page" :aria-busy="loading || detailLoading">
     <header class="operations-header">
-      <div><h1>操作记录</h1><p>查看操作人员、时间和全部关联变更；撤回会同时恢复本次操作影响的数据。</p></div>
+      <div><h1>操作记录</h1><p>只记录实际数据变更，查看对应订单、单据和修改前后内容。</p></div>
       <button v-if="!detail" :disabled="loading" @click="load(data.page)">{{ loading ? '刷新中…' : '刷新记录' }}</button>
       <button v-else :disabled="undoing" @click="back">返回列表</button>
     </header>
@@ -82,13 +83,14 @@ onMounted(() => load())
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <div class="operations-table-scroll" tabindex="0" role="region" aria-label="操作记录列表，可横向滚动">
         <table class="operations-table">
-          <thead><tr><th scope="col">编号 / 时间</th><th scope="col">操作人员</th><th scope="col">操作内容</th><th scope="col">关联模块与信息</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead>
+          <colgroup><col style="width:14%" /><col style="width:11%" /><col style="width:20%" /><col style="width:34%" /><col style="width:8%" /><col style="width:13%" /></colgroup>
+          <thead><tr><th scope="col">编号 / 时间</th><th scope="col">操作人员</th><th scope="col">操作内容</th><th scope="col">订单 / 单据及关联信息</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead>
           <tbody><tr v-for="row in data.items" :key="row.id">
             <td><strong>#{{ row.id }}</strong><small>{{ formatDateTimeToSecond(row.operatedAt) }}</small></td>
             <td>{{ row.actorName }}<small>{{ row.actorUsername || '—' }}</small></td>
-            <td>{{ row.action }}<small>{{ row.changeCount ? `${row.changeCount} 条数据变更` : '无数据变更' }}</small></td>
+            <td class="operations-content">{{ row.action }}<small>{{ row.changeCount }} 条数据变更</small><small v-for="(summary, index) in row.changeSummary" :key="index">{{ operationTableLabel(summary.table) }} · {{ types[summary.type] }} {{ summary.count }} 条<template v-if="summary.type === 'UPDATE'">：{{ summary.fields.map(operationFieldLabel).join('、') }}</template></small></td>
             <td class="operations-related">{{ row.affectedModules || row.moduleName }}<small :title="row.relatedRecords">{{ row.relatedRecords || '—' }}</small></td>
-            <td><span class="operation-status" :class="`operation-${row.status.toLowerCase()}`">{{ statuses[row.status] }}</span></td>
+            <td><span class="operation-status" :class="`operation-${row.status.toLowerCase()}`">{{ statusLabel(row.status) }}</span></td>
             <td><div class="operations-row-actions"><button :disabled="detailLoading" @click="open(row.id)">详情</button><button :disabled="detailLoading || !eligible(row)" :title="row.nonReversibleReason || '查看关联变更并检查是否可撤回'" @click="open(row.id, true)">撤回</button></div></td>
           </tr><tr v-if="!data.items.length"><td colspan="6" class="operations-empty">{{ loading ? '正在读取操作记录…' : error ? '读取失败，请重试' : '暂无符合条件的操作记录' }}</td></tr></tbody>
         </table>
@@ -97,8 +99,8 @@ onMounted(() => load())
     </template>
 
     <article v-else class="operation-detail">
-      <header class="operation-detail-heading"><div><h2 ref="heading" tabindex="-1">#{{ detail.operation.id }} · {{ detail.operation.action }}</h2><p>{{ detail.operation.actorName }}（{{ detail.operation.actorUsername || '未保存账号' }}） · {{ formatDateTimeToSecond(detail.operation.operatedAt) }}</p></div><span class="operation-status" :class="`operation-${detail.operation.status.toLowerCase()}`">{{ statuses[detail.operation.status] }}</span></header>
-      <dl class="operation-facts"><div><dt>关联模块</dt><dd>{{ detail.operation.affectedModules || detail.operation.moduleName }}</dd></div><div><dt>关联信息</dt><dd>{{ detail.operation.relatedRecords || '—' }}</dd></div><div><dt>数据变更</dt><dd>{{ detail.operation.changeCount }} 条</dd></div><div><dt>来源地址</dt><dd>{{ detail.operation.clientIp || '—' }}</dd></div></dl>
+      <header class="operation-detail-heading"><div><h2 ref="heading" tabindex="-1">#{{ detail.operation.id }} · {{ detail.operation.action }}</h2><p>{{ detail.operation.actorName }}（{{ detail.operation.actorUsername || '未保存账号' }}） · {{ formatDateTimeToSecond(detail.operation.operatedAt) }}</p></div><span class="operation-status" :class="`operation-${detail.operation.status.toLowerCase()}`">{{ statusLabel(detail.operation.status) }}</span></header>
+      <dl class="operation-facts"><div><dt>关联模块</dt><dd>{{ detail.operation.affectedModules || detail.operation.moduleName }}</dd></div><div><dt>订单 / 单据及关联信息</dt><dd>{{ detail.operation.relatedRecords || '—' }}</dd></div><div><dt>数据变更</dt><dd>{{ detail.operation.changeCount }} 条</dd></div><div><dt>来源地址</dt><dd>{{ detail.operation.clientIp || '—' }}</dd></div></dl>
       <p v-if="detail.operation.resultMessage" class="form-error">{{ detail.operation.resultMessage }}</p>
       <p v-if="detail.operation.reversalReason">撤回原因：{{ detail.operation.reversalReason }}</p>
       <p v-if="detail.operation.reversesId">原操作：<button class="text-action" :disabled="undoing" @click="open(detail.operation.reversesId)">#{{ detail.operation.reversesId }} 查看原操作</button></p>
@@ -120,7 +122,7 @@ onMounted(() => load())
       <p class="operations-note">按执行顺序展示每条变更；同一条数据在本次操作中可能被多次更新。</p>
       <p v-if="!detail.changes.length" class="operations-empty">{{ detail.operation.status === 'LEGACY' ? '旧日志没有保存变更前后值，无法补还原始操作。' : '此次操作没有产生数据变更。' }}</p>
       <section v-for="change in detail.changes" :key="change.id" class="operation-change">
-        <header><h4>{{ change.module }} · {{ operationTableLabel(change.table) }} <span class="operation-change-type">{{ types[change.type] }}</span></h4><p>{{ change.label }} · {{ change.recordKey }}</p></header>
+        <header><h4>{{ change.module }} · {{ operationTableLabel(change.table) }} <span class="operation-change-type">{{ types[change.type] }}</span></h4><p class="operation-business-info">{{ change.relatedInfo || change.label }}</p><small>记录标识：{{ change.recordKey }}</small></header>
         <p v-if="change.preserved" class="operations-note">单号分配记录会保留，撤回后不会重复使用已分配的单号。</p>
         <div class="operations-table-scroll" tabindex="0" role="region" :aria-label="`${change.label}变更前后对比`"><table class="operations-diff"><thead><tr><th scope="col">字段</th><th scope="col">操作前</th><th scope="col">操作后</th></tr></thead><tbody><tr v-for="field in change.fields" :key="field.field"><th scope="row" :title="field.field">{{ operationFieldLabel(field.field) }}</th><td>{{ operationValue(field.before) }}</td><td>{{ operationValue(field.after) }}</td></tr><tr v-if="!change.fields.length"><td colspan="3">字段值未改变</td></tr></tbody></table></div>
       </section>
@@ -154,7 +156,9 @@ onMounted(() => load())
 .operations-table tbody tr:hover { background: #f6f9fc; }
 .operations-table small { display: block; color: #5b6a7e; margin-top: 4px; }
 .operations-related { max-width: 320px; overflow-wrap: anywhere; }
-.operations-related small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.operations-content { max-width: 300px; overflow-wrap: anywhere; }
+.operations-related small { white-space: normal; }
+.operation-change header small { color: #67758a; font-size: 11px; }
 .operations-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .operation-status { display: inline-block; padding: 3px 9px; border-radius: 5px; font-size: 12px; white-space: nowrap; background: #edf1f5; color: #42546b; }
 .operation-success { background: #e5f3ec; color: #216044; }
