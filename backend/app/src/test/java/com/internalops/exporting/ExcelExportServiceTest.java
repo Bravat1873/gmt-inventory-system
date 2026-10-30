@@ -97,6 +97,47 @@ class ExcelExportServiceTest {
     }
 
     @Test
+    void productSummaryKeepsAllSupplierQuotesPairedWithoutDuplicatingInventory() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(anyString())).thenReturn(
+                List.of(Map.of("product_code", "SKU-001", "actual_quantity", 12),
+                        Map.of("product_code", "SKU-002", "actual_quantity", 5)),
+                List.of(Map.of("product_code", "SKU-001", "supplier_name", "供应商甲", "purchase_price", new BigDecimal("934.3212")),
+                        Map.of("product_code", "SKU-001", "supplier_name", "供应商乙", "purchase_price", BigDecimal.ZERO)));
+        ExcelExportService service = new ExcelExportService(null, null, null, null, jdbc);
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.summary("product")))) {
+            var sheet = workbook.getSheetAt(0);
+            assertEquals(2, sheet.getLastRowNum());
+            assertEquals("12", sheet.getRow(1).getCell(9).getStringCellValue());
+            assertEquals("报价供应商", sheet.getRow(0).getCell(19).getStringCellValue());
+            assertEquals("采购单价", sheet.getRow(0).getCell(20).getStringCellValue());
+            assertEquals("报价供应商2", sheet.getRow(0).getCell(21).getStringCellValue());
+            assertEquals("采购单价2", sheet.getRow(0).getCell(22).getStringCellValue());
+            assertEquals("供应商甲", sheet.getRow(1).getCell(19).getStringCellValue());
+            assertEquals(934.3212, sheet.getRow(1).getCell(20).getNumericCellValue(), 0.000001);
+            assertEquals("供应商乙", sheet.getRow(1).getCell(21).getStringCellValue());
+            assertEquals(0, sheet.getRow(1).getCell(22).getNumericCellValue());
+            for (int column = 19; column <= 22; column++) {
+                assertEquals("", sheet.getRow(2).getCell(column).getStringCellValue());
+            }
+        }
+        verify(jdbc).queryForList(argThat(sql -> sql.contains("cfg.enabled=TRUE AND sp.enabled=TRUE AND s.enabled=TRUE")));
+    }
+
+    @Test
+    void productWithoutQuotesStillExportsQuoteHeadersAndBlankPrice() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(anyString())).thenReturn(List.of(Map.of("product_code", "SKU-001")), List.of());
+        ExcelExportService service = new ExcelExportService(null, null, null, null, jdbc);
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.summary("product")))) {
+            var sheet = workbook.getSheetAt(0);
+            assertEquals("报价供应商", sheet.getRow(0).getCell(19).getStringCellValue());
+            assertEquals("采购单价", sheet.getRow(0).getCell(20).getStringCellValue());
+            assertEquals("", sheet.getRow(1).getCell(20).getStringCellValue());
+        }
+    }
+
+    @Test
     void orderSummaryUsesChineseStatusAndDoesNotPopulateBlankShippingOrRemarks() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(anyString())).thenReturn(List.of(Map.ofEntries(

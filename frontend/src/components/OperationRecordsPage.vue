@@ -20,6 +20,16 @@ const changePages = computed(() => detail.value ? Math.max(1, Math.ceil(detail.v
 const eligible = (row: OperationRecord) => row.status === 'SUCCESS' && row.changeCount > 0 && !row.reversesId && !row.nonReversibleReason && (props.currentUser.role === 'ADMIN' || row.actorId === props.currentUser.id)
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : '请求失败，请重试'
 
+// Show business identifiers first; the complete context remains in the detail view.
+function relatedSummary(value?: string) {
+  const parts = (value || '').split(/[；;\n]/).map(part => part.trim()).filter(Boolean)
+  const preferred = parts.filter(part => /^(订单号|采购单号|售后单号|发货单号|来源单号|采购建议单号)[：:]/.test(part))
+  const candidates = preferred.length ? preferred : parts.filter(part => /^(客户|供应商|产品编号|文件)[：:]/.test(part))
+  const unique = [...new Map((candidates.length ? candidates : parts).map(part => [part.replace(/^[^：:]+[：:]\s*/, ''), part])).values()]
+  return unique.slice(0, 2).join(' · ') + (unique.length > 2 ? ` 等 ${unique.length} 项` : '') || '—'
+}
+const listRows = computed(() => data.value.items.map(row => ({ ...row, relatedSummary: relatedSummary(row.relatedRecords) })))
+
 async function load(page = 1) {
   const token = ++generation; loading.value = true; error.value = ''
   if (filters.from && filters.to && filters.from > filters.to) { error.value = '开始日期不能晚于结束日期'; loading.value = false; return }
@@ -61,11 +71,10 @@ onMounted(() => load())
 <template>
   <section class="operations-page" :aria-busy="loading || detailLoading">
     <header class="operations-header">
-      <div><h1>操作记录</h1><p>只记录实际数据变更，查看对应订单、单据和修改前后内容。</p></div>
+      <div><h1>操作记录</h1></div>
       <button v-if="!detail" :disabled="loading" @click="load(data.page)">{{ loading ? '刷新中…' : '刷新记录' }}</button>
       <button v-else :disabled="undoing" @click="back">返回列表</button>
     </header>
-    <p class="operations-note">本人可撤回自己的操作，管理员可撤回全部操作。后续业务已使用的数据，需要先处理对应操作。</p>
     <p v-if="detailLoading" role="status">正在读取关联变更…</p>
     <p v-if="detailError" class="form-error" role="alert">{{ detailError }}</p>
 
@@ -83,15 +92,15 @@ onMounted(() => load())
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <div class="operations-table-scroll" tabindex="0" role="region" aria-label="操作记录列表，可横向滚动">
         <table class="operations-table">
-          <colgroup><col style="width:14%" /><col style="width:11%" /><col style="width:20%" /><col style="width:34%" /><col style="width:8%" /><col style="width:13%" /></colgroup>
-          <thead><tr><th scope="col">编号 / 时间</th><th scope="col">操作人员</th><th scope="col">操作内容</th><th scope="col">订单 / 单据及关联信息</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead>
-          <tbody><tr v-for="row in data.items" :key="row.id">
-            <td><strong>#{{ row.id }}</strong><small>{{ formatDateTimeToSecond(row.operatedAt) }}</small></td>
-            <td>{{ row.actorName }}<small>{{ row.actorUsername || '—' }}</small></td>
-            <td class="operations-content">{{ row.action }}<small>{{ row.changeCount }} 条数据变更</small><small v-for="(summary, index) in row.changeSummary" :key="index">{{ operationTableLabel(summary.table) }} · {{ types[summary.type] }} {{ summary.count }} 条<template v-if="summary.type === 'UPDATE'">：{{ summary.fields.map(operationFieldLabel).join('、') }}</template></small></td>
-            <td class="operations-related">{{ row.affectedModules || row.moduleName }}<small :title="row.relatedRecords">{{ row.relatedRecords || '—' }}</small></td>
+          <colgroup><col style="width:17%" /><col style="width:11%" /><col style="width:23%" /><col style="width:29%" /><col style="width:8%" /><col style="width:12%" /></colgroup>
+          <thead><tr><th scope="col">操作时间</th><th scope="col">操作人员</th><th scope="col">操作内容</th><th scope="col">关联单据 / 对象</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead>
+          <tbody><tr v-for="row in listRows" :key="row.id">
+            <td class="operations-time"><time :datetime="row.operatedAt">{{ formatDateTimeToSecond(row.operatedAt) }}</time></td>
+            <td class="operations-actor">{{ row.actorName || row.actorUsername || '—' }}</td>
+            <td class="operations-content">{{ row.action }}</td>
+            <td class="operations-related"><span :title="row.relatedRecords">{{ row.relatedSummary }}</span></td>
             <td><span class="operation-status" :class="`operation-${row.status.toLowerCase()}`">{{ statusLabel(row.status) }}</span></td>
-            <td><div class="operations-row-actions"><button :disabled="detailLoading" @click="open(row.id)">详情</button><button :disabled="detailLoading || !eligible(row)" :title="row.nonReversibleReason || '查看关联变更并检查是否可撤回'" @click="open(row.id, true)">撤回</button></div></td>
+            <td><div class="operations-row-actions"><button class="record-detail-action" :aria-label="`查看操作 #${row.id} 详情`" :disabled="detailLoading" @click="open(row.id)">详情</button><button class="record-undo-action" :aria-label="`撤回操作 #${row.id}`" :disabled="detailLoading || !eligible(row)" :title="row.nonReversibleReason || '查看关联变更并检查是否可撤回'" @click="open(row.id, true)">撤回</button></div></td>
           </tr><tr v-if="!data.items.length"><td colspan="6" class="operations-empty">{{ loading ? '正在读取操作记录…' : error ? '读取失败，请重试' : '暂无符合条件的操作记录' }}</td></tr></tbody>
         </table>
       </div>
@@ -106,6 +115,7 @@ onMounted(() => load())
       <p v-if="detail.operation.reversesId">原操作：<button class="text-action" :disabled="undoing" @click="open(detail.operation.reversesId)">#{{ detail.operation.reversesId }} 查看原操作</button></p>
       <p v-if="detail.operation.reversedByOperationId">撤回记录：<button class="text-action" :disabled="undoing" @click="open(detail.operation.reversedByOperationId)">#{{ detail.operation.reversedByOperationId }} 查看撤回人员、时间和原因</button></p>
       <div class="operation-undo-area">
+        <p class="operations-note">本人可撤回自己的操作，管理员可撤回全部操作。已被后续业务使用的数据，需先处理关联操作。</p>
         <template v-if="detail.canUndo">
           <button v-if="!confirming" class="primary-action" :disabled="detailLoading || undoing" @click="confirming = true; reason = ''; detailError = ''">撤回此次操作</button>
           <form v-else @submit.prevent="undo">
@@ -133,31 +143,43 @@ onMounted(() => load())
 </template>
 
 <style scoped>
-.operations-page { color: #25344a; min-width: 0; }
+.operations-page { color: #262a30; min-width: 0; }
 .operations-header, .operation-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
-.operations-header h1 { margin: 0 0 10px; font-size: 26px; }
+.operations-header h1 { margin: 0; font-size: 26px; font-weight: 650; }
 .operations-header p, .operation-detail-heading p { color: #536176; margin: 0; line-height: 1.6; }
-.operations-page button { min-height: 36px; padding: 7px 13px; white-space: nowrap; }
+.operations-page button { min-height: 36px; padding: 7px 13px; white-space: nowrap; border: 1px solid #d3d7dc; border-radius: 6px; background: #fff; color: #373d45; font: inherit; font-size: 13px; cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
+.operations-page button:hover:not(:disabled) { background: #f3f4f5; border-color: #9da5af; }
+.operations-page button.primary-action { background: #22262c; border-color: #22262c; color: #fff; }
+.operations-page button.primary-action:hover:not(:disabled) { background: #3b4149; }
 .operations-page button:disabled { cursor: not-allowed; opacity: .55; }
 .operations-page :is(button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid #286bb1; outline-offset: 3px; }
 .operations-page ::selection { background: #d5e8fa; color: #183957; }
 .operations-note { color: #536176; font-size: 13px; line-height: 1.7; }
-.operations-filters { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px; padding: 18px 0 22px; }
+.operations-filters { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; padding: 18px; margin-bottom: 20px; border: 1px solid #e2e5e9; border-radius: 10px; background: #fff; }
 .operations-page label { display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
 .operations-filters label { flex: 1 1 140px; }
 .operations-filters .operations-keyword { flex-basis: 240px; }
-.operations-page :is(input, select, textarea) { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #aebac9; border-radius: 6px; background: #fff; color: #25344a; font: inherit; caret-color: #286bb1; }
+.operations-page :is(input, select, textarea) { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #d3d7dc; border-radius: 6px; background: #fff; color: #25344a; font: inherit; caret-color: #286bb1; }
 .operations-page input::placeholder, .operations-page textarea::placeholder { color: #67758a; }
 .operations-table-scroll { max-width: 100%; overflow: auto; scrollbar-color: #aab7c8 #eef2f6; }
 .operations-table, .operations-diff { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; font-variant-numeric: tabular-nums; text-align: left; }
-.operations-table { min-width: 850px; }
+.operations-table { min-width: 1000px; table-layout: fixed; font-size: 14px; }
+.operations-table-scroll:has(> .operations-table) { border: 1px solid #e2e5e9; border-radius: 10px; }
+.operations-table tbody td { padding: 18px 16px; vertical-align: middle; }
+.operations-table thead th { padding: 13px 16px; font-size: 13px; background: #f8f9fa; color: #626a74; }
+.operations-table tbody tr:last-child td { border-bottom: 0; }
+.operations-time { white-space: nowrap; color: #626a74; font-size: 13px; }
+.operations-actor, .operations-content { font-weight: 500; }
+.operations-table .operations-row-actions { flex-wrap: nowrap; gap: 4px; }
+.operations-row-actions .record-detail-action, .operations-row-actions .record-undo-action { border-color: transparent; background: transparent; padding: 6px 8px; }
+.operations-row-actions .record-detail-action { color: #245c91; }
+.operations-row-actions .record-undo-action { color: #626a74; }
 .operations-page :is(td, th) { padding: 14px 12px; border-bottom: 1px solid #dfe6ed; vertical-align: top; line-height: 1.6; }
 .operations-page thead th { background: #f1f5f9; color: #43546b; font-weight: 600; }
 .operations-table tbody tr:hover { background: #f6f9fc; }
-.operations-table small { display: block; color: #5b6a7e; margin-top: 4px; }
 .operations-related { max-width: 320px; overflow-wrap: anywhere; }
 .operations-content { max-width: 300px; overflow-wrap: anywhere; }
-.operations-related small { white-space: normal; }
+.operations-related span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #59626e; font-size: 13px; }
 .operation-change header small { color: #67758a; font-size: 11px; }
 .operations-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .operation-status { display: inline-block; padding: 3px 9px; border-radius: 5px; font-size: 12px; white-space: nowrap; background: #edf1f5; color: #42546b; }

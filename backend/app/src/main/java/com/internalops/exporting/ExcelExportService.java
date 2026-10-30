@@ -63,7 +63,7 @@ public class ExcelExportService {
             case "order" -> orderSummaryWorkbook();
             case "afterSales" -> afterSalesSummaryWorkbook();
             case "purchase" -> purchaseSummaryWorkbook();
-            case "product", "inventory" -> productInventorySummaryWorkbook();
+            case "product", "inventory" -> productInventorySummaryWorkbook("product".equals(module));
             case "finance" -> financeSummaryWorkbook();
             default -> throw new IllegalArgumentException("该模块不支持 Excel 导出");
         };
@@ -195,7 +195,7 @@ public class ExcelExportService {
         return workbook("采购汇总数据", localized);
     }
 
-    private byte[] productInventorySummaryWorkbook() {
+    private byte[] productInventorySummaryWorkbook(boolean includeQuotes) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT s.product_code,s.customer_part_number,s.model,brand.display_name AS brand,s.product_type,s.material_type,
                        s.product_configuration,s.configuration,s.unit,
@@ -220,6 +220,20 @@ public class ExcelExportService {
                          s.product_configuration,s.configuration,s.unit,s.product_remark
                 ORDER BY s.product_code
                 """);
+        // Keep quotes separate from inventory aggregation to avoid multiplying stock quantities.
+        Map<String, List<Map<String, Object>>> quotesByProduct = new LinkedHashMap<>();
+        if (includeQuotes) {
+            jdbc.queryForList("""
+                    SELECT s.product_code,sp.supplier_name,cfg.purchase_price
+                    FROM sku_supplier_config cfg
+                    JOIN supplier sp ON sp.id=cfg.supplier_id
+                    JOIN sku s ON s.id=cfg.sku_id
+                    WHERE cfg.enabled=TRUE AND sp.enabled=TRUE AND s.enabled=TRUE
+                    ORDER BY s.product_code,sp.supplier_name,sp.id
+                    """).forEach(quote -> quotesByProduct
+                    .computeIfAbsent(String.valueOf(quote.get("product_code")), ignored -> new ArrayList<>()).add(quote));
+        }
+        int quoteColumns = Math.max(1, quotesByProduct.values().stream().mapToInt(List::size).max().orElse(0));
         List<Map<String, Object>> localized = rows.stream().map(row -> {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("产品编号", row.get("product_code")); out.put("客户料号", row.get("customer_part_number")); out.put("型号", row.get("model"));
@@ -228,6 +242,15 @@ public class ExcelExportService {
             out.put("实际库存数量", row.get("actual_quantity")); out.put("未锁定库存数量", row.get("available_quantity")); out.put("已锁定数量", row.get("locked_quantity"));
             out.put("在途数量", row.get("in_transit_quantity")); out.put("未发货数量", row.get("pending_delivery_quantity")); out.put("供需余量", row.get("supply_demand_surplus"));
             out.put("供应商", row.get("source_supplier_name")); out.put("库存备注", row.get("inventory_remark")); out.put("产品备注", row.get("product_remark")); out.put("修改时间", row.get("updated_at"));
+            if (includeQuotes) {
+                List<Map<String, Object>> quotes = quotesByProduct.getOrDefault(String.valueOf(row.get("product_code")), List.of());
+                for (int index = 0; index < quoteColumns; index++) {
+                    String suffix = index == 0 ? "" : String.valueOf(index + 1);
+                    Map<String, Object> quote = index < quotes.size() ? quotes.get(index) : Map.of();
+                    out.put("报价供应商" + suffix, quote.get("supplier_name"));
+                    out.put("采购单价" + suffix, quote.get("purchase_price"));
+                }
+            }
             return out;
         }).toList();
         return workbook("产品库存汇总数据", localized);
@@ -809,7 +832,13 @@ public class ExcelExportService {
             for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
                 var row = sheet.createRow(rowIndex + 1);
                 for (int column = 0; column < keys.size(); column++) {
-                    row.createCell(column).setCellValue(value(rows.get(rowIndex).get(keys.get(column))));
+                    Object raw = rows.get(rowIndex).get(keys.get(column));
+                    var cell = row.createCell(column);
+                    if (keys.get(column).startsWith("采购单价") && raw instanceof Number number) {
+                        cell.setCellValue(number.doubleValue());
+                    } else {
+                        cell.setCellValue(value(raw));
+                    }
                 }
             }
             workbook.write(output);

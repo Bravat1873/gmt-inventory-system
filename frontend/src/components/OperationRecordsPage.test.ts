@@ -14,12 +14,15 @@ beforeEach(() => {
   api.loadOperation.mockResolvedValue(details())
   api.undoOperation.mockResolvedValue({ reversalOperationId: 15 })
 })
-it('shows the operator, time, associated records and both affected modules', async () => {
+it('keeps the list concise and preserves full business context in details', async () => {
   const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
   expect(wrapper.text()).toContain('业务员甲'); expect(wrapper.text()).toContain('2026-10-22 14:10:05')
-  expect(wrapper.text()).toContain('订单管理、库存管理'); expect(wrapper.text()).toContain('DD20261000004')
-  expect(wrapper.text()).toContain('客户：测试客户'); expect(wrapper.text()).toContain('锁定库存')
+  expect(wrapper.text()).toContain('DD20261000004')
+  expect(wrapper.find('.operations-table').text()).not.toContain('锁定库存')
+  expect(wrapper.find('.operations-table').text()).not.toContain('owner')
+  expect(wrapper.find('.operations-table').text()).not.toContain('条数据变更')
   await wrapper.findAll('button').find(b => b.text() === '详情')!.trigger('click'); await flushPromises()
+  expect(wrapper.text()).toContain('订单管理、库存管理'); expect(wrapper.text()).toContain('客户：测试客户')
   expect(wrapper.text()).toContain('发货单号：FH20261000001'); expect(wrapper.text()).toContain('产品编号：LOCK-01')
   expect(wrapper.text()).toContain('锁定库存'); expect(wrapper.find('.operations-diff').text()).toContain('3'); expect(wrapper.find('.operations-diff').text()).toContain('5')
 })
@@ -64,4 +67,18 @@ it('passes all filters, rejects reversed dates and retains filters for paginatio
   await wrapper.findAll('button').find(b => b.text() === '下一页')!.trigger('click'); await flushPromises()
   const params = api.loadOperations.mock.lastCall?.[0] as URLSearchParams
   expect(params.get('page')).toBe('2'); expect(params.get('keyword')).toBe('DD01'); expect(params.get('actor')).toBe('张'); expect(params.get('from')).toBe('2026-10-22')
+})
+
+it('deduplicates document numbers and limits the list summary while keeping full context accessible', async () => {
+  const relatedRecords = '来源单号：DD01；订单号：DD01；采购单号：CG02；发货单号：FH03；客户：测试客户'
+  api.loadOperations.mockResolvedValue({ items: [{ ...row, relatedRecords }], total: 1, page: 1, pageSize: 20 })
+  const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
+  const summary = wrapper.get('.operations-related span')
+  expect(summary.text()).toBe('订单号：DD01 · 采购单号：CG02 等 3 项')
+  expect(summary.attributes('title')).toBe(relatedRecords)
+})
+it('shows a file or business object when no document number is available', async () => {
+  api.loadOperations.mockResolvedValue({ items: [{ ...row, relatedRecords: '文件：订单导入.xlsx' }, { ...row, id: 13, relatedRecords: '' }], total: 2, page: 1, pageSize: 20 })
+  const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
+  expect(wrapper.findAll('.operations-related').map(cell => cell.text())).toEqual(['文件：订单导入.xlsx', '—'])
 })
