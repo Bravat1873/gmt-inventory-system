@@ -31,6 +31,7 @@ public class ImportValidationService {
 
     public List<ParsedImportRow> validateAll(ImportType type, List<ParsedImportRow> rows) {
         if (type == ImportType.PRODUCT) return productValidation.validateAll(rows);
+        if (type == ImportType.PURCHASE) return new PurchaseImportValidationService(jdbc).validateAll(rows);
         if (type == ImportType.ORDER) return new SalesOrderImportValidationService(jdbc).validateAll(rows);
         Map<String, Integer> firstInventoryRows = new LinkedHashMap<>();
         List<ParsedImportRow> result = new ArrayList<>();
@@ -67,6 +68,7 @@ public class ImportValidationService {
             case INVENTORY -> validateInventory(sheet, rowNumber, data);
             case SUPPLIER -> validateSupplier(sheet, rowNumber, data);
             case PRODUCT -> productValidation.validate(0, sheet, rowNumber, data);
+            case PURCHASE -> new PurchaseImportValidationService(jdbc).validateAll(List.of(new ParsedImportRow(sheet, rowNumber, ImportRowStatus.VALID, data, null))).get(0);
             case ORDER -> new SalesOrderImportValidationService(jdbc).validateAll(List.of(new ParsedImportRow(sheet, rowNumber, ImportRowStatus.VALID, data, null))).get(0);
         };
     }
@@ -109,7 +111,7 @@ public class ImportValidationService {
             return switch (type) {
                 case CUSTOMER -> customerMatch(text(data, "customerName"));
                 case SUPPLIER -> supplierMatch(text(data, "supplierName"));
-                case COST, INVENTORY, PRODUCT, ORDER -> null;
+                case COST, INVENTORY, PRODUCT, ORDER, PURCHASE -> null;
             };
         } catch (RuntimeException exception) {
             return null;

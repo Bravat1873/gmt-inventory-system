@@ -31,6 +31,7 @@ public class ImportTemplateController {
             case INVENTORY -> "库存批量导入模板.xlsx";
             case SUPPLIER -> "供应商批量导入模板.xlsx";
             case PRODUCT -> "产品批量导入模板.xlsx";
+            case PURCHASE -> "采购单批量导入模板.xlsx";
             case ORDER -> "销售订单批量导入模板.xlsx";
         };
     }

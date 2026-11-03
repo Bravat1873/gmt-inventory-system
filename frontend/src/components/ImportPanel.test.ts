@@ -429,3 +429,53 @@ describe('simple Excel import', () => {
     expect(wrapper.get('[data-test="commit-product-import"]').attributes('disabled')).toBeDefined()
   })
 })
+
+
+describe('purchase import', () => {
+  const purchaseBatch: ImportBatch = {
+    ...orderBatch, importType: 'PURCHASE', totalRows: 2, validRows: 2,
+    rows: [31, 32].map(id => ({ id, sheetName: '采购导入', rowNumber: id - 29, status: 'VALID',
+      data: { purchaseGroup: 'A', supplierName: '供应商一', productCode: 'P001', quantity: 10, purchasePrice: 12 },
+      errorMessage: null, manualEntry: false }))
+  }
+  it('previews groups and requires confirmation before committing', async () => {
+    vi.clearAllMocks()
+    previewImport.mockResolvedValue(structuredClone(purchaseBatch))
+    commitImport.mockResolvedValue({ ...purchaseBatch, status: 'COMMITTED', committedRows: 2 })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mount(ImportPanel, { props: { type: 'PURCHASE', title: '导入采购单' } })
+    expect(wrapper.get('[data-test="download-import-template"]').attributes('href')).toBe('/api/imports/templates/PURCHASE.xlsx')
+    await selectFile(wrapper, 'purchase.xlsx')
+    expect(previewImport).toHaveBeenCalledWith('PURCHASE', expect.any(File))
+    expect(wrapper.get('[data-test="purchase-preview-count"]').text()).toBe('1')
+    expect(wrapper.findAll('[data-test="purchase-preview-row"]')).toHaveLength(2)
+    expect(commitImport).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="commit-purchase-import"]').trigger('click')
+    expect(commitImport).not.toHaveBeenCalled()
+    confirm.mockReturnValue(true)
+    await wrapper.get('[data-test="commit-purchase-import"]').trigger('click')
+    await flushPromises()
+    expect(commitImport).toHaveBeenCalledWith(purchaseBatch.batchId)
+    expect(wrapper.get('[data-test="import-success"]').text()).toContain('2')
+    confirm.mockRestore()
+  })
+  it('blocks invalid rows and offers an error workbook', async () => {
+    previewImport.mockResolvedValue({ ...purchaseBatch, errorRows: 1, validRows: 1 })
+    const wrapper = mount(ImportPanel, { props: { type: 'PURCHASE', title: '导入采购单' } })
+    await selectFile(wrapper, 'purchase.xlsx')
+    expect(wrapper.get('[data-test="commit-purchase-import"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('a[href$="errors.xlsx"]').exists()).toBe(true)
+  })
+  it('keeps the preview and displays a commit failure', async () => {
+    previewImport.mockResolvedValue(structuredClone(purchaseBatch))
+    commitImport.mockRejectedValue(new Error('报价已变化，请重新预览'))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(ImportPanel, { props: { type: 'PURCHASE', title: '导入采购单' } })
+    await selectFile(wrapper, 'purchase.xlsx')
+    await wrapper.get('[data-test="commit-purchase-import"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('报价已变化')
+    expect(wrapper.findAll('[data-test="purchase-preview-row"]')).toHaveLength(2)
+    confirm.mockRestore()
+  })
+})

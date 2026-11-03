@@ -6,5 +6,6 @@ public enum ImportType {
     INVENTORY,
     SUPPLIER,
     PRODUCT,
-    ORDER
+    ORDER,
+    PURCHASE
 }

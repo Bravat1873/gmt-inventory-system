@@ -147,3 +147,10 @@ it('places order type after customer in order and after-sales lists', () => {
   }
 })
 
+
+it('provides purchase import alongside manual purchase creation', () => {
+  const purchase = moduleDefinitions.find(item => item.key === 'purchase')!
+  expect(purchase.actionLabel).toBe('新增采购单')
+  expect(purchase.importActionLabel).toBe('导入采购单')
+  expect(purchase.importType).toBe('PURCHASE')
+})

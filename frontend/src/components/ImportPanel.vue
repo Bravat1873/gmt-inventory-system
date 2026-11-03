@@ -68,6 +68,25 @@ const productConflictGroups = computed(() => {
   return [...groups.entries()].map(([code, rows]) => ({ code, rows }))
 })
 
+const purchaseGroups = computed(() => {
+  const groups = new Map<string, ImportRow[]>()
+  for (const row of previewBatch.value?.rows ?? []) {
+    const group = String(row.data.purchaseGroup ?? '').trim()
+    const key = group ? `GROUP:${group}` : `ROW:${row.sheetName}:${row.rowNumber}`
+    groups.set(key, [...(groups.get(key) ?? []), row])
+  }
+  return [...groups.entries()].map(([key, rows]) => ({ key, rows, header: rows[0]! }))
+})
+const purchaseCanCommit = computed(() => Boolean(previewBatch.value?.status === 'PREVIEW'
+  && previewBatch.value.validRows > 0 && previewBatch.value.errorRows === 0
+  && previewBatch.value.rows.every(row => row.status === 'VALID')))
+async function confirmPurchaseImport() {
+  const batch = previewBatch.value
+  if (!batch || busy.value || !purchaseCanCommit.value) return
+  if (!window.confirm('确认导入采购单？所有采购单保存为草稿，复核后才计入在途库存及进入付款流程。')) return
+  await commitPreview(() => commitImport(batch.batchId))
+}
+
 const orderGroups = computed(() => {
   const groups = new Map<string, ImportRow[]>()
   for (const row of previewBatch.value?.rows ?? []) {
@@ -339,6 +358,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
         <h2>{{ title }}</h2>
         <p v-if="type === 'PRODUCT'">选择文件后先核对产品编码与冲突，再确认增量导入。</p>
         <p v-else-if="type === 'SUPPLIER'">选择文件后先核对预览，再确认写入供应商资料。</p>
+        <p v-else-if="type === 'PURCHASE'">先下载模板填写采购明细，上传后核对分组、报价和错误，再确认生成草稿采购单。</p>
         <p v-else-if="type === 'ORDER'">选择文件后先核对订单分组与明细，再确认增量导入。</p>
         <p v-else>选择 Excel 文件后，系统会自动解析并导入当前页面的数据。</p>
       </div>
@@ -351,7 +371,7 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
         <span>{{ busy ? '正在处理…' : '选择 Excel 文件' }}</span>
         <input type="file" :accept="type === 'SUPPLIER' ? '.xls,.xlsx' : '.xlsx'" :disabled="busy" @change="onFileChange">
       </label>
-      <a v-if="['CUSTOMER', 'SUPPLIER', 'PRODUCT', 'ORDER'].includes(type)" data-test="download-import-template" class="order-template-download" :href="`/api/imports/templates/${type}.xlsx`" download>&#19979;&#36733; XLSX &#27169;&#26495;</a>
+      <a v-if="['CUSTOMER', 'SUPPLIER', 'PRODUCT', 'ORDER', 'PURCHASE'].includes(type)" data-test="download-import-template" class="order-template-download" :href="`/api/imports/templates/${type}.xlsx`" download>&#19979;&#36733; XLSX &#27169;&#26495;</a>
       <OverflowText v-if="selectedFilename" class="filename" :value="selectedFilename" />
       <p v-else class="simple-import-hint">{{ type === 'SUPPLIER' ? '支持 .xls 和 .xlsx 文件' : '支持 .xlsx 文件' }}</p>
       <p v-if="busy" class="simple-import-status">{{ previewBatch ? '正在提交数据，请稍候…' : '正在解析文件，请稍候…' }}</p>
@@ -382,6 +402,17 @@ async function commitPreview(action: () => Promise<ImportBatch>) {
           </div>
         </div>
         <div class="supplier-preview-actions"><p v-if="previewBatch.errorRows > 0">存在错误行，不能导入。</p><p v-else-if="!productCanCommit">请完成所有冲突行的采用导入或保留现有决定。</p></div>
+      </section>
+
+      <section v-else-if="previewBatch && importedRows === null && type === 'PURCHASE'" class="order-preview" aria-label="采购导入预览">
+        <p class="simple-import-hint">同一采购分组号合并为一单；分组号留空则每行一单。系统自动编号，导入后请在采购列表复核。请勿重复上传同一文件。</p>
+        <div class="supplier-preview-summary"><span>采购单数 <strong data-test="purchase-preview-count">{{ purchaseGroups.length }}</strong></span><span>总行数 {{ previewBatch.totalRows }}</span><span>有效行 {{ previewBatch.validRows }}</span><span>错误行 {{ previewBatch.errorRows }}</span></div>
+        <section v-for="group in purchaseGroups" :key="group.key" class="order-preview-group">
+          <header><strong>采购分组：{{ value(group.header, 'purchaseGroup') }}</strong><span>供应商：{{ value(group.header, 'supplierName') }}</span><span>预计到货：{{ value(group.header, 'expectedArrivalDate') }}</span><span>交货地址：{{ value(group.header, 'deliveryAddress') }}</span><span>采购备注：{{ value(group.header, 'remark') }}</span><span>草稿</span></header>
+          <div class="supplier-preview-table-wrap"><table class="order-preview-table"><thead><tr><th>来源行</th><th>产品编号</th><th>客户料号</th><th>数量</th><th>含税单价</th><th>采购报价ID</th><th>状态</th><th>错误</th></tr></thead><tbody><tr v-for="row in group.rows" :key="row.id" data-test="purchase-preview-row"><td>{{ row.sheetName }} · {{ row.rowNumber }}</td><td>{{ value(row, 'productCode') }}</td><td>{{ value(row, 'customerPartNumber') }}</td><td>{{ value(row, 'quantity') }}</td><td>{{ value(row, 'purchasePrice') }}</td><td>{{ row.data._purchaseInfoId ?? row.data.purchaseInfoId ?? '—' }}</td><td>{{ row.status === 'VALID' ? '有效' : '错误' }}</td><td>{{ row.errorMessage ?? '—' }}</td></tr></tbody></table></div>
+        </section>
+        <p v-if="errorMessage" role="alert" class="simple-import-error">{{ errorMessage }}</p>
+        <div class="supplier-preview-actions"><a v-if="previewBatch.errorRows > 0" :href="`/api/imports/${previewBatch.batchId}/errors.xlsx`" download>下载错误清单</a><p v-if="!purchaseCanCommit">请修正 Excel 中的错误后重新上传。</p><button data-test="commit-purchase-import" type="button" class="primary-action" :disabled="busy || !purchaseCanCommit" @click="confirmPurchaseImport">确认导入采购单</button></div>
       </section>
 
       <section v-else-if="previewBatch && importedRows === null && type === 'ORDER'" class="order-preview" aria-label="订单导入预览">

@@ -27,6 +27,8 @@ import java.util.Set;
 public class ImportCommitService {
     private static final List<String> LOCKED_SOURCES = List.of(
             "\u94ED\u7231\u94A7\u4E54", "\u535A\u4E50\u9F99\u7C73", "\u8001\u631D", "\u8D1D\u6717", "\u9A6C\u6765\u897F\u4E9A");
+    @Autowired
+    private PurchaseImportCommitService purchaseImportCommitService;
     private final JdbcTemplate jdbc;
     private final ImportBatchRepository repository;
     private final ProductReplaceImportService productReplaceImportService;
@@ -83,6 +85,7 @@ public class ImportCommitService {
                                   ImportCommitRequest.SupplierMode supplierMode,
                                   Map<Long, ProductConflictAction> productConflictActions,
                                   Map<Long, String> conflictActions) {
+        if (repository.type(batchId) == ImportType.PURCHASE) return purchaseImportCommitService.commit(batchId);
         if (repository.type(batchId) == ImportType.ORDER) {
             UserRole role = CurrentUser.required().role();
             if (role != UserRole.ADMIN && role != UserRole.USER) {
@@ -139,6 +142,7 @@ public class ImportCommitService {
             }
             boolean wasCreated = switch (batch.importType()) {
                 case PRODUCT -> throw new IllegalStateException("产品批次必须使用产品全量替换策略");
+                case PURCHASE -> throw new IllegalStateException("采购批次必须使用采购分组提交策略");
                 case ORDER -> throw new IllegalStateException("订单批次必须使用订单分组提交策略");
                 case CUSTOMER -> commitCustomer(row.data());
                 case INVENTORY -> commitInventory(batchId, row.data());
