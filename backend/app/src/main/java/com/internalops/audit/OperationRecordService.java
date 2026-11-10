@@ -111,6 +111,19 @@ public class OperationRecordService {
     private static final java.util.regex.Pattern ORDER_PATH =
             java.util.regex.Pattern.compile("^/api/(?:finance/)?orders/([0-9]+)(?:/.*)?$");
 
+    // Use only the context captured for this row, never the references for the whole operation.
+    private String productLabel(Change c) {
+        var row = c.after()==null ? c.before() : c.after();
+        String refs = c.relatedInfo()==null ? String.join("；",OperationCatalog.identifiers(row)) : c.relatedInfo();
+        for (String prefix : List.of("型号：","产品：","产品编号：","客户料号：")) {
+            var values = Arrays.stream(refs.split("；")).filter(s -> s.startsWith(prefix))
+                    .map(s -> s.substring(prefix.length()).trim()).filter(s -> !s.isEmpty()).distinct().toList();
+            if (values.size()>1) return ""; // A reassignment has no single product for this change.
+            if (!values.isEmpty()) return values.get(0);
+        }
+        return "";
+    }
+
     private void addBusinessExamples(List<Map<String,Object>> items) {
         if (items.isEmpty()) return;
         var byId = new HashMap<Long,Map<String,Object>>();
@@ -124,7 +137,8 @@ public class OperationRecordService {
                     FROM operation_change WHERE operation_id IN (%s) AND meaningful_change=TRUE
                     AND table_name IN ('sales_order','sales_order_item','sales_shipment','customer_receipt','supplier_payment',
                         'purchase_order','purchase_order_item','inventory_balance','customer','supplier','sku',
-                        'sales_invoice','purchase_invoice','customer_fund_account','customer_fund_request','after_sales_order','after_sales_refund')
+                        'goods_receipt_item','sales_shipment_item','procurement_suggestion_item','after_sales_return_line','after_sales_replacement_line',
+                        'after_sales_receipt_line','after_sales_shipment_line','sales_invoice','purchase_invoice','customer_fund_account','customer_fund_request','after_sales_order','after_sales_refund')
                 ) samples ON samples.id=c.id WHERE samples.position_in_group<=2 ORDER BY c.id
                 """.formatted(placeholders);
         var examples = new HashMap<Long,List<Map<String,Object>>>();
@@ -146,11 +160,12 @@ public class OperationRecordService {
             var fields = diff(c).stream().filter(f -> PREVIEW_FIELDS.contains(f.get("field"))).toList();
             if (!fields.isEmpty()) examples.computeIfAbsent(id, ignored -> new ArrayList<>()).add(Map.of(
                     "table",c.table(), "type",c.type(), "line",Objects.toString(row.get("line_no"),""),
-                    "fields",fields,"reviewStatus",Objects.toString(row.get("review_status"),"")));
+                    "productLabel",productLabel(c),"fields",fields,"reviewStatus",Objects.toString(row.get("review_status"),"")));
         }, byId.keySet().toArray());
         byId.forEach((id,row) -> row.put("businessExamples", examples.getOrDefault(id,List.of())));
     }
     private static final Set<String> PREVIEW_FIELDS = Set.of("quantity","shipped_quantity","received_quantity",
+            "return_quantity","replacement_quantity","suggested_quantity","shortage_quantity","accepted_quantity","rejected_quantity","confirmed_quantity",
             "locked_quantity","uncovered_quantity","actual_quantity","in_transit_quantity","sale_price","purchase_price",
             "total_amount","amount","confirmed_amount","balance","refund_amount","order_remark","item_remark","remark",
             "salesperson","order_date","order_type","status","review_status","customer_name","supplier_name","product_name",
@@ -164,7 +179,7 @@ public class OperationRecordService {
         var result=new LinkedHashMap<String,Object>();var operation=view(record);addBusinessExamples(List.of(operation));result.put("operation",operation);
         result.put("changes",changes.stream().map(c->Map.of("id",c.id(),"module",OperationCatalog.module(c.table()),"table",c.table(),
                 "recordKey",c.key(),"label",OperationCatalog.label(c.table(),c.after()==null?c.before():c.after()),"type",c.type(),
-                "fields",diff(c),"preserved",PRESERVED.contains(c.table()),"relatedInfo",c.relatedInfo()==null?String.join("；",OperationCatalog.identifiers(c.after()==null?c.before():c.after())):c.relatedInfo())).toList());
+                "productLabel",productLabel(c),"fields",diff(c),"preserved",PRESERVED.contains(c.table()),"relatedInfo",c.relatedInfo()==null?String.join("；",OperationCatalog.identifiers(c.after()==null?c.before():c.after())):c.relatedInfo())).toList());
         result.put("changePage",page);result.put("changePageSize",100);
         var blockers=blockers(id);String reason=unavailable(record,blockers);
         if(reason==null) reason=staleReason(id);

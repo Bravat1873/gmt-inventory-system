@@ -3,8 +3,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import type { CurrentUser } from '../api/auth'
 import { confirmOperation, loadOperation, loadOperations, undoOperation, type OperationDetail, type OperationPage, type OperationRecord } from '../api/operation-records'
 import { formatDateTimeToSecond } from '../utils/date-time'
-import { businessModule, changeText, primaryDocument } from '../utils/operation-presentation'
-import { operationFieldLabel, operationTableLabel, operationValue } from '../utils/operation-labels'
+import { businessLines, businessModule, changeText, primaryDocument } from '../utils/operation-presentation'
 
 const props = defineProps<{ currentUser: CurrentUser }>()
 const emit = defineEmits<{ message: [text: string, kind?: 'success' | 'error'] }>()
@@ -15,9 +14,11 @@ const detail = ref<OperationDetail>(), reason = ref(''), confirming = ref(false)
 let generation = 0, detailGeneration = 0
 const statuses = { SUCCESS: '已执行', REVERSED: '已撤回' }
 const statusLabel = (status: OperationRecord['status']) => status === 'FAILED' ? '失败' : status === 'LEGACY' ? '历史日志' : statuses[status]
-const types = { INSERT: '新增', UPDATE: '修改', DELETE: '删除' }
+const expanded = ref(false)
+const lines = computed(() => detail.value ? businessLines(detail.value) : [])
 const modules = ['客户管理', '产品管理', '供应商管理', '订单管理', '库存管理', '采购管理', '财务管理', '资金管理', '售后管理', '用户管理', '导入管理', '操作记录']
 const changePages = computed(() => detail.value ? Math.max(1, Math.ceil(detail.value.operation.changeCount / detail.value.changePageSize)) : 1)
+const hiddenCount = computed(() => Math.max(0, lines.value.length-3) + lines.value.slice(0,3).reduce((n, row) => n+Math.max(0,row.parts.length-2),0))
 const eligible = (row: OperationRecord) => row.status === 'SUCCESS' && row.changeCount > 0 && !row.confirmedAt && !row.reversesId && !row.nonReversibleReason && (props.currentUser.role === 'ADMIN' || row.actorId === props.currentUser.id)
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : '请求失败，请重试'
 
@@ -68,7 +69,7 @@ async function open(id: number, confirm = false, page = 1) {
   try {
     const result = await loadOperation(id, page)
     if (token !== detailGeneration) return
-    detail.value = result; reason.value = ''; confirming.value = confirm && result.canUndo
+    detail.value = result; expanded.value = false; reason.value = ''; confirming.value = confirm && result.canUndo
     await nextTick(); heading.value?.focus()
   } catch (cause) { if (token === detailGeneration) detailError.value = errorText(cause) }
   finally { if (token === detailGeneration) detailLoading.value = false }
@@ -150,19 +151,24 @@ onMounted(() => load())
     </template>
 
     <article v-else class="operation-detail">
-      <header class="operation-detail-heading"><div><h2 ref="heading" tabindex="-1">#{{ detail.operation.id }} · {{ detail.operation.action }}</h2><p>{{ detail.operation.actorName }}（{{ detail.operation.actorUsername || '未保存账号' }}） · {{ formatDateTimeToSecond(detail.operation.operatedAt) }}</p></div><span class="operation-status" :class="`operation-${detail.operation.status.toLowerCase()}`">{{ detail.operation.confirmedAt ? '已确认锁定' : statusLabel(detail.operation.status) }}</span></header>
-      <dl class="operation-facts"><div><dt>单号 / 对象</dt><dd>{{ primaryDocument(detail.operation) }}</dd></div><div><dt>改了什么</dt><dd>{{ changeText(detail.operation) }}</dd></div></dl>
+      <header class="operation-detail-heading"><div><h2 ref="heading" tabindex="-1">{{ primaryDocument(detail.operation) }} · {{ detail.operation.action.split(' · ').pop() }}</h2><p>{{ formatDateTimeToSecond(detail.operation.operatedAt) }}　{{ detail.operation.actorName }}　{{ businessModule(detail.operation) }}</p></div><span class="operation-status" :class="`operation-${detail.operation.status.toLowerCase()}`">{{ detail.operation.confirmedAt ? '已确认锁定' : statusLabel(detail.operation.status) }}</span></header>
+      <section class="business-detail" aria-label="本次变化">
+        <h3>本次变化</h3>
+        <ul v-if="lines.length"><li v-for="item in (expanded ? lines : lines.slice(0, 3))" :key="item.id"><strong>{{ item.subject }}</strong><span>{{ (expanded ? item.parts : item.parts.slice(0, 2)).join('；') }}</span></li></ul>
+        <p v-else>{{ detail.operation.status === 'LEGACY' ? '旧记录没有保存变更明细。' : changePages > 1 ? '本页无业务字段变化。' : changeText(detail.operation) }}</p>
+        <button v-if="hiddenCount" type="button" :aria-expanded="expanded" @click="expanded = !expanded">{{ expanded ? '收起' : '查看其余变化' }}</button>
+      </section>
       <p v-if="detail.operation.resultMessage" class="form-error">{{ detail.operation.resultMessage }}</p>
       <p v-if="detail.operation.reversalReason">撤回原因：{{ detail.operation.reversalReason }}</p>
       <p v-if="detail.operation.reversesId">原操作：<button class="text-action" :disabled="undoing" @click="open(detail.operation.reversesId)">#{{ detail.operation.reversesId }} 查看原操作</button></p>
       <p v-if="detail.operation.reversedByOperationId">撤回记录：<button class="text-action" :disabled="undoing" @click="open(detail.operation.reversedByOperationId)">#{{ detail.operation.reversedByOperationId }} 查看撤回人员、时间和原因</button></p>
+      <footer v-if="changePages > 1" class="operations-pagination"><span>变更明细 {{ detail.changePage }} / {{ changePages }} 页</span><button :disabled="detailLoading || undoing || detail.changePage <= 1" @click="open(detail.operation.id, false, detail.changePage - 1)">上一页明细</button><button :disabled="detailLoading || undoing || detail.changePage >= changePages" @click="open(detail.operation.id, false, detail.changePage + 1)">下一页明细</button></footer>
       <div class="operation-undo-area">
-        <p class="operations-note">本人可撤回自己的操作，管理员可撤回全部操作。已被后续业务使用的数据，需先处理关联操作。</p>
         <template v-if="detail.canUndo">
           <button v-if="!confirming" class="primary-action" :disabled="detailLoading || undoing" @click="confirming = true; reason = ''; detailError = ''">撤回此次操作</button>
           <form v-else @submit.prevent="undo">
             <h3>确认撤回整次操作</h3>
-            <p>将恢复「{{ detail.operation.affectedModules }}」中的 {{ detail.operation.changeCount }} 条变更。关联模块会一起恢复，单号不会重复使用。</p>
+            <p>撤回将同时恢复关联模块的变化，已分配的单号会保留。</p>
             <label><span>撤回原因</span><textarea v-model="reason" maxlength="1000" rows="3" :disabled="undoing" required placeholder="说明为什么需要撤回，原因将保存在新的操作记录中"></textarea></label>
             <div class="operations-row-actions"><button type="submit" class="primary-action" :disabled="undoing || detailLoading">{{ undoing ? '正在撤回全部关联变更…' : '确认撤回整次操作' }}</button><button type="button" :disabled="undoing" @click="confirming = false">取消</button></div>
           </form>
@@ -170,17 +176,6 @@ onMounted(() => load())
         <p v-else>{{ detail.undoReason }}</p>
         <ul v-if="detail.blockers.length" class="operation-blockers"><li v-for="blocker in detail.blockers" :key="blocker.id"><button class="text-action" :disabled="undoing" @click="open(blocker.id)">#{{ blocker.id }} · {{ blocker.action }}</button><span> · {{ blocker.actorName }}</span></li></ul>
       </div>
-      <details class="operation-breakdown"><summary>查看全部关联变更（{{ detail.operation.changeCount }} 条）</summary>
-      <p>{{ detail.operation.affectedModules }} · {{ detail.operation.relatedRecords }}</p>
-      <p class="operations-note">按执行顺序展示每条变更；同一条数据在本次操作中可能被多次更新。</p>
-      <p v-if="!detail.changes.length" class="operations-empty">{{ detail.operation.status === 'LEGACY' ? '旧日志没有保存变更前后值，无法补还原始操作。' : '此次操作没有产生数据变更。' }}</p>
-      <section v-for="change in detail.changes" :key="change.id" class="operation-change">
-        <header><h4>{{ change.module }} · {{ operationTableLabel(change.table) }} <span class="operation-change-type">{{ types[change.type] }}</span></h4><p class="operation-business-info">{{ change.relatedInfo || change.label }}</p><small>记录标识：{{ change.recordKey }}</small></header>
-        <p v-if="change.preserved" class="operations-note">单号分配记录会保留，撤回后不会重复使用已分配的单号。</p>
-        <div class="operations-table-scroll" tabindex="0" role="region" :aria-label="`${change.label}变更前后对比`"><table class="operations-diff"><thead><tr><th scope="col">字段</th><th scope="col">操作前</th><th scope="col">操作后</th></tr></thead><tbody><tr v-for="field in change.fields" :key="field.field"><th scope="row" :title="field.field">{{ operationFieldLabel(field.field) }}</th><td>{{ operationValue(field.before) }}</td><td>{{ operationValue(field.after) }}</td></tr><tr v-if="!change.fields.length"><td colspan="3">字段值未改变</td></tr></tbody></table></div>
-      </section>
-      <footer v-if="changePages > 1" class="operations-pagination"><span>变更明细 {{ detail.changePage }} / {{ changePages }} 页</span><button :disabled="detailLoading || undoing || detail.changePage <= 1" @click="open(detail.operation.id, false, detail.changePage - 1)">上一页明细</button><button :disabled="detailLoading || undoing || detail.changePage >= changePages" @click="open(detail.operation.id, false, detail.changePage + 1)">下一页明细</button></footer>
-      </details>
     </article>
   </section>
 </template>
@@ -205,7 +200,7 @@ onMounted(() => load())
 .operations-page :is(input, select, textarea) { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #d3d7dc; border-radius: 6px; background: #fff; color: #25344a; font: inherit; caret-color: #286bb1; }
 .operations-page input::placeholder, .operations-page textarea::placeholder { color: #67758a; }
 .operations-table-scroll { max-width: 100%; overflow: auto; scrollbar-color: #aab7c8 #eef2f6; }
-.operations-table, .operations-diff { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; font-variant-numeric: tabular-nums; text-align: left; }
+.operations-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; font-variant-numeric: tabular-nums; text-align: left; }
 .operations-table { min-width: 1000px; table-layout: fixed; font-size: 14px; }
 .operations-table-scroll:has(> .operations-table) { border: 1px solid #e2e5e9; border-radius: 10px; }
 .operations-table tbody td { padding: 10px 16px; vertical-align: middle; }
@@ -226,12 +221,10 @@ onMounted(() => load())
 .confirm-card h2 { margin:0; font-size:19px; }
 .confirm-card p { line-height:1.65; }
 .confirm-card .operations-row-actions { justify-content:flex-end; }
-.operation-breakdown summary { cursor:pointer; }
 .operations-table tbody tr:hover { background: #f6f9fc; }
 .operations-related { max-width: 320px; overflow-wrap: anywhere; }
 .operations-content { max-width: 300px; overflow-wrap: anywhere; }
 .operations-related span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #59626e; font-size: 13px; }
-.operation-change header small { color: #67758a; font-size: 11px; }
 .operations-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .operation-status { display: inline-block; padding: 3px 9px; border-radius: 5px; font-size: 12px; white-space: nowrap; background: #edf1f5; color: #42546b; }
 .operation-success { background: #e5f3ec; color: #216044; }
@@ -242,25 +235,19 @@ onMounted(() => load())
 .operations-empty { padding: 36px 16px !important; text-align: center; color: #5b6a7e; }
 .operation-detail { background: #fff; border: 1px solid #dfe6ed; border-radius: 12px; padding: 24px; }
 .operation-detail h2 { margin: 0 0 8px; font-size: 21px; }
-.operation-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; margin: 24px 0; }
-.operation-facts dt { color: #5b6a7e; font-size: 12px; margin-bottom: 6px; }
-.operation-facts dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; line-height: 1.7; }
+.business-detail h3 { margin: 0 0 10px; font-size: 17px; }
+.business-detail ul { margin: 0; padding: 0; list-style: none; }
+.business-detail li { display: grid; grid-template-columns: minmax(130px, 22%) 1fr; gap: 18px; align-items: baseline; padding: 12px 0; border-top: 1px solid #e2e5e9; font-size: 16px; line-height: 1.55; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.business-detail strong { font-weight: 600; }
+.business-detail button { margin-top: 8px; font-size: 14px; }
+.operation-detail-heading p, .operation-undo-area p { font-size: 15px; }
+@media (max-width: 600px) { .business-detail li { grid-template-columns: 1fr; gap: 2px; } }
 .operation-undo-area { background: #f5f8fb; padding: 18px; border-radius: 8px; margin: 22px 0 30px; }
 .operation-undo-area p { margin: 0 0 14px; line-height: 1.7; }
 .operation-undo-area p:last-child { margin-bottom: 0; }
 .operation-undo-area h3 { margin-top: 0; }
 .operation-undo-area textarea { margin-bottom: 14px; resize: vertical; }
 .operation-blockers { padding-left: 18px; margin-bottom: 0; }
-.operation-change { margin-top: 26px; }
-.operation-change header { margin-bottom: 10px; }
-.operation-change h4 { margin: 0 0 7px; font-size: 15px; }
-.operation-change header p { font-size: 12px; color: #5b6a7e; margin: 0; overflow-wrap: anywhere; }
-.operation-change-type { color: #536176; font-weight: 400; margin-left: 8px; }
-.operations-diff { table-layout: fixed; min-width: 480px; }
-.operations-diff :is(td, th) { overflow-wrap: anywhere; white-space: pre-wrap; }
-.operations-diff th:first-child { width: 24%; }
-.operation-technical { margin-top: 24px; font-size: 12px; color: #5b6a7e; overflow-wrap: anywhere; }
-.operation-technical summary { cursor: pointer; }
 @media (max-width: 700px) { .operations-header { gap: 12px; } .operations-header h1 { font-size: 22px; } .operations-header p { font-size: 13px; } .operations-filters { gap: 12px; } .operations-filters label { flex-basis: 44%; } .operations-filters .operations-keyword { flex-basis: 100%; } .operation-detail { padding: 16px; } .operation-detail-heading { flex-direction: column; } .operation-detail h2 { font-size: 18px; line-height: 1.5; } .operation-facts { grid-template-columns: 1fr; } .operation-undo-area { padding: 14px; } .operations-pagination { flex-wrap: wrap; } }
 @media (max-width: 700px) {
   :global(.app-shell.operations-active) { display: flex; flex-direction: column; overflow: hidden; }

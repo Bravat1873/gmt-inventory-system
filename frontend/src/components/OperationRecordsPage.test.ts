@@ -5,8 +5,9 @@ import type { OperationDetail, OperationRecord } from '../api/operation-records'
 
 const api = vi.hoisted(() => ({ loadOperations: vi.fn(), loadOperation: vi.fn(), confirmOperation: vi.fn(), undoOperation: vi.fn() }))
 vi.mock('../api/operation-records', () => api)
-const row: OperationRecord = { id: 12, action: '订单管理 · 修改', moduleName: '订单管理', httpMethod: 'PUT', requestPath: '/api/orders/4', actorId: 2, actorName: '业务员甲', actorUsername: 'owner', operatedAt: '2026-10-22T14:10:05', status: 'SUCCESS', changeCount: 2, affectedModules: '订单管理、库存管理', relatedRecords: '订单号：DD20261000004；客户：测试客户；产品编号：LOCK-01', businessExamples: [{ table:'sales_order_item', type:'UPDATE', line:'1', reviewStatus:'', fields:[{field:'shipped_quantity',before:'3',after:'5'}] }], changeSummary: [{ table: 'inventory_balance', type: 'UPDATE', count: 1, fields: ['locked_quantity'] }] }
-const details = (overrides: Partial<OperationDetail> = {}): OperationDetail => ({ operation: { ...row }, changes: [{ id: 50, module: '库存管理', table: 'inventory_balance', recordKey: '{"id":4}', label: '门锁库存', relatedInfo: '订单号：DD20261000004；发货单号：FH20261000001；产品编号：LOCK-01', type: 'UPDATE', preserved: false, fields: [{ field: 'locked_quantity', before: '3', after: '5' }] }], changePage: 1, changePageSize: 100, canUndo: true, undoReason: '', blockers: [], ...overrides })
+const row: OperationRecord = { id: 12, action: '订单管理 · 修改', moduleName: '订单管理', httpMethod: 'PUT', requestPath: '/api/orders/4', actorId: 2, actorName: '业务员甲', actorUsername: 'owner', operatedAt: '2026-10-22T14:10:05', status: 'SUCCESS', changeCount: 2, affectedModules: '订单管理、库存管理', relatedRecords: '订单号：DD20261000004；客户：测试客户；产品编号：LOCK-01', businessExamples: [{ table:'sales_order_item', type:'UPDATE', line:'1', productLabel:'P90-GEN2', reviewStatus:'', fields:[{field:'shipped_quantity',before:'3',after:'5'}] }], changeSummary: [{ table: 'inventory_balance', type: 'UPDATE', count: 1, fields: ['locked_quantity'] }] }
+const details = (overrides: Partial<OperationDetail> = {}): OperationDetail => ({ operation: { ...row }, changes: [{ id: 50, module: '库存管理', table: 'inventory_balance', recordKey: '{"id":4}', label: '门锁库存', productLabel:'P90-GEN2', relatedInfo: '订单号：DD20261000004；发货单号：FH20261000001；产品编号：LOCK-01', type: 'UPDATE', preserved: false, fields: [{ field: 'locked_quantity', before: '3', after: '5' }, {field:'version',before:'11',after:'12'}] },
+    {id:51, module:'订单管理',table:'sales_order_item',type:'UPDATE',recordKey:'{"id":5}',preserved:false,label:'',productLabel:'S70-GEN3',fields:[{field:'updated_at',before:'old',after:'new'}]}], changePage: 1, changePageSize: 100, canUndo: true, undoReason: '', blockers: [], ...overrides })
 const owner = { id: 2, username: 'owner', displayName: '业务员甲', role: 'USER' as const }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -21,11 +22,13 @@ it('keeps the list concise and preserves full business context in details', asyn
   expect(wrapper.find('.operations-table').text()).not.toContain('锁定库存')
   expect(wrapper.find('.operations-table').text()).not.toContain('owner')
   expect(wrapper.find('.operations-table').text()).not.toContain('条数据变更')
-  expect(wrapper.get('.operations-content').text()).toBe('明细 1：发货数量 3 → 5')
+  expect(wrapper.get('.operations-content').text()).toBe('P90-GEN2：发货数量 3 → 5')
   await wrapper.get('.change-link').trigger('click'); await flushPromises()
-  expect(wrapper.text()).toContain('订单管理、库存管理'); expect(wrapper.text()).toContain('客户：测试客户')
-  expect(wrapper.text()).toContain('发货单号：FH20261000001'); expect(wrapper.text()).toContain('产品编号：LOCK-01')
-  expect(wrapper.text()).toContain('锁定库存'); expect(wrapper.find('.operations-diff').text()).toContain('3'); expect(wrapper.find('.operations-diff').text()).toContain('5')
+  const changes = wrapper.get('.business-detail')
+  expect(changes.get('li strong').text()).toBe('P90-GEN2')
+  expect(changes.get('li span').text()).toBe('锁定库存 3 → 5')
+  expect(changes.text()).not.toMatch(/S70-GEN3|数据版本|修改时间|记录标识|客户编码/)
+  expect(wrapper.find('small').exists()).toBe(false)
 })
 it('allows owners to undo only after reviewing changes and providing a reason', async () => {
   const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
@@ -102,4 +105,17 @@ it('shows the amount paid once, with the order number and initiating order modul
       {field:'amount',before:null,after:'328.5000'},{field:'confirmed_amount',before:null,after:'328.5000'}]}]}],total:1,page:1,pageSize:20})
   const wrapper=mount(OperationRecordsPage,{props:{currentUser:owner}});await flushPromises()
   expect(wrapper.findAll('tbody td').slice(2,5).map(td=>td.text())).toEqual(['订单管理','DD20261000004','订单支付 ¥328.5'])
+})
+
+it('expands remaining field changes and keeps unidentified products on their own line number', async () => {
+  const original = details().changes[0]
+  api.loadOperation.mockResolvedValue(details({changes:[{...original,productLabel:'',relatedInfo:'明细行：4',
+    fields:['quantity','locked_quantity','in_transit_quantity'].map(field=>({field,before:'2',after:'3'}))}]}))
+  const wrapper=mount(OperationRecordsPage,{props:{currentUser:owner}});await flushPromises()
+  await wrapper.get('.change-link').trigger('click');await flushPromises()
+  const changes=wrapper.get('.business-detail')
+  expect(changes.get('strong').text()).toBe('明细 4')
+  expect(changes.text()).not.toContain('在途库存')
+  await changes.get('button').trigger('click')
+  expect(changes.text()).toContain('在途库存 2 → 3')
 })

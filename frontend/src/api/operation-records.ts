@@ -4,7 +4,7 @@ export interface OperationRecord {
   completedAt?: string; status: 'SUCCESS' | 'FAILED' | 'REVERSED' | 'LEGACY'
   primaryDocument?: string
   confirmedAt?: string | null; confirmedByName?: string
-  businessExamples?: { table: string; type: OperationChange['type']; line: string; reviewStatus: string; fields: OperationChange['fields'] }[]
+  businessExamples?: { table: string; type: OperationChange['type']; line: string; productLabel?: string; reviewStatus: string; fields: OperationChange['fields'] }[]
   changeSummary?: { table: string; type: 'INSERT' | 'UPDATE' | 'DELETE'; count: number; fields: string[] }[]
   changeCount: number; affectedModules?: string; relatedRecords?: string; clientIp?: string
   nonReversibleReason?: string; resultMessage?: string; reversesId?: number
@@ -12,7 +12,7 @@ export interface OperationRecord {
 }
 export interface OperationChange {
   id: number; module: string; table: string; recordKey: string; label: string
-  relatedInfo?: string
+  productLabel?: string; relatedInfo?: string
   type: 'INSERT' | 'UPDATE' | 'DELETE'; preserved: boolean
   fields: { field: string; before: unknown; after: unknown }[]
 }

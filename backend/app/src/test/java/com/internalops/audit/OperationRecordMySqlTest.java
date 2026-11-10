@@ -126,6 +126,8 @@ class OperationRecordMySqlTest {
         assertThat(savedRow.path("primaryDocument").asText()).isEqualTo("AT-"+suffix);
         var preview=savedRow.path("businessExamples");
         assertThat(preview.toString()).contains("shipped_quantity","\"before\":\"0\"","\"after\":\"3\"");
+        assertThat(preview.findValuesAsText("productLabel")).contains("测试门锁");
+        assertThat(detail(id,owner).path("changes").findValuesAsText("productLabel")).contains("测试门锁");
         assertThat(tables(id)).contains("sales_order_item","sales_shipment","sales_shipment_item","inventory_balance","inventory_transaction");
         undo(id,owner).andExpect(status().isOk());
         assertThat(jdbc.queryForMap("SELECT actual_quantity,locked_quantity FROM inventory_balance WHERE sku_id=?",sku))
