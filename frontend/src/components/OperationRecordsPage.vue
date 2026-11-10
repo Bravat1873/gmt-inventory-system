@@ -208,10 +208,10 @@ onMounted(() => load())
 .operations-table, .operations-diff { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; font-variant-numeric: tabular-nums; text-align: left; }
 .operations-table { min-width: 1000px; table-layout: fixed; font-size: 14px; }
 .operations-table-scroll:has(> .operations-table) { border: 1px solid #e2e5e9; border-radius: 10px; }
-.operations-table tbody td { padding: 18px 16px; vertical-align: middle; }
+.operations-table tbody td { padding: 10px 16px; vertical-align: middle; }
 .operations-table thead th { padding: 13px 16px; font-size: 13px; background: #f8f9fa; color: #626a74; }
 .operations-table tbody tr:last-child td { border-bottom: 0; }
-.operations-time { white-space: nowrap; color: #626a74; font-size: 13px; }
+.operations-time { white-space: normal; color: #626a74; font-size: 13px; }
 .operations-actor, .operations-content { font-weight: 500; }
 .operations-table .operations-row-actions { flex-wrap: nowrap; gap: 4px; }
 .operations-row-actions .record-detail-action, .operations-row-actions .record-undo-action { border-color: transparent; background: transparent; padding: 6px 8px; }
