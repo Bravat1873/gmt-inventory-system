@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import type { CurrentUser } from '../api/auth'
-import { loadOperation, loadOperations, undoOperation, type OperationDetail, type OperationPage, type OperationRecord } from '../api/operation-records'
+import { confirmOperation, loadOperation, loadOperations, undoOperation, type OperationDetail, type OperationPage, type OperationRecord } from '../api/operation-records'
 import { formatDateTimeToSecond } from '../utils/date-time'
+import { businessModule, changeText, primaryDocument } from '../utils/operation-presentation'
 import { operationFieldLabel, operationTableLabel, operationValue } from '../utils/operation-labels'
 
 const props = defineProps<{ currentUser: CurrentUser }>()
@@ -12,23 +13,46 @@ const filters = reactive({ keyword: '', actor: '', module: '', status: '', from:
 const loading = ref(false), detailLoading = ref(false), undoing = ref(false), error = ref(''), detailError = ref('')
 const detail = ref<OperationDetail>(), reason = ref(''), confirming = ref(false), heading = ref<HTMLElement>()
 let generation = 0, detailGeneration = 0
-const statuses = { SUCCESS: '成功', REVERSED: '已撤回' }
+const statuses = { SUCCESS: '已执行', REVERSED: '已撤回' }
 const statusLabel = (status: OperationRecord['status']) => status === 'FAILED' ? '失败' : status === 'LEGACY' ? '历史日志' : statuses[status]
 const types = { INSERT: '新增', UPDATE: '修改', DELETE: '删除' }
 const modules = ['客户管理', '产品管理', '供应商管理', '订单管理', '库存管理', '采购管理', '财务管理', '资金管理', '售后管理', '用户管理', '导入管理', '操作记录']
 const changePages = computed(() => detail.value ? Math.max(1, Math.ceil(detail.value.operation.changeCount / detail.value.changePageSize)) : 1)
-const eligible = (row: OperationRecord) => row.status === 'SUCCESS' && row.changeCount > 0 && !row.reversesId && !row.nonReversibleReason && (props.currentUser.role === 'ADMIN' || row.actorId === props.currentUser.id)
+const eligible = (row: OperationRecord) => row.status === 'SUCCESS' && row.changeCount > 0 && !row.confirmedAt && !row.reversesId && !row.nonReversibleReason && (props.currentUser.role === 'ADMIN' || row.actorId === props.currentUser.id)
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : '请求失败，请重试'
 
-// Show business identifiers first; the complete context remains in the detail view.
-function relatedSummary(value?: string) {
-  const parts = (value || '').split(/[；;\n]/).map(part => part.trim()).filter(Boolean)
-  const preferred = parts.filter(part => /^(订单号|采购单号|售后单号|发货单号|来源单号|采购建议单号)[：:]/.test(part))
-  const candidates = preferred.length ? preferred : parts.filter(part => /^(客户|供应商|产品编号|文件)[：:]/.test(part))
-  const unique = [...new Map((candidates.length ? candidates : parts).map(part => [part.replace(/^[^：:]+[：:]\s*/, ''), part])).values()]
-  return unique.slice(0, 2).join(' · ') + (unique.length > 2 ? ` 等 ${unique.length} 项` : '') || '—'
+const moreFilters = ref(false)
+const lockTarget = ref<OperationRecord>()
+const locking = ref(false)
+const cancelButton = ref<HTMLButtonElement>(), lockButton = ref<HTMLButtonElement>()
+let confirmTrigger: HTMLElement | null = null
+watch(lockTarget, async target => {
+  if (target) {
+    confirmTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    await nextTick()
+    cancelButton.value?.focus()
+  } else confirmTrigger?.focus()
+})
+const ownerOrAdmin = (row: OperationRecord) => props.currentUser.role === 'ADMIN' || row.actorId === props.currentUser.id
+const canConfirm = (row: OperationRecord) => row.status === 'SUCCESS' && !row.confirmedAt && ownerOrAdmin(row)
+const listRows = computed(() => data.value.items.map(row => ({
+  ...row, document: primaryDocument(row), module: businessModule(row), description: changeText(row)
+})))
+
+async function lockRecord() {
+  if (!lockTarget.value || locking.value) return
+  locking.value = true
+  try {
+    await confirmOperation(lockTarget.value.id)
+    lockTarget.value = undefined
+    emit('message', '已确认锁定，此操作不能再撤回')
+    await load(data.value.page)
+  } catch (cause) {
+    lockTarget.value = undefined
+    await load(data.value.page)
+    error.value = errorText(cause)
+  } finally { locking.value = false }
 }
-const listRows = computed(() => data.value.items.map(row => ({ ...row, relatedSummary: relatedSummary(row.relatedRecords) })))
 
 async function load(page = 1) {
   const token = ++generation; loading.value = true; error.value = ''
@@ -80,36 +104,54 @@ onMounted(() => load())
 
     <template v-if="!detail">
       <form class="operations-filters" @submit.prevent="load(1)">
-        <label class="operations-keyword"><span>操作 / 关联单据</span><input v-model="filters.keyword" placeholder="操作编号、订单号、客户、产品等" /></label>
-        <label><span>操作人员</span><input v-model="filters.actor" placeholder="姓名或用户名" /></label>
-        <label><span>关联模块</span><select v-model="filters.module"><option value="">全部模块</option><option v-for="module in modules" :key="module">{{ module }}</option></select></label>
-        <label><span>处理状态</span><select v-model="filters.status"><option value="">全部状态</option><option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option></select></label>
-        <label><span>开始日期</span><input v-model="filters.from" type="date" /></label>
-        <label><span>结束日期</span><input v-model="filters.to" type="date" /></label>
+        <label class="operations-keyword"><span>搜索记录</span><input v-model="filters.keyword" placeholder="操作编号、订单号、客户、产品等" /></label>
+        <label><span>操作模块</span><select v-model="filters.module"><option value="">全部模块</option><option v-for="module in modules" :key="module">{{ module }}</option></select></label>
+        <template v-if="moreFilters">
+          <label><span>操作人员</span><input v-model="filters.actor" placeholder="姓名或用户名" /></label>
+          <label><span>记录状态</span><select v-model="filters.status"><option value="">全部状态</option><option value="UNCONFIRMED">待确认</option><option value="CONFIRMED">已确认</option><option value="REVERSED">已撤回</option></select></label>
+          <label><span>开始日期</span><input v-model="filters.from" type="date" /></label>
+          <label><span>结束日期</span><input v-model="filters.to" type="date" /></label>
+        </template>
         <button type="submit" class="primary-action" :disabled="loading">查询</button>
-        <button type="button" :disabled="loading" @click="Object.assign(filters, { keyword:'', actor:'', module:'', status:'', from:'', to:'' }); load(1)">重置</button>
+        <button type="button" :aria-expanded="moreFilters" @click="moreFilters = !moreFilters">{{ moreFilters ? '收起筛选' : '更多筛选' }}</button>
+        <button v-if="Object.values(filters).some(Boolean)" type="button" :disabled="loading" @click="Object.assign(filters, { keyword:'', actor:'', module:'', status:'', from:'', to:'' }); load(1)">重置</button>
       </form>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <div class="operations-table-scroll" tabindex="0" role="region" aria-label="操作记录列表，可横向滚动">
         <table class="operations-table">
-          <colgroup><col style="width:17%" /><col style="width:11%" /><col style="width:23%" /><col style="width:29%" /><col style="width:8%" /><col style="width:12%" /></colgroup>
-          <thead><tr><th scope="col">操作时间</th><th scope="col">操作人员</th><th scope="col">操作内容</th><th scope="col">关联单据 / 对象</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead>
+          <colgroup><col style="width:15%" /><col style="width:9%" /><col style="width:10%" /><col style="width:17%" /><col style="width:33%" /><col style="width:16%" /></colgroup>
+          <thead><tr><th scope="col">操作时间</th><th scope="col">操作人员</th><th scope="col">操作模块</th><th scope="col">单号 / 对象</th><th scope="col">改了什么</th><th scope="col">操作</th></tr></thead>
           <tbody><tr v-for="row in listRows" :key="row.id">
             <td class="operations-time"><time :datetime="row.operatedAt">{{ formatDateTimeToSecond(row.operatedAt) }}</time></td>
-            <td class="operations-actor">{{ row.actorName || row.actorUsername || '—' }}</td>
-            <td class="operations-content">{{ row.action }}</td>
-            <td class="operations-related"><span :title="row.relatedRecords">{{ row.relatedSummary }}</span></td>
-            <td><span class="operation-status" :class="`operation-${row.status.toLowerCase()}`">{{ statusLabel(row.status) }}</span></td>
-            <td><div class="operations-row-actions"><button class="record-detail-action" :aria-label="`查看操作 #${row.id} 详情`" :disabled="detailLoading" @click="open(row.id)">详情</button><button class="record-undo-action" :aria-label="`撤回操作 #${row.id}`" :disabled="detailLoading || !eligible(row)" :title="row.nonReversibleReason || '查看关联变更并检查是否可撤回'" @click="open(row.id, true)">撤回</button></div></td>
+            <td>{{ row.actorName || row.actorUsername || '—' }}</td>
+            <td>{{ row.module }}</td>
+            <td class="operations-related"><span :title="row.relatedRecords">{{ row.document }}</span></td>
+            <td class="operations-content"><button class="change-link" :title="'查看完整变更：'+row.description" :disabled="detailLoading || locking" @click="open(row.id)">{{ row.description }}</button></td>
+            <td><div class="operations-row-actions">
+              <span v-if="row.status === 'REVERSED'" class="operation-status operation-reversed">已撤回</span>
+              <span v-else-if="row.confirmedAt" class="operation-status operation-success" :title="row.confirmedByName+' · '+formatDateTimeToSecond(row.confirmedAt)">已确认锁定</span>
+              <template v-else>
+                <button :disabled="locking || detailLoading || !canConfirm(row)" @click="lockTarget = row">确认</button>
+                <button class="record-undo-action" :disabled="locking || detailLoading || !eligible(row)" @click="open(row.id, true)">撤回</button>
+              </template>
+            </div></td>
           </tr><tr v-if="!data.items.length"><td colspan="6" class="operations-empty">{{ loading ? '正在读取操作记录…' : error ? '读取失败，请重试' : '暂无符合条件的操作记录' }}</td></tr></tbody>
         </table>
       </div>
       <footer class="operations-pagination"><span>共 {{ data.total }} 条 · 第 {{ data.page }} 页</span><button :disabled="loading || data.page <= 1" @click="load(data.page - 1)">上一页</button><button :disabled="loading || data.page * data.pageSize >= data.total" @click="load(data.page + 1)">下一页</button></footer>
+      <div v-if="lockTarget" class="dialog-mask" @keydown.esc="!locking && (lockTarget = undefined)">
+        <section role="alertdialog" aria-modal="true" aria-labelledby="record-confirm-title" class="confirm-card" @keydown.tab.prevent="($event.target === cancelButton ? lockButton : cancelButton)?.focus()">
+          <h2 id="record-confirm-title">确认并锁定这条记录？</h2>
+          <p>{{ primaryDocument(lockTarget) }} · {{ changeText(lockTarget) }}</p>
+          <p>确认后，这笔操作和关联模块的变更都不能再通过此记录撤回。</p>
+          <div class="operations-row-actions"><button ref="cancelButton" :disabled="locking" @click="lockTarget = undefined">取消</button><button ref="lockButton" class="primary-action" :disabled="locking" @click="lockRecord">{{ locking ? '确认中…' : '确认锁定' }}</button></div>
+        </section>
+      </div>
     </template>
 
     <article v-else class="operation-detail">
-      <header class="operation-detail-heading"><div><h2 ref="heading" tabindex="-1">#{{ detail.operation.id }} · {{ detail.operation.action }}</h2><p>{{ detail.operation.actorName }}（{{ detail.operation.actorUsername || '未保存账号' }}） · {{ formatDateTimeToSecond(detail.operation.operatedAt) }}</p></div><span class="operation-status" :class="`operation-${detail.operation.status.toLowerCase()}`">{{ statusLabel(detail.operation.status) }}</span></header>
-      <dl class="operation-facts"><div><dt>关联模块</dt><dd>{{ detail.operation.affectedModules || detail.operation.moduleName }}</dd></div><div><dt>订单 / 单据及关联信息</dt><dd>{{ detail.operation.relatedRecords || '—' }}</dd></div><div><dt>数据变更</dt><dd>{{ detail.operation.changeCount }} 条</dd></div><div><dt>来源地址</dt><dd>{{ detail.operation.clientIp || '—' }}</dd></div></dl>
+      <header class="operation-detail-heading"><div><h2 ref="heading" tabindex="-1">#{{ detail.operation.id }} · {{ detail.operation.action }}</h2><p>{{ detail.operation.actorName }}（{{ detail.operation.actorUsername || '未保存账号' }}） · {{ formatDateTimeToSecond(detail.operation.operatedAt) }}</p></div><span class="operation-status" :class="`operation-${detail.operation.status.toLowerCase()}`">{{ detail.operation.confirmedAt ? '已确认锁定' : statusLabel(detail.operation.status) }}</span></header>
+      <dl class="operation-facts"><div><dt>单号 / 对象</dt><dd>{{ primaryDocument(detail.operation) }}</dd></div><div><dt>改了什么</dt><dd>{{ changeText(detail.operation) }}</dd></div></dl>
       <p v-if="detail.operation.resultMessage" class="form-error">{{ detail.operation.resultMessage }}</p>
       <p v-if="detail.operation.reversalReason">撤回原因：{{ detail.operation.reversalReason }}</p>
       <p v-if="detail.operation.reversesId">原操作：<button class="text-action" :disabled="undoing" @click="open(detail.operation.reversesId)">#{{ detail.operation.reversesId }} 查看原操作</button></p>
@@ -128,7 +170,8 @@ onMounted(() => load())
         <p v-else>{{ detail.undoReason }}</p>
         <ul v-if="detail.blockers.length" class="operation-blockers"><li v-for="blocker in detail.blockers" :key="blocker.id"><button class="text-action" :disabled="undoing" @click="open(blocker.id)">#{{ blocker.id }} · {{ blocker.action }}</button><span> · {{ blocker.actorName }}</span></li></ul>
       </div>
-      <h3>关联变更明细</h3>
+      <details class="operation-breakdown"><summary>查看全部关联变更（{{ detail.operation.changeCount }} 条）</summary>
+      <p>{{ detail.operation.affectedModules }} · {{ detail.operation.relatedRecords }}</p>
       <p class="operations-note">按执行顺序展示每条变更；同一条数据在本次操作中可能被多次更新。</p>
       <p v-if="!detail.changes.length" class="operations-empty">{{ detail.operation.status === 'LEGACY' ? '旧日志没有保存变更前后值，无法补还原始操作。' : '此次操作没有产生数据变更。' }}</p>
       <section v-for="change in detail.changes" :key="change.id" class="operation-change">
@@ -137,7 +180,7 @@ onMounted(() => load())
         <div class="operations-table-scroll" tabindex="0" role="region" :aria-label="`${change.label}变更前后对比`"><table class="operations-diff"><thead><tr><th scope="col">字段</th><th scope="col">操作前</th><th scope="col">操作后</th></tr></thead><tbody><tr v-for="field in change.fields" :key="field.field"><th scope="row" :title="field.field">{{ operationFieldLabel(field.field) }}</th><td>{{ operationValue(field.before) }}</td><td>{{ operationValue(field.after) }}</td></tr><tr v-if="!change.fields.length"><td colspan="3">字段值未改变</td></tr></tbody></table></div>
       </section>
       <footer v-if="changePages > 1" class="operations-pagination"><span>变更明细 {{ detail.changePage }} / {{ changePages }} 页</span><button :disabled="detailLoading || undoing || detail.changePage <= 1" @click="open(detail.operation.id, false, detail.changePage - 1)">上一页明细</button><button :disabled="detailLoading || undoing || detail.changePage >= changePages" @click="open(detail.operation.id, false, detail.changePage + 1)">下一页明细</button></footer>
-      <details class="operation-technical"><summary>接口信息</summary><p>{{ detail.operation.httpMethod }} {{ detail.operation.requestPath }}</p></details>
+      </details>
     </article>
   </section>
 </template>
@@ -176,6 +219,14 @@ onMounted(() => load())
 .operations-row-actions .record-undo-action { color: #626a74; }
 .operations-page :is(td, th) { padding: 14px 12px; border-bottom: 1px solid #dfe6ed; vertical-align: top; line-height: 1.6; }
 .operations-page thead th { background: #f1f5f9; color: #43546b; font-weight: 600; }
+.operations-table .operations-content { white-space: normal; }
+.operations-content .change-link { display:block; text-align:left; white-space:normal; overflow-wrap:anywhere; border:0; background:transparent; padding:0; min-height:0; color:#253853; line-height:1.6; }
+.operations-content .change-link:hover:not(:disabled) { text-decoration:underline; background:transparent; }
+.confirm-card { width:min(420px, 94vw); padding:22px; background:#fff; border-radius:10px; box-shadow:0 12px 48px #18283a26; }
+.confirm-card h2 { margin:0; font-size:19px; }
+.confirm-card p { line-height:1.65; }
+.confirm-card .operations-row-actions { justify-content:flex-end; }
+.operation-breakdown summary { cursor:pointer; }
 .operations-table tbody tr:hover { background: #f6f9fc; }
 .operations-related { max-width: 320px; overflow-wrap: anywhere; }
 .operations-content { max-width: 300px; overflow-wrap: anywhere; }

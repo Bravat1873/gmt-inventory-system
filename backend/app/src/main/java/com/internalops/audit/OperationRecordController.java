@@ -21,6 +21,9 @@ public class OperationRecordController {
     @GetMapping("/{id}") public ApiResponse<Map<String,Object>> detail(@PathVariable long id,@RequestParam(defaultValue="1")int changePage) {
         return ApiResponse.ok(service.detail(id,changePage));
     }
+    @PostMapping("/{id}/confirm") public ApiResponse<Map<String,Object>> confirm(@PathVariable long id) {
+        return ApiResponse.ok(service.confirm(id));
+    }
     @PostMapping("/{id}/undo") public ApiResponse<Map<String,Object>> undo(@PathVariable long id,@RequestBody UndoRequest request) {
         return ApiResponse.ok(service.undo(id,request.reason()));
     }

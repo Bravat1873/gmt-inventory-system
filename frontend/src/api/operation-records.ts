@@ -2,6 +2,8 @@ export interface OperationRecord {
   id: number; action: string; moduleName: string; httpMethod: string; requestPath: string
   actorId: number | null; actorName: string; actorUsername: string; operatedAt: string
   completedAt?: string; status: 'SUCCESS' | 'FAILED' | 'REVERSED' | 'LEGACY'
+  confirmedAt?: string | null; confirmedByName?: string
+  businessExamples?: { table: string; type: OperationChange['type']; line: string; reviewStatus: string; fields: OperationChange['fields'] }[]
   changeSummary?: { table: string; type: 'INSERT' | 'UPDATE' | 'DELETE'; count: number; fields: string[] }[]
   changeCount: number; affectedModules?: string; relatedRecords?: string; clientIp?: string
   nonReversibleReason?: string; resultMessage?: string; reversesId?: number
@@ -27,4 +29,5 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 export const loadOperations = (params: URLSearchParams) => request<OperationPage>(`/api/operation-records?${params}`)
 export const loadOperation = (id: number, changePage = 1) => request<OperationDetail>(`/api/operation-records/${id}?changePage=${changePage}`)
+export const confirmOperation = (id: number) => request<OperationRecord>(`/api/operation-records/${id}/confirm`, { method: 'POST' })
 export const undoOperation = (id: number, reason: string) => request<{ reversalOperationId: number }>(`/api/operation-records/${id}/undo`, { method: 'POST', body: JSON.stringify({ reason }) })

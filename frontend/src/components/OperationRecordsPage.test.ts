@@ -3,9 +3,9 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import OperationRecordsPage from './OperationRecordsPage.vue'
 import type { OperationDetail, OperationRecord } from '../api/operation-records'
 
-const api = vi.hoisted(() => ({ loadOperations: vi.fn(), loadOperation: vi.fn(), undoOperation: vi.fn() }))
+const api = vi.hoisted(() => ({ loadOperations: vi.fn(), loadOperation: vi.fn(), confirmOperation: vi.fn(), undoOperation: vi.fn() }))
 vi.mock('../api/operation-records', () => api)
-const row: OperationRecord = { id: 12, action: '订单管理 · 修改', moduleName: '订单管理', httpMethod: 'PUT', requestPath: '/api/orders/4', actorId: 2, actorName: '业务员甲', actorUsername: 'owner', operatedAt: '2026-10-22T14:10:05', status: 'SUCCESS', changeCount: 2, affectedModules: '订单管理、库存管理', relatedRecords: '订单号：DD20261000004；客户：测试客户；产品编号：LOCK-01', changeSummary: [{ table: 'inventory_balance', type: 'UPDATE', count: 1, fields: ['locked_quantity'] }] }
+const row: OperationRecord = { id: 12, action: '订单管理 · 修改', moduleName: '订单管理', httpMethod: 'PUT', requestPath: '/api/orders/4', actorId: 2, actorName: '业务员甲', actorUsername: 'owner', operatedAt: '2026-10-22T14:10:05', status: 'SUCCESS', changeCount: 2, affectedModules: '订单管理、库存管理', relatedRecords: '订单号：DD20261000004；客户：测试客户；产品编号：LOCK-01', businessExamples: [{ table:'sales_order_item', type:'UPDATE', line:'1', reviewStatus:'', fields:[{field:'shipped_quantity',before:'3',after:'5'}] }], changeSummary: [{ table: 'inventory_balance', type: 'UPDATE', count: 1, fields: ['locked_quantity'] }] }
 const details = (overrides: Partial<OperationDetail> = {}): OperationDetail => ({ operation: { ...row }, changes: [{ id: 50, module: '库存管理', table: 'inventory_balance', recordKey: '{"id":4}', label: '门锁库存', relatedInfo: '订单号：DD20261000004；发货单号：FH20261000001；产品编号：LOCK-01', type: 'UPDATE', preserved: false, fields: [{ field: 'locked_quantity', before: '3', after: '5' }] }], changePage: 1, changePageSize: 100, canUndo: true, undoReason: '', blockers: [], ...overrides })
 const owner = { id: 2, username: 'owner', displayName: '业务员甲', role: 'USER' as const }
 beforeEach(() => {
@@ -21,7 +21,8 @@ it('keeps the list concise and preserves full business context in details', asyn
   expect(wrapper.find('.operations-table').text()).not.toContain('锁定库存')
   expect(wrapper.find('.operations-table').text()).not.toContain('owner')
   expect(wrapper.find('.operations-table').text()).not.toContain('条数据变更')
-  await wrapper.findAll('button').find(b => b.text() === '详情')!.trigger('click'); await flushPromises()
+  expect(wrapper.get('.operations-content').text()).toBe('明细 1：发货数量 3 → 5')
+  await wrapper.get('.change-link').trigger('click'); await flushPromises()
   expect(wrapper.text()).toContain('订单管理、库存管理'); expect(wrapper.text()).toContain('客户：测试客户')
   expect(wrapper.text()).toContain('发货单号：FH20261000001'); expect(wrapper.text()).toContain('产品编号：LOCK-01')
   expect(wrapper.text()).toContain('锁定库存'); expect(wrapper.find('.operations-diff').text()).toContain('3'); expect(wrapper.find('.operations-diff').text()).toContain('5')
@@ -61,6 +62,7 @@ it('keeps conflict messages visible and refreshes eligibility after failed undo'
 it('passes all filters, rejects reversed dates and retains filters for pagination', async () => {
   api.loadOperations.mockResolvedValue({ items: [{ ...row }], total: 45, page: 1, pageSize: 20 })
   const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
+  await wrapper.findAll('button').find(b => b.text() === '更多筛选')!.trigger('click')
   const inputs = wrapper.findAll('input'); await inputs[0].setValue('DD01'); await inputs[1].setValue('张'); await inputs[2].setValue('2026-10-22'); await inputs[3].setValue('2026-10-01')
   await wrapper.find('form').trigger('submit'); expect(wrapper.text()).toContain('开始日期不能晚于结束日期')
   await inputs[3].setValue('2026-10-23'); await wrapper.find('form').trigger('submit'); await flushPromises()
@@ -74,11 +76,30 @@ it('deduplicates document numbers and limits the list summary while keeping full
   api.loadOperations.mockResolvedValue({ items: [{ ...row, relatedRecords }], total: 1, page: 1, pageSize: 20 })
   const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
   const summary = wrapper.get('.operations-related span')
-  expect(summary.text()).toBe('订单号：DD01 · 采购单号：CG02 等 3 项')
+  expect(summary.text()).toBe('DD01')
   expect(summary.attributes('title')).toBe(relatedRecords)
 })
 it('shows a file or business object when no document number is available', async () => {
   api.loadOperations.mockResolvedValue({ items: [{ ...row, relatedRecords: '文件：订单导入.xlsx' }, { ...row, id: 13, relatedRecords: '' }], total: 2, page: 1, pageSize: 20 })
   const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
-  expect(wrapper.findAll('.operations-related').map(cell => cell.text())).toEqual(['文件：订单导入.xlsx', '—'])
+  expect(wrapper.findAll('.operations-related').map(cell => cell.text())).toEqual(['订单导入.xlsx', '—'])
+})
+
+it('confirms only after the lock warning and keeps the confirmed row locked after reload', async () => {
+  const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
+  await wrapper.findAll('button').find(b=>b.text()==='确认')!.trigger('click')
+  expect(api.confirmOperation).not.toHaveBeenCalled()
+  expect(wrapper.get('[role="alertdialog"]').text()).toContain('不能再')
+  api.loadOperations.mockResolvedValue({items:[{...row,confirmedAt:'2026-11-10T10:00:00'}],total:1,page:1,pageSize:20})
+  await wrapper.findAll('button').find(b=>b.text()==='确认锁定')!.trigger('click'); await flushPromises()
+  expect(api.confirmOperation).toHaveBeenCalledWith(12)
+  expect(wrapper.get('tbody').text()).toContain('已确认锁定')
+  expect(wrapper.get('tbody').text()).not.toContain('撤回')
+})
+it('shows the amount paid once, with the order number and initiating order module', async () => {
+  api.loadOperations.mockResolvedValue({items:[{...row,moduleName:'财务管理',requestPath:'/api/finance/orders/4/pay',
+    businessExamples:[{table:'customer_receipt',type:'INSERT',line:'',reviewStatus:'APPROVED',fields:[
+      {field:'amount',before:null,after:'328.5000'},{field:'confirmed_amount',before:null,after:'328.5000'}]}]}],total:1,page:1,pageSize:20})
+  const wrapper=mount(OperationRecordsPage,{props:{currentUser:owner}});await flushPromises()
+  expect(wrapper.findAll('tbody td').slice(2,5).map(td=>td.text())).toEqual(['订单管理','DD20261000004','订单支付 ¥328.5'])
 })

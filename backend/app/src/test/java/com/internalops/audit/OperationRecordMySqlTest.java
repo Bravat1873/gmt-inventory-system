@@ -83,6 +83,57 @@ class OperationRecordMySqlTest {
         undo(reversal,admin).andExpect(status().isConflict());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_context",Integer.class)).isZero();
     }
+    @Test void confirmationIsPersistentAndBlocksEvenAdminUndo() throws Exception {
+        long id = rename(owner,"核对后锁定");
+        String path = "/api/operation-records/"+id+"/confirm";
+        mvc.perform(post(path).cookie(other)).andExpect(status().isForbidden());
+        mvc.perform(post(path).cookie(owner)).andExpect(status().isOk());
+        var confirmed = detail(id,admin);
+        assertThat(confirmed.path("operation").path("confirmedByName").asText()).isEqualTo("操作人员甲");
+        assertThat(confirmed.path("canUndo").asBoolean()).isFalse();
+        mvc.perform(post(path).cookie(admin)).andExpect(status().isOk());
+        assertThat(detail(id,admin).path("operation").path("confirmedAt")).isEqualTo(confirmed.path("operation").path("confirmedAt"));
+        undo(id,admin).andExpect(status().isConflict());
+        assertThat(name()).isEqualTo("核对后锁定");
+    }
+
+    @Test void concurrentConfirmAndUndoHaveOnlyOneWinner() throws Exception {
+        long id=rename(owner,"并发核对");
+        var pool=Executors.newFixedThreadPool(2);
+        var start=new CountDownLatch(1);
+        try {
+            var lock=pool.submit(()->{start.await();return mvc.perform(post("/api/operation-records/"+id+"/confirm").cookie(admin)).andReturn().getResponse().getStatus();});
+            var cancel=pool.submit(()->{start.await();return undo(id,owner).andReturn().getResponse().getStatus();});
+            start.countDown();
+            int lockStatus=lock.get(20,TimeUnit.SECONDS);
+            assertThat(List.of(lockStatus,cancel.get(20,TimeUnit.SECONDS))).containsExactlyInAnyOrder(200,409);
+            assertThat(name()).isEqualTo(lockStatus==200 ? "并发核对" : "审计测试客户"+suffix);
+        } finally { pool.shutdownNow(); }
+    }
+
+    @Test void shipmentPreviewAndUndoIncludeInventoryAndShipmentDocuments() throws Exception {
+        long sku = product();
+        long warehouse = jdbc.queryForObject("SELECT id FROM warehouse WHERE is_default=TRUE AND enabled=TRUE ORDER BY id LIMIT 1",Long.class);
+        jdbc.update("INSERT INTO inventory_balance(warehouse_id,sku_id,actual_quantity,locked_quantity) VALUES(?,?,10,8)",warehouse,sku);
+        jdbc.update("INSERT INTO sales_order_item(sales_order_id,line_no,sku_id,quantity,locked_quantity,sale_price) VALUES(?,1,?,8,8,10)",order,sku);
+        String path="/api/orders/"+order+"/shipment-quantities";
+        mvc.perform(put(path).cookie(owner).contentType("application/json").content(
+                "{\"deliveryAddress\":\"测试地址\",\"items\":[{\"lineNo\":1,\"shippedQuantity\":3}]}")).andExpect(status().isOk());
+        long id=last(path);
+        var list=mvc.perform(get("/api/operation-records").cookie(owner).param("keyword","AT-"+suffix))
+                .andExpect(status().isOk()).andReturn();
+        var preview=json.readTree(list.getResponse().getContentAsByteArray()).at("/data/items/0/businessExamples");
+        assertThat(preview.toString()).contains("shipped_quantity","\"before\":\"0\"","\"after\":\"3\"");
+        assertThat(tables(id)).contains("sales_order_item","sales_shipment","sales_shipment_item","inventory_balance","inventory_transaction");
+        undo(id,owner).andExpect(status().isOk());
+        assertThat(jdbc.queryForMap("SELECT actual_quantity,locked_quantity FROM inventory_balance WHERE sku_id=?",sku))
+                .containsEntry("actual_quantity",10).containsEntry("locked_quantity",8);
+        assertThat(jdbc.queryForObject("SELECT shipped_quantity FROM sales_order_item WHERE sales_order_id=?",Integer.class,order)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_shipment WHERE sales_order_id=?",Integer.class,order)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_transaction WHERE sku_id=?",Integer.class,sku)).isZero();
+        mvc.perform(post("/api/operation-records/"+id+"/confirm").cookie(owner)).andExpect(status().isConflict());
+    }
+
     @Test void ownersCanUndoOwnOperationsButCannotUndoOthers()throws Exception {
         long id=rename(owner,"甲修改");
         assertThat(detail(id,other).path("canUndo").asBoolean()).isFalse();

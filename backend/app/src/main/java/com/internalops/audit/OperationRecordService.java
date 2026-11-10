@@ -94,20 +94,60 @@ public class OperationRecordService {
         }
         if (!blank(actor)) { where.append(" AND (actor_name LIKE ? OR actor_username LIKE ?)"); args.add("%"+actor.trim()+"%"); args.add("%"+actor.trim()+"%"); }
         if (!blank(module)) { where.append(" AND (module_name=? OR affected_modules LIKE ?)");args.add(module);args.add("%"+module+"%"); }
-        if (!blank(status)) { where.append(" AND status=?");args.add(status); }
+        if ("CONFIRMED".equals(status)) where.append(" AND confirmed_at IS NOT NULL");
+        else if ("UNCONFIRMED".equals(status)) where.append(" AND status='SUCCESS' AND confirmed_at IS NULL");
+        else if (!blank(status)) { where.append(" AND status=?");args.add(status); }
         if (!blank(from)) { where.append(" AND operated_at>=?");args.add(LocalDate.parse(from).atStartOfDay()); }
         if (!blank(to)) { where.append(" AND operated_at<?");args.add(LocalDate.parse(to).plusDays(1).atStartOfDay()); }
         long total=Objects.requireNonNull(jdbc.queryForObject("SELECT COUNT(*) FROM operation_record"+where,Long.class,args.toArray()));
         args.add(PAGE_SIZE);args.add((long)(page-1)*PAGE_SIZE);
         var items=jdbc.queryForList("SELECT * FROM operation_record"+where+" ORDER BY id DESC LIMIT ? OFFSET ?",args.toArray()).stream().map(this::view).toList();
+        addBusinessExamples(items);
         return Map.of("items",items,"total",total,"page",page,"pageSize",PAGE_SIZE);
     }
+
+    // Read historical snapshots as well as new ones. Fetch full snapshots only for
+    // representative rows; a large workbook or inventory import must not fill a list page.
+    private void addBusinessExamples(List<Map<String,Object>> items) {
+        if (items.isEmpty()) return;
+        var byId = new HashMap<Long,Map<String,Object>>();
+        for (var row : items) byId.put(((Number)row.get("id")).longValue(), row);
+        String placeholders = String.join(",", Collections.nCopies(items.size(), "?"));
+        String sql = """
+                SELECT c.* FROM operation_change c JOIN (
+                    SELECT id, ROW_NUMBER() OVER (PARTITION BY operation_id,table_name,change_type
+                        ORDER BY CASE WHEN table_name='sales_order_item' AND change_type='UPDATE'
+                            AND NOT (before_data->'$.shipped_quantity' <=> after_data->'$.shipped_quantity') THEN 0 ELSE 1 END, id) AS position_in_group
+                    FROM operation_change WHERE operation_id IN (%s) AND meaningful_change=TRUE
+                    AND table_name IN ('sales_order','sales_order_item','sales_shipment','customer_receipt','supplier_payment',
+                        'purchase_order','purchase_order_item','inventory_balance','customer','supplier','sku',
+                        'sales_invoice','purchase_invoice','customer_fund_account','customer_fund_request','after_sales_order','after_sales_refund')
+                ) samples ON samples.id=c.id WHERE samples.position_in_group<=2 ORDER BY c.id
+                """.formatted(placeholders);
+        var examples = new HashMap<Long,List<Map<String,Object>>>();
+        jdbc.query(sql, rs -> {
+            Change c = readChange(rs);
+            long id = rs.getLong("operation_id");
+            var row = c.after()==null ? c.before() : c.after();
+            var fields = diff(c).stream().filter(f -> PREVIEW_FIELDS.contains(f.get("field"))).toList();
+            if (!fields.isEmpty()) examples.computeIfAbsent(id, ignored -> new ArrayList<>()).add(Map.of(
+                    "table",c.table(), "type",c.type(), "line",Objects.toString(row.get("line_no"),""),
+                    "fields",fields,"reviewStatus",Objects.toString(row.get("review_status"),"")));
+        }, byId.keySet().toArray());
+        byId.forEach((id,row) -> row.put("businessExamples", examples.getOrDefault(id,List.of())));
+    }
+    private static final Set<String> PREVIEW_FIELDS = Set.of("quantity","shipped_quantity","received_quantity",
+            "locked_quantity","uncovered_quantity","actual_quantity","in_transit_quantity","sale_price","purchase_price",
+            "total_amount","amount","confirmed_amount","balance","refund_amount","order_remark","item_remark","remark",
+            "salesperson","order_date","order_type","status","review_status","customer_name","supplier_name","product_name",
+            "customer_part_number","model","configuration","delivery_address","tracking_no","logistics_company","logistics_no",
+            "delivery_contact","delivery_phone","expected_arrival_date","tax_inclusive_amount","invoice_no","enabled");
 
     public Map<String,Object> detail(long id,int requestedPage) {
         CurrentUser.required(); Map<String,Object> record=record(id); int page=Math.max(1,requestedPage);
         var changes=jdbc.query("SELECT * FROM operation_change WHERE operation_id=? ORDER BY id LIMIT 100 OFFSET ?",
                 (rs,n)->readChange(rs),id,(long)(page-1)*100);
-        var result=new LinkedHashMap<String,Object>();result.put("operation",view(record));
+        var result=new LinkedHashMap<String,Object>();var operation=view(record);addBusinessExamples(List.of(operation));result.put("operation",operation);
         result.put("changes",changes.stream().map(c->Map.of("id",c.id(),"module",OperationCatalog.module(c.table()),"table",c.table(),
                 "recordKey",c.key(),"label",OperationCatalog.label(c.table(),c.after()==null?c.before():c.after()),"type",c.type(),
                 "fields",diff(c),"preserved",PRESERVED.contains(c.table()),"relatedInfo",c.relatedInfo()==null?String.join("；",OperationCatalog.identifiers(c.after()==null?c.before():c.after())):c.relatedInfo())).toList());
@@ -125,6 +165,20 @@ public class OperationRecordService {
                 return "关联数据已发生变化，无法撤回："+OperationCatalog.module(change.table())+" "+change.key();
         }
         return null;
+    }
+
+    @Transactional
+    public Map<String,Object> confirm(long id) {
+        CurrentUser user = CurrentUser.required();
+        jdbc.queryForObject("SELECT id FROM operation_write_lock WHERE id=1 FOR UPDATE", Integer.class);
+        var record = record(id);
+        if (!authorized(record)) throw new SecurityException("只能确认自己的记录，管理员可以确认全部记录");
+        if (!"SUCCESS".equals(record.get("status")) || ((Number)record.get("change_count")).intValue() == 0)
+            throw new UndoConflict("该记录无法确认");
+        if (record.get("confirmed_at") == null)
+            jdbc.update("UPDATE operation_record SET confirmed_at=CURRENT_TIMESTAMP(3),confirmed_by=?,confirmed_by_name=? WHERE id=?",
+                    user.id(), user.displayName(), id);
+        return view(record(id));
     }
 
     @Transactional
@@ -180,6 +234,7 @@ public class OperationRecordService {
     private String unavailable(Map<String,Object> record,List<Map<String,Object>> blockers) {
         if (!authorized(record)) return "只能撤回自己的操作，管理员可以撤回全部操作";
         if (!"SUCCESS".equals(record.get("status"))) return "REVERSED".equals(record.get("status"))?"此操作已撤回":"此记录不支持撤回";
+        if (record.get("confirmed_at")!=null) return "该操作已确认锁定，不能撤回";
         if (record.get("reverses_id")!=null) return "撤回记录不可再次撤回；如需重新执行，请回到业务模块操作";
         if (record.get("non_reversible_reason")!=null) return record.get("non_reversible_reason").toString();
         if (!blockers.isEmpty()) return "关联数据已被后续操作使用，请先处理操作 #"+blockers.get(0).get("id");

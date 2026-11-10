@@ -37,7 +37,7 @@ public class OperationAuditFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/auth/")
                 || path.equals("/api/system/health") || path.equals("/api/auth/me")
                 || path.startsWith("/api/dashboard") || path.matches("/api/product-images/[^/]+/content")
-                || (path.startsWith("/api/operation-records") && request.getMethod().equals("GET"));
+                || path.matches("/api/operation-records/[0-9]+/confirm");
     }
     @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws ServletException,IOException {
         boolean mutation=Set.of("POST","PUT","PATCH","DELETE").contains(request.getMethod());

@@ -63,7 +63,7 @@ const fields: Record<string, string> = {
   after_sales_order_id: '售后单ID', after_sales_type: '售后类型', event_type: '事件类型', description: '事件说明',
   application_date: '申请日期', refund_amount: '退款金额', return_quantity: '退回数量', replacement_quantity: '换出数量',
   tax_inclusive_amount: '含税金额', tax_rate: '税率', tax_amount: '税额', is_default: '默认仓库', warehouse_code: '仓库编码', warehouse_name: '仓库名称',
-  salesperson: '销售员', expected_arrival_date: '预计到货日期', delivery_address: '交货地址', carrier: '物流公司', tracking_no: '物流单号',
+  salesperson: '销售员', expected_arrival_date: '预计到货日期', delivery_address: '交货地址', carrier: '物流公司', tracking_no: '物流单号', logistics_no: '物流单号', logistics_company: '物流公司',
   is_primary: '主图', sort_order: '排列顺序', original_filename: '原始文件名', storage_key: '文件存储标识', file_size: '文件大小',
   line_no: '行号', active: '生效状态', batch_id: '导入批次ID', current_value: '已分配序号', document_type: '单据类型', year_month: '年月',
   unit: '单位', configuration: '物料规格', product_configuration: '产品配置', reference_no: '银行流水号', fund_source: '资金来源'
