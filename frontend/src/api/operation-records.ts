@@ -2,6 +2,7 @@ export interface OperationRecord {
   id: number; action: string; moduleName: string; httpMethod: string; requestPath: string
   actorId: number | null; actorName: string; actorUsername: string; operatedAt: string
   completedAt?: string; status: 'SUCCESS' | 'FAILED' | 'REVERSED' | 'LEGACY'
+  primaryDocument?: string
   confirmedAt?: string | null; confirmedByName?: string
   businessExamples?: { table: string; type: OperationChange['type']; line: string; reviewStatus: string; fields: OperationChange['fields'] }[]
   changeSummary?: { table: string; type: 'INSERT' | 'UPDATE' | 'DELETE'; count: number; fields: string[] }[]

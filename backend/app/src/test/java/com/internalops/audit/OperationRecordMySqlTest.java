@@ -122,7 +122,9 @@ class OperationRecordMySqlTest {
         long id=last(path);
         var list=mvc.perform(get("/api/operation-records").cookie(owner).param("keyword","AT-"+suffix))
                 .andExpect(status().isOk()).andReturn();
-        var preview=json.readTree(list.getResponse().getContentAsByteArray()).at("/data/items/0/businessExamples");
+        var savedRow=json.readTree(list.getResponse().getContentAsByteArray()).at("/data/items/0");
+        assertThat(savedRow.path("primaryDocument").asText()).isEqualTo("AT-"+suffix);
+        var preview=savedRow.path("businessExamples");
         assertThat(preview.toString()).contains("shipped_quantity","\"before\":\"0\"","\"after\":\"3\"");
         assertThat(tables(id)).contains("sales_order_item","sales_shipment","sales_shipment_item","inventory_balance","inventory_transaction");
         undo(id,owner).andExpect(status().isOk());

@@ -9,6 +9,7 @@ const mainDocuments: Record<string, string[]> = {
   客户管理: ['客户'], 产品管理: ['产品编号'], 供应商管理: ['供应商'], 用户管理: ['账号']
 }
 export function primaryDocument(row: OperationRecord) {
+  if (row.primaryDocument) return row.primaryDocument
   const refs = (row.relatedRecords || '').split(/[；;\n]/).map(s => s.trim()).filter(Boolean)
   const keys = [...(mainDocuments[businessModule(row)] || []), '订单号','采购单号','售后单号','来源单号','发货单号','采购建议单号','文件','产品编号','客户','供应商']
   for (const key of keys) {

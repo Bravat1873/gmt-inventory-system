@@ -108,6 +108,9 @@ public class OperationRecordService {
 
     // Read historical snapshots as well as new ones. Fetch full snapshots only for
     // representative rows; a large workbook or inventory import must not fill a list page.
+    private static final java.util.regex.Pattern ORDER_PATH =
+            java.util.regex.Pattern.compile("^/api/(?:finance/)?orders/([0-9]+)(?:/.*)?$");
+
     private void addBusinessExamples(List<Map<String,Object>> items) {
         if (items.isEmpty()) return;
         var byId = new HashMap<Long,Map<String,Object>>();
@@ -129,6 +132,17 @@ public class OperationRecordService {
             Change c = readChange(rs);
             long id = rs.getLong("operation_id");
             var row = c.after()==null ? c.before() : c.after();
+            var operation = byId.get(id);
+            var target = ORDER_PATH.matcher(String.valueOf(operation.get("requestPath")));
+            if (target.matches()) {
+                String orderId = target.group(1);
+                if ("sales_order".equals(c.table()) && orderId.equals(String.valueOf(row.get("id"))) && row.get("order_no") != null) {
+                    operation.put("primaryDocument",row.get("order_no"));
+                } else if (!operation.containsKey("primaryDocument") && orderId.equals(String.valueOf(row.get("sales_order_id"))) && c.relatedInfo()!=null) {
+                    Arrays.stream(c.relatedInfo().split("；")).filter(ref -> ref.startsWith("订单号："))
+                            .findFirst().ifPresent(ref -> operation.put("primaryDocument",ref.substring("订单号：".length())));
+                }
+            }
             var fields = diff(c).stream().filter(f -> PREVIEW_FIELDS.contains(f.get("field"))).toList();
             if (!fields.isEmpty()) examples.computeIfAbsent(id, ignored -> new ArrayList<>()).add(Map.of(
                     "table",c.table(), "type",c.type(), "line",Objects.toString(row.get("line_no"),""),

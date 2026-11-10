@@ -71,9 +71,9 @@ it('passes all filters, rejects reversed dates and retains filters for paginatio
   expect(params.get('page')).toBe('2'); expect(params.get('keyword')).toBe('DD01'); expect(params.get('actor')).toBe('张'); expect(params.get('from')).toBe('2026-10-22')
 })
 
-it('deduplicates document numbers and limits the list summary while keeping full context accessible', async () => {
-  const relatedRecords = '来源单号：DD01；订单号：DD01；采购单号：CG02；发货单号：FH03；客户：测试客户'
-  api.loadOperations.mockResolvedValue({ items: [{ ...row, relatedRecords }], total: 1, page: 1, pageSize: 20 })
+it('shows the targeted order instead of a linked order and keeps all context accessible', async () => {
+  const relatedRecords = '订单号：DD02；订单号：DD01；采购单号：CG02；发货单号：FH03；客户：测试客户'
+  api.loadOperations.mockResolvedValue({ items: [{ ...row, relatedRecords, primaryDocument:'DD01' }], total: 1, page: 1, pageSize: 20 })
   const wrapper = mount(OperationRecordsPage, { props: { currentUser: owner } }); await flushPromises()
   const summary = wrapper.get('.operations-related span')
   expect(summary.text()).toBe('DD01')
