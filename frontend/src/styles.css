@@ -154,12 +154,15 @@ td {
 .row-actions-content.finance-actions button { flex:0 0 auto; min-width:0; padding:5px 8px; }
 thead .action-column-header { position:sticky; right:0; z-index:3; background:#fafafa; box-shadow:-5px 0 8px rgb(0 0 0 / 5%); text-align:right; }
 .order-shipment-status { display:inline-flex; align-items:center; gap:7px; }
+th.sales-shipment-heading { padding-inline-start:29px; }
+.sales-shipment-status { display:flex; min-width:0; }
 .finance-direction { display:inline-flex; align-items:center; gap:8px; color:#222; }
 .finance-direction i { width:8px; height:8px; flex:0 0 8px; border-radius:50%; }
 .finance-direction.receivable i { background:#22a06b; box-shadow:0 0 0 3px #e6f7ef; }
 .finance-direction.payable i { background:#e5484d; box-shadow:0 0 0 3px #ffebec; }
 .shipment-status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex:0 0 8px; }
 .shipment-status-dot.complete { background:#22a06b; box-shadow:0 0 0 3px #e6f7ef; }
+.shipment-status-dot.partial { background:#bc7100; box-shadow:0 0 0 3px #fff3d9; }
 .shipment-status-dot.incomplete { background:#e5484d; box-shadow:0 0 0 3px #ffebec; }
 .row-actions button { flex:0 0 auto; }
 .row-actions button,.pager button,.line-title button,.order-line>button { border:1px solid #bbb; background:#fff; border-radius:3px; padding:5px 9px; cursor:pointer; white-space:nowrap; }
@@ -626,7 +629,7 @@ thead .action-column-header { position:sticky; right:0; z-index:3; background:#f
 .after-sales-line-head,.after-sales-line{grid-template-columns:60px minmax(220px,1.4fr) 100px 110px 110px minmax(240px,1.5fr) 110px}
 .after-sales-select-all{display:flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer}
 .after-sales-select-all input{width:auto}
-.module-page .table-wrap th{position:relative}
+.module-page .table-wrap th:not(.action-column-header){position:relative}
 .module-page .full-identifier-cell{min-width:0}
 .module-page .column-resize-handle{position:absolute;right:0;top:0;bottom:0;width:9px;cursor:col-resize;touch-action:none;z-index:2}
 .module-page .column-resize-handle:hover,.module-page .column-resize-handle:focus{background:rgba(35,82,140,.18)}

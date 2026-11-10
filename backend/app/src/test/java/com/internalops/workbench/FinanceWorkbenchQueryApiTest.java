@@ -28,9 +28,40 @@ class FinanceWorkbenchQueryApiTest {
 
     private final Cookie session = new Cookie("OPS_SESSION", "finance-test-token");
 
-    @Test void orderRowsUseCurrentCustomerBalanceAndConfirmedReceipts() throws Exception {
+    private void prepareOrderList() {
         for(String column : new String[]{"external_order_no VARCHAR(100)","order_date DATE","order_type VARCHAR(40)","salesperson VARCHAR(100)","receipt_confirmed_at TIMESTAMP","shipped_at TIMESTAMP","carrier VARCHAR(100)","tracking_no VARCHAR(100)","version INT DEFAULT 0"}) jdbc.execute("ALTER TABLE sales_order ADD "+column);
         jdbc.execute("CREATE TABLE IF NOT EXISTS customer_fund_account(customer_id BIGINT PRIMARY KEY,balance DECIMAL(19,4))");
+    }
+
+    @Test void orderStatusReflectsPositiveLinesAndSortsByShipmentProgress() throws Exception {
+        prepareOrderList();
+        jdbc.update("""
+                INSERT INTO sales_order(id,order_no,customer_id,status,created_at,updated_at)
+                VALUES (20,'SO-F-002',1,'READY_TO_SHIP',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+                       (30,'SO-F-003',1,'WAITING_STOCK',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """);
+        jdbc.update("""
+                INSERT INTO sales_order_item(id,sales_order_id,quantity,shipped_quantity,sale_price)
+                VALUES (21,20,4,0,1), (31,30,3,3,1), (32,30,-2,0,1)
+                """);
+        mvc.perform(get("/api/workbench/order").param("sort","status").param("direction","asc").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].shipmentStatus").value("未发货"))
+                .andExpect(jsonPath("$.data.items[1].shipmentStatus").value("部分未发货"))
+                .andExpect(jsonPath("$.data.items[2].shipmentStatus").value("已发完货"));
+
+        jdbc.update("INSERT INTO sales_order_item(id,sales_order_id,quantity,shipped_quantity,sale_price) VALUES(33,30,2,0,1)");
+        mvc.perform(get("/api/workbench/order").param("keyword","部分未发货").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(2));
+        jdbc.update("UPDATE sales_order_item SET shipped_quantity=0 WHERE sales_order_id=30");
+        mvc.perform(get("/api/workbench/order").param("keyword","SO-F-003").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].shipmentStatus").value("未发货"));
+    }
+
+    @Test void orderRowsUseCurrentCustomerBalanceAndConfirmedReceipts() throws Exception {
+        prepareOrderList();
         jdbc.update("INSERT INTO customer_fund_account(customer_id,balance) SELECT customer_id,500 FROM sales_order WHERE id=10");
         jdbc.update("UPDATE customer_receipt SET confirmed_amount=25,review_status='APPROVED' WHERE id=12");
         mvc.perform(get("/api/workbench/order").param("keyword","SO-F-001").cookie(session))

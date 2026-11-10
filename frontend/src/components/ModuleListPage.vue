@@ -47,10 +47,8 @@ function supplierQuoteSummary(row: Record<string, unknown>) {
 function supplierQuoteDetails(row: Record<string, unknown>) {
   return supplierQuotes(row).map(quote => `${quote.supplierName}：¥${quotePrice(quote.purchasePrice)}`).join('\n') || '暂无供应商报价'
 }
-function shipmentCompleted(row: Record<string, unknown>) {
-  return props.module.key === 'purchase'
-    ? String(row.status) !== 'DRAFT' && (Number(row.remainingQuantity ?? 1) <= 0 || ['RECEIVED', 'COMPLETED'].includes(String(row.status)))
-    : String(row.status) === 'SHIPPED'
+function purchaseReceived(row: Record<string, unknown>) {
+  return String(row.status) !== 'DRAFT' && (Number(row.remainingQuantity ?? 1) <= 0 || ['RECEIVED', 'COMPLETED'].includes(String(row.status)))
 }
 function isReceivable(row: Record<string, unknown>) { return String(row.cashDirection) === 'RECEIVABLE' }
 function hasOutstandingAmount(row: Record<string, unknown>) { return Number(row.outstandingAmount ?? 0) > 0 }
@@ -123,7 +121,7 @@ defineExpose({ reload: async () => {
       <div class="table-wrap">
         <table :style="{ minWidth: `${tableMinWidth}px` }">
           <colgroup><col v-for="(field, index) in module.fields" :key="field" :style="{ width: `${widthAt(index)}px` }"><col :style="{ width: `${widthAt(module.fields.length)}px` }"></colgroup>
-          <thead><tr><th v-for="(column, index) in module.columns" :key="column" :class="{ sortable: module.sortable[index] }" @click="orderBy(module.sortable[index])">{{ column }}<span v-if="module.sortable[index] && sort === module.sortable[index]">{{ direction === 'asc' ? ' ↑' : ' ↓' }}</span><span class="column-resize-handle" role="separator" :aria-label="`调整${column}列宽`" @pointerdown="startResize($event,index)" @click.stop /></th><th class="action-column-header">操作<span class="column-resize-handle" role="separator" aria-label="调整操作列宽" @pointerdown="startResize($event,module.fields.length)" @click.stop /></th></tr></thead>
+          <thead><tr><th v-for="(column, index) in module.columns" :key="column" :class="{ sortable: module.sortable[index], 'sales-shipment-heading': module.key === 'order' && module.fields[index] === 'status' }" @click="orderBy(module.sortable[index])">{{ column }}<span v-if="module.sortable[index] && sort === module.sortable[index]">{{ direction === 'asc' ? ' ↑' : ' ↓' }}</span><span class="column-resize-handle" role="separator" :aria-label="`调整${column}列宽`" @pointerdown="startResize($event,index)" @click.stop /></th><th class="action-column-header">操作<span class="column-resize-handle" role="separator" aria-label="调整操作列宽" @pointerdown="startResize($event,module.fields.length)" @click.stop /></th></tr></thead>
           <tbody>
             <tr v-if="loading"><td :colspan="module.columns.length + 1" class="empty-state">正在读取</td></tr>
             <tr v-else-if="!data.items.length"><td :colspan="module.columns.length + 1" class="empty-state">暂无数据</td></tr>
@@ -142,7 +140,8 @@ defineExpose({ reload: async () => {
                   <span v-if="Number(row.imageCount ?? 0) > 1" class="product-image-count" data-test="product-image-count">{{ Number(row.imageCount) }}</span>
                 </button>
                 <span v-else-if="module.key === 'product' && field === 'supplierQuotes'" data-test="supplier-quotes" class="supplier-quotes" :title="supplierQuoteDetails(row)">{{ supplierQuoteSummary(row) }}</span>
-                <span v-else-if="['order', 'purchase'].includes(module.key) && field === 'status'" class="order-shipment-status"><i class="shipment-status-dot" :class="shipmentCompleted(row) ? 'complete' : 'incomplete'"></i><OverflowText :value="text(row[field], field)" /></span>
+                <span v-else-if="module.key === 'order' && field === 'status'" class="order-shipment-status sales-shipment-status"><i aria-hidden="true" class="shipment-status-dot" :class="{ complete: row.shipmentStatus === '已发完货', partial: row.shipmentStatus === '部分未发货', incomplete: row.shipmentStatus === '未发货' }"></i><OverflowText :value="row.shipmentStatus" /></span>
+                <span v-else-if="module.key === 'purchase' && field === 'status'" class="order-shipment-status"><i class="shipment-status-dot" :class="purchaseReceived(row) ? 'complete' : 'incomplete'"></i><OverflowText :value="text(row[field], field)" /></span>
                 <span v-else-if="module.key === 'finance' && field === 'businessType'" data-test="finance-direction" class="finance-direction" :class="isReceivable(row) ? 'receivable' : 'payable'" :aria-label="isReceivable(row) ? '收款' : '付款'"><i aria-hidden="true"></i><OverflowText :value="text(row[field], field)" /></span>
                 <span v-else-if="module.key === 'inventory' && field === 'supplyDemandSurplus'" data-test="supply-demand-surplus" class="supply-demand-surplus" :class="{ negative: Number(row[field]) < 0 }"><OverflowText :value="text(row[field], field)" /><small v-if="Number(row[field]) < 0">采购缺口 {{ Number(row.purchaseShortageQuantity ?? Math.abs(Number(row[field]))) }}</small></span>
                 <span v-else-if="isFullIdentifier(field)" class="full-identifier">{{ text(row[field], field) }}</span>

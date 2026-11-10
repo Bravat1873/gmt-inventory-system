@@ -25,7 +25,7 @@ public class BusinessTraceService {
     }
 
     private Map<String, Object> orderTrace(long id) {
-        Map<String, Object> header = one("SELECT o.id, o.order_no AS orderNo, c.customer_name AS counterparty, o.status, "
+        Map<String, Object> header = one("SELECT o.id, o.order_no AS orderNo, c.customer_name AS counterparty, o.status, " + OrderShipmentStatus.SQL + " AS shipmentStatus, "
                 + "o.total_amount AS totalAmount, o.order_date AS orderDate, o.salesperson, o.customer_contact AS customerContact, "
                 + "o.customer_phone AS customerPhone, o.delivery_address AS deliveryAddress, o.delivery_contact AS deliveryContact, "
                 + "o.delivery_phone AS deliveryPhone, o.shipping_method AS shippingMethod, o.carrier, o.tracking_no AS trackingNo, "

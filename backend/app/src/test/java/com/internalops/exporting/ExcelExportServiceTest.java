@@ -142,7 +142,7 @@ class ExcelExportServiceTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(anyString())).thenReturn(List.of(Map.ofEntries(
                 Map.entry("business_type", "销售订单"), Map.entry("order_no", "DD20260800001"), Map.entry("order_date", "2026-08-20"),
-                Map.entry("status", "WAITING_STOCK"), Map.entry("customer_name", "示例客户"), Map.entry("product_code", "SKU-001"),
+                Map.entry("status", "未发货"), Map.entry("customer_name", "示例客户"), Map.entry("product_code", "SKU-001"),
                 Map.entry("customer_part_number", "CP-001"), Map.entry("product_name", "示例产品"), Map.entry("model", "D51"),
                 Map.entry("quantity", 1), Map.entry("shipped_quantity", 0), Map.entry("sale_price", BigDecimal.ZERO),
                 Map.entry("amount", BigDecimal.ZERO), Map.entry("delivery_date", ""), Map.entry("salesperson", "Excel导入"), Map.entry("order_remark", "")
@@ -151,7 +151,7 @@ class ExcelExportServiceTest {
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(service.summary("order")))) {
             var row = workbook.getSheet("订单汇总数据").getRow(1);
-            assertEquals("等待齐货", row.getCell(3).getStringCellValue());
+            assertEquals("未发货", row.getCell(3).getStringCellValue());
             assertEquals("", row.getCell(13).getStringCellValue());
             assertEquals("", row.getCell(15).getStringCellValue());
         }

@@ -2,6 +2,7 @@ package com.internalops.exporting;
 
 import com.internalops.aftersales.AfterSalesQueryService;
 import com.internalops.workbench.ListQuery;
+import com.internalops.workbench.OrderShipmentStatus;
 import com.internalops.workbench.ProcurementWorkflowService;
 import com.internalops.workbench.SalesOrderCommandService;
 import com.internalops.workbench.WorkbenchQueryService;
@@ -121,7 +122,7 @@ public class ExcelExportService {
 
     private byte[] orderSummaryWorkbook() {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT '销售订单' AS business_type,o.order_no,o.order_date,o.status,c.customer_name,
+                SELECT '销售订单' AS business_type,o.order_no,o.order_date,%s AS status,c.customer_name,
                        s.product_code,s.customer_part_number,s.product_name,s.model,i.quantity,i.shipped_quantity,
                        i.sale_price,i.quantity*i.sale_price AS amount,DATE(o.shipped_at) AS delivery_date,
                        o.salesperson AS salesperson,COALESCE(i.item_remark,o.order_remark) AS order_remark
@@ -130,7 +131,7 @@ public class ExcelExportService {
                 JOIN sales_order_item i ON i.sales_order_id=o.id
                 JOIN sku s ON s.id=i.sku_id
                 ORDER BY order_date,order_no
-                """);
+                """.formatted(OrderShipmentStatus.SQL));
         return businessSummaryWorkbook("订单汇总数据", rows);
     }
 

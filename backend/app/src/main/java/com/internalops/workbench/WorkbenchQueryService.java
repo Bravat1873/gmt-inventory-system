@@ -51,7 +51,7 @@ public class WorkbenchQueryService {
             Map.entry("orderno", "orderNo"), Map.entry("externalorderno", "externalOrderNo"),
             Map.entry("totalamount", "totalAmount"), Map.entry("receiptconfirmedat", "receiptConfirmedAt"),
             Map.entry("invoicenos", "invoiceNos"),
-            Map.entry("shippedat", "shippedAt"), Map.entry("trackingno", "trackingNo"),
+            Map.entry("shipmentstatus", "shipmentStatus"), Map.entry("shippedat", "shippedAt"), Map.entry("trackingno", "trackingNo"),
             Map.entry("createdat", "createdAt"), Map.entry("skuid", "skuId"),
             Map.entry("actualquantity", "actualQuantity"), Map.entry("lockedquantity", "lockedQuantity"),
             Map.entry("availablequantity", "availableQuantity"), Map.entry("intransitquantity", "inTransitQuantity"),
@@ -486,11 +486,11 @@ public class WorkbenchQueryService {
                         + "COALESCE(fa.balance,0) AS `fundBalance`, "
                         + "COALESCE((SELECT SUM(COALESCE(cr.confirmed_amount,cr.amount)) FROM customer_receipt cr WHERE cr.sales_order_id=o.id AND COALESCE(cr.review_status,'APPROVED')='APPROVED'),0) AS `receivedAmount`, "
                         + "GREATEST(o.total_amount-COALESCE((SELECT SUM(COALESCE(cr.confirmed_amount,cr.amount)) FROM customer_receipt cr WHERE cr.sales_order_id=o.id AND COALESCE(cr.review_status,'APPROVED')='APPROVED'),0),0) AS `outstandingAmount`, "
-                        + "o.total_amount AS `totalAmount`, o.order_date AS `orderDate`, o.order_type AS `orderType`, o.salesperson, o.status, o.receipt_confirmed_at AS `receiptConfirmedAt`, "
+                        + "o.total_amount AS `totalAmount`, o.order_date AS `orderDate`, o.order_type AS `orderType`, o.salesperson, o.status, " + OrderShipmentStatus.SQL + " AS `shipmentStatus`, o.receipt_confirmed_at AS `receiptConfirmedAt`, "
                         + "o.shipped_at AS `shippedAt`, o.carrier, o.tracking_no AS `trackingNo`, o.created_at AS `createdAt`, o.updated_at AS `updatedAt`, o.version",
                 "FROM sales_order o JOIN customer c ON c.id=o.customer_id LEFT JOIN customer_fund_account fa ON fa.customer_id=o.customer_id",
-                "LOCATE(?, COALESCE(o.order_no,''))>0 OR LOCATE(?, COALESCE(o.external_order_no,''))>0 OR LOCATE(?, COALESCE(c.customer_name,''))>0 OR LOCATE(?, COALESCE(o.status,''))>0", 4,
-                sorts("id", "o.id", "orderNo", "o.order_no", "customerName", "c.customer_name", "orderType", "CASE WHEN o.order_type IN ('工程订单','零售订单','前置订单') THEN 0 ELSE 1 END ASC, CASE o.order_type WHEN '工程订单' THEN 10 WHEN '零售订单' THEN 20 WHEN '前置订单' THEN 30 ELSE 999 END", "totalAmount", "o.total_amount", "status", "CASE o.status WHEN 'DRAFT' THEN 10 WHEN 'PENDING_CUSTOMER_PAYMENT' THEN 20 WHEN 'WAITING_STOCK' THEN 30 WHEN 'READY_TO_SHIP' THEN 40 WHEN 'SHIPPED' THEN 50 ELSE 999 END", "orderDate", "o.order_date", "salesperson", "o.salesperson", "createdAt", "o.created_at", "updatedAt", "o.updated_at"),
+                "LOCATE(?, COALESCE(o.order_no,''))>0 OR LOCATE(?, COALESCE(o.external_order_no,''))>0 OR LOCATE(?, COALESCE(c.customer_name,''))>0 OR LOCATE(?, COALESCE(o.status,''))>0 OR LOCATE(?, " + OrderShipmentStatus.SQL + ")>0", 5,
+                sorts("id", "o.id", "orderNo", "o.order_no", "customerName", "c.customer_name", "orderType", "CASE WHEN o.order_type IN ('工程订单','零售订单','前置订单') THEN 0 ELSE 1 END ASC, CASE o.order_type WHEN '工程订单' THEN 10 WHEN '零售订单' THEN 20 WHEN '前置订单' THEN 30 ELSE 999 END", "totalAmount", "o.total_amount", "status", "CASE " + OrderShipmentStatus.SQL + " WHEN '未发货' THEN 0 WHEN '部分未发货' THEN 1 ELSE 2 END", "orderDate", "o.order_date", "salesperson", "o.salesperson", "createdAt", "o.created_at", "updatedAt", "o.updated_at"),
                 "o.updated_at", "o.id DESC"));
         modules.put("afterSales", new ModuleSpec(
                 "SELECT a.id,a.after_sales_no AS `afterSalesNo`,o.order_no AS `orderNo`,c.customer_name AS `customerName`,o.order_type AS `orderType`,"
